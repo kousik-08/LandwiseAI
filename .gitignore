@@ -1,0 +1,27 @@
+# Shared
+.env
+.env.local
+.vscode/
+.DS_Store
+*.log
+tmp/
+
+# Frontend
+Client/node_modules/
+Client/dist/
+Client/dist-ssr/
+Client/package-lock.json
+
+# Backend
+Server/__pycache__/
+Server/*.py[cod]
+Server/inputs/*
+!Server/inputs/.gitkeep
+Server/outputs/*
+!Server/outputs/.gitkeep
+Server/.logs/
+Server/venv/
+Server/env/
+Server/.env
+Server/*.pdf
+Server/test_output/
