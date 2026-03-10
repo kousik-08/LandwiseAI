@@ -1,0 +1,10 @@
+google-genai
+pandas
+python-dotenv
+pypdf
+ollama
+fastapi
+uvicorn
+python-multipart
+pymupdf
+Pillow

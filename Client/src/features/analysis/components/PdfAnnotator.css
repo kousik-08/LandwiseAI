@@ -1,0 +1,106 @@
+/* Main Wrapper */
+.pdf-annotator-wrapper {
+    height: 100%;
+    width: 100%;
+    background: #f8fafc;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Precision Cursor for Draw Mode */
+.draw-mode .pdf-highlighter__pdf-container {
+    cursor: crosshair !important;
+}
+
+/* Ensure highlighter layer is interactive */
+.pdf-highlighter__highlight-part {
+    background-color: rgba(255, 230, 0, 0.4) !important;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.pdf-highlighter__highlight-part:hover {
+    background-color: rgba(255, 230, 0, 0.6) !important;
+}
+
+/* Custom Tip (Annotation Input) */
+.anno-tip-container {
+    background: white;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.anno-tip-input {
+    border: none;
+    padding: 12px;
+    font-size: 11px;
+    font-family: inherit;
+    resize: none;
+    min-height: 80px;
+    outline: none;
+    background: transparent;
+    color: #1e293b;
+}
+
+.anno-tip-input::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* Popup Bubble */
+.anno-popup-card {
+    background: #1e293b;
+    color: white;
+    padding: 12px;
+    border-radius: 12px;
+    width: 220px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+}
+
+.anno-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #94a3b8;
+    margin-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding-bottom: 6px;
+}
+
+.anno-popup-content {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #e2e8f0;
+}
+
+/* Scroll Adjustment */
+.PdfHighlighter {
+    background: #525659 !important;
+    /* Standard dark PDF background */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.PdfHighlighter::-webkit-scrollbar {
+    width: 8px;
+}
+
+.PdfHighlighter::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+}
+
+/* Adjust Tip Positioning */
+.Tip {
+    z-index: 1000;
+}

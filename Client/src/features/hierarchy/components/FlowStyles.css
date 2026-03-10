@@ -1,0 +1,125 @@
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 30px rgba(59, 130, 246, 0.9);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.4);
+    }
+}
+
+.react-flow__node {
+    padding: 0 !important;
+    /* Let inner div handle padding */
+    border-radius: 12px;
+    font-size: 11px;
+    text-align: left;
+    white-space: pre-wrap;
+    width: 240px;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+    border: none !important;
+    /* Remove default border */
+    background: transparent !important;
+    /* Let inner div handle background */
+    z-index: 10;
+}
+
+.react-flow__node:hover {
+    z-index: 1000 !important;
+}
+
+/* Inner Custom Node Styling */
+.hierarchy-node-content {
+    padding: 12px;
+    border-radius: 12px;
+    border: 2px solid #e2e8f0;
+    background: white;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 100%;
+    height: 100%;
+}
+
+.react-flow__node:hover .hierarchy-node-content {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+.sn-node .hierarchy-node-content {
+    background: #f8fafc;
+    border-color: #3b82f6;
+    border-style: dashed;
+    color: #1d4ed8;
+    font-weight: 800;
+    font-size: 14px;
+    text-align: center;
+}
+
+/* Tamil Nadu Registry Deed Type Colors - Applied to Inner Content */
+.sale-node .hierarchy-node-content {
+    border-color: #16a34a !important;
+    background: #f0fdf4 !important;
+}
+
+.mortgage-node .hierarchy-node-content {
+    border-color: #dc2626 !important;
+    background: #fef2f2 !important;
+}
+
+.gift-node .hierarchy-node-content {
+    border-color: #9333ea !important;
+    background: #faf5ff !important;
+}
+
+.settlement-node .hierarchy-node-content {
+    border-color: #2563eb !important;
+    background: #eff6ff !important;
+}
+
+.release-node .hierarchy-node-content {
+    border-color: #ea580c !important;
+    background: #fff7ed !important;
+}
+
+.partition-node .hierarchy-node-content {
+    border-color: #0d9488 !important;
+    background: #f0fdfa !important;
+}
+
+.power-node .hierarchy-node-content {
+    border-color: #4b5563 !important;
+    background: #f9fafb !important;
+}
+
+.base-node .hierarchy-node-content {
+    border-color: #94a3b8 !important;
+    background: #f8fafc !important;
+}
+
+.react-flow__handle {
+    width: 8px;
+    height: 8px;
+    background: #3b82f6;
+    border: 2px solid white;
+}
+
+.react-flow__edge-path {
+    stroke-width: 2.5;
+    stroke: #94a3b8;
+}
+
+.vertical-edge .react-flow__edge-path {
+    stroke-dasharray: 6 4;
+    stroke: #64748b;
+}
+
+.branch-edge .react-flow__edge-path {
+    stroke: #94a3b8;
+}
+
+.react-flow__attribution {
+    display: none;
+}
