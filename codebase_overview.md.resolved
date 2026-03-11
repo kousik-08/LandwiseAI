@@ -1,0 +1,325 @@
+# PattaFlow — Full Codebase Overview
+
+## Project Summary
+**PattaFlow** is an AI-powered **Tamil Nadu land record verification system**. Given an Encumbrance Certificate (EC) PDF and a set of Sale Deed PDFs, it:
+1. Extracts and parses the EC using Google Gemini
+2. Matches the EC entries to the provided sale deed PDFs
+3. Extracts detailed metadata from each sale deed via Gemini
+4. Generates an interactive property ownership hierarchy/lineage tree
+5. Cross-validates each sale deed against the EC using Gemini as a forensic auditor
+6. Presents all results in a React frontend with PDF preview, annotation, and AI chat
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Frontend** | React 18, TypeScript, Vite, TailwindCSS, Shadcn/Radix UI |
+| **State/Routing** | React Router v6, TanStack Query v5 |
+| **Maps** | OpenLayers ([ol](file:///d:/Master_legal_AI/Server/api/validate/hierarchy_generator.py#221-236)) |
+| **Flow Visualization** | ReactFlow v11 |
+| **PDF Handling** | pdfjs-dist, react-pdf-highlighter |
+| **Backend** | Python 3, FastAPI, Uvicorn |
+| **AI/LLM** | Google Gemini API (`gemini-2.5-flash`, `gemini-2.5-flash-lite`) |
+| **PDF Parsing** | pypdf, PyMuPDF (fitz) |
+| **External APIs** | TNGIS EC API, TNGIS Land Info API |
+
+---
+
+## Directory Structure
+
+```
+d:/Master_legal_AI/
+├── Client/                    # React frontend (Vite + TypeScript)
+│   └── src/
+│       ├── App.tsx            # Root router
+│       ├── pages/             # 4 pages: Landing, Map, Verify(/Index), Hierarchy
+│       ├── components/        # ~17 custom components + 49 shadcn UI primitives
+│       └── hooks/
+└── Server/                    # Python FastAPI backend
+    ├── app.py                 # FastAPI app + all route definitions
+    ├── api/
+    │   ├── validate/          # Core validation pipeline (9 files)
+    │   ├── download_ec/       # EC downloading from TNGIS
+    │   └── getlandinfo/       # Land info from coordinates (TNGIS)
+    ├── common/                # Shared helpers (Gemini, Logger, Utils, Errors)
+    └── prompts/               # All LLM prompt templates (5 files)
+```
+
+---
+
+## Backend Architecture
+
+### [app.py](file:///d:/Master_legal_AI/Server/app.py) — FastAPI Entry Point
+- **App name**: `PattaFlow`
+- **Middleware**: Per-request UUID logging (`X-Request-ID` header), CORS (all origins)
+- **Static mounts**: `/files` → `outputs/`, `/input-files` → `inputs/`
+- **Versioned router**: All endpoints under `/api/v1/`
+
+#### API Endpoints
+
+| Method | Path | Handler | Purpose |
+|--------|------|---------|---------|
+| GET | `/api/v1/health` | inline | Health check |
+| POST | `/api/v1/validate` | [handle_validate](file:///d:/Master_legal_AI/Server/api/validate/handler.py#554-740) | Main workflow: EC + Sale Deed validation (streaming NDJSON) |
+| POST | `/api/v1/validate-single-doc` | [handle_validate_single](file:///d:/Master_legal_AI/Server/api/validate/handler.py#854-912) | Re-validate a single document on demand |
+| POST | `/api/v1/download-ec` | `handle_download_ec` | Download EC PDF from TNGIS |
+| POST | `/api/v1/getlandinfo` | [handle_get_land_info](file:///d:/Master_legal_AI/Server/api/getlandinfo/handler.py#147-150) | Get land info by lat/lng |
+| POST | `/api/v1/verify-supporting-doc` | [handle_verify_supporting_doc](file:///d:/Master_legal_AI/Server/api/validate/handler.py#741-761) | Verify supporting doc (Aadhaar etc.) against deed |
+| POST | `/api/v1/chat-with-doc` | [handle_chat_with_doc](file:///d:/Master_legal_AI/Server/api/validate/handler.py#814-853) | AI chat about a specific document |
+| POST | `/api/v1/save-node-note` | `handle_save_node_note` | Save collaborative note for a deed node |
+| GET | `/api/v1/get-node-notes` | `handle_get_node_notes` | Retrieve all node notes |
+| GET | `/api/v1/get-validation-results/{id}` | inline | Fetch cached validation results by request ID |
+| GET | `/api/v1/get-global-hierarchy/{id}` | [handle_get_global_hierarchy](file:///d:/Master_legal_AI/Server/api/validate/handler.py#982-996) | Get full hierarchy as ReactFlow data |
+| POST | `/api/v1/search-survey-timeline` | [handle_search_survey_timeline](file:///d:/Master_legal_AI/Server/api/validate/handler.py#997-1014) | Search for a specific survey number's lineage |
+
+---
+
+### Core Validation Pipeline (`api/validate/`)
+
+The main workflow is a **5-stage generator pipeline** that streams progress events to the frontend:
+
+```
+EC PDF + Sale Deed ZIP/Dir
+         │
+    ┌────▼─────────────────────────────────────┐
+    │  Stage 1: EC Extraction (ECProcessor)    │
+    │  • pypdf text extraction in chunks       │
+    │  • Gemini (flash-lite) parses each chunk │
+    │  • Outputs: ec_raw_full.txt, ec_final.json│
+    └────┬─────────────────────────────────────┘
+         │
+    ┌────▼─────────────────────────────────────┐
+    │  Stage 2: Document Matching              │
+    │  (DocumentMatcher)                       │
+    │  • Normalizes doc numbers (lower + _-/)  │
+    │  • Matches EC entries → PDF filenames    │
+    │  • Sorts by date, fills quota (limit)    │
+    │  • Copies matched PDFs to workspace      │
+    │  • Persists to global vault              │
+    └────┬─────────────────────────────────────┘
+         │
+    ┌────▼─────────────────────────────────────┐
+    │  Stage 3: Sale Deed Metadata Extraction  │
+    │  (SaleDeedProcessor)                     │
+    │  • Uploads each PDF to Gemini Flash      │
+    │  • Prompt extracts: parties, survey no,  │
+    │    extent, dates, supporting docs, IDs   │
+    │  • Outputs: <docno>_metadata.txt files   │
+    │  • ≥10 docs → ThreadPoolExecutor (3)     │
+    └────┬─────────────────────────────────────┘
+         │
+    ┌────▼─────────────────────────────────────┐
+    │  Stage 3.5: Hierarchy Generation         │
+    │  (HierarchyGenerator)                    │
+    │  • Extract text from EC PDF              │
+    │  • Gemini (flash) → nested JSON tree     │
+    │  • Repair: flatten → group by SN → link  │
+    │    by prefix rules (46 → 46/1 → 46/1A)  │
+    │  • Generate: hierarchy_tree.json         │
+    │             hierarchy_view.html (Mermaid)│
+    │  • Build ReactFlow nodes + edges         │
+    └────┬─────────────────────────────────────┘
+         │
+    ┌────▼─────────────────────────────────────┐
+    │  Stage 4: Validation (Validator)         │
+    │  • For each matched doc:                 │
+    │    - Look up EC entry by doc number      │
+    │    - Read <docno>_metadata.txt           │
+    │    - Gemini (flash-lite) forensic audit  │
+    │    - Returns: match, comparisons, score  │
+    │  • ≥10 docs → ThreadPoolExecutor (3)     │
+    │  • Outputs: <docno>_validation.json,     │
+    │             results.json                 │
+    └────▼─────────────────────────────────────┘
+         │
+    Final result JSON → Frontend
+```
+
+#### Event Stream Format (NDJSON)
+Each line is a JSON object with `type`:
+- `step_start` / `step_complete` → pipeline stage progress
+- [log](file:///d:/Master_legal_AI/Server/api/validate/handler.py#59-78) → major message
+- [sub_log](file:///d:/Master_legal_AI/Server/api/validate/handler.py#59-78) → granular detail within a step
+- [result](file:///d:/Master_legal_AI/Server/app.py#242-255) → final data payload
+- `error` → failure notification
+
+---
+
+### [ECProcessor](file:///d:/Master_legal_AI/Server/api/validate/ec_processor.py#10-134) ([ec_processor.py](file:///d:/Master_legal_AI/Server/api/validate/ec_processor.py))
+- Splits PDF into chunks of `CHUNK_SIZE` pages (env var, default 8)
+- Each chunk → Gemini with `RAW_PROMPT` → structured text blocks
+- Blocks parsed via regex: `--- TRANSACTION START/END ---` markers
+- Fields: doc number, date, nature, sellers, buyers, survey_no, extent
+- Caches result in `ec_final.json` (skips re-processing if found)
+
+### [DocumentMatcher](file:///d:/Master_legal_AI/Server/api/validate/matcher.py#11-175) ([matcher.py](file:///d:/Master_legal_AI/Server/api/validate/matcher.py))
+- **Normalization**: lowercase + replace `-`, `/`, space with `_`
+- **Sorting**: newest-first by date (format: `24-Jul-1985`)
+- **Deduplication**: skips already-seen document numbers
+- **Quota filling**: iterates through history to find N matched files
+- **Workspace**: copies matched PDFs to a tmp workspace; persists to `outputs/storage/vault/`
+
+### [SaleDeedProcessor](file:///d:/Master_legal_AI/Server/api/validate/sale_deed_processor.py#6-48) ([sale_deed_processor.py](file:///d:/Master_legal_AI/Server/api/validate/sale_deed_processor.py))
+- Uploads PDF to Gemini using [generate_from_file](file:///d:/Master_legal_AI/Server/common/gemini_helper.py#52-99)
+- Uses `SALE_DEED_PROMPT` (extracts Tamil/English metadata)
+- Caches output in `<filename>_metadata.txt`
+
+### [HierarchyGenerator](file:///d:/Master_legal_AI/Server/api/validate/hierarchy_generator.py#10-779) ([hierarchy_generator.py](file:///d:/Master_legal_AI/Server/api/validate/hierarchy_generator.py))
+- **LLM Extraction**: Full EC text → `HIERARCHY_PROMPT` → nested JSON tree
+- **Survey Number Hierarchy Logic**: `46` → `46/1` → `46/1A` → `46/1A1` (prefix-based)
+- **Repair**: flattens, infers orphaned SNs from neighbors, re-groups, sorts chronologically
+- **Outputs**:
+  1. `hierarchy_tree.json` — raw tree
+  2. `hierarchy_view.html` — static Mermaid.js interactive visualization
+  3. ReactFlow JSON ([nodes](file:///d:/Master_legal_AI/Server/api/validate/hierarchy_generator.py#244-283) + `edges`) for the React frontend
+- **Search**: [find_survey_timeline()](file:///d:/Master_legal_AI/Server/api/validate/hierarchy_generator.py#645-744) for filtering by specific survey number + limit
+
+### [Validator](file:///d:/Master_legal_AI/Server/api/validate/validator.py#10-209) ([validator.py](file:///d:/Master_legal_AI/Server/api/validate/validator.py))
+- [validate()](file:///d:/Master_legal_AI/Server/api/validate/validator.py#38-72) → generator yielding progress messages
+- [validate_single_doc()](file:///d:/Master_legal_AI/Server/api/validate/validator.py#73-209) → validates one doc (used for parallel execution + on-demand)
+- Sends EC JSON + deed metadata to [construct_validation_prompt()](file:///d:/Master_legal_AI/Server/prompts/validation_prompts.py#3-154) → Gemini
+- Response parsed for: [match](file:///d:/Master_legal_AI/Server/api/validate/matcher.py#79-165) (bool), `trustability_score`, `comparisons[]`
+- `VisualDebugger` triggered on NOT MATCHED fields (if `visual_debug=True`)
+- Output paths mapped relative to server mounts for frontend URLs
+
+### [SupportingVerifier](file:///d:/Master_legal_AI/Server/api/validate/supporting_verifier.py#10-61) ([supporting_verifier.py](file:///d:/Master_legal_AI/Server/api/validate/supporting_verifier.py))
+- Takes supporting PDF (Aadhaar, PAN, Death Certificate)
+- Renders page 1 as image using PyMuPDF → uploads to Gemini Flash
+- Verifies the identity doc matches deed parties
+
+### [ECDownloader](file:///d:/Master_legal_AI/Server/api/download_ec/ec_downloader.py#6-106) ([ec_downloader.py](file:///d:/Master_legal_AI/Server/api/download_ec/ec_downloader.py))
+- Hits `https://tngis.tn.gov.in` TNGIS API
+- CSRF (XSRF-TOKEN) handling via session cookies
+- Decodes Base64 EC PDF and saves locally
+
+### [GeminiHelper](file:///d:/Master_legal_AI/Server/common/gemini_helper.py#10-99) ([common/gemini_helper.py](file:///d:/Master_legal_AI/Server/common/gemini_helper.py))
+- Wraps `google.genai` client
+- Two modes: [generate_from_text](file:///d:/Master_legal_AI/Server/common/gemini_helper.py#24-51) (text prompt) and [generate_from_file](file:///d:/Master_legal_AI/Server/common/gemini_helper.py#52-99) (PDF/image upload)
+- Retry logic: 3 attempts with exponential backoff on 503/overloaded errors
+- `temperature=0.0`, `top_p=0.1` for maximum determinism
+
+---
+
+## LLM Prompts
+
+| File | Prompt | Model Used | Purpose |
+|------|--------|-----------|---------|
+| [ec_prompts.py](file:///d:/Master_legal_AI/Server/prompts/ec_prompts.py) | `RAW_PROMPT` | flash-lite | Extract raw transactions from EC page chunks |
+| [sale_deed_prompts.py](file:///d:/Master_legal_AI/Server/prompts/sale_deed_prompts.py) | `SALE_DEED_PROMPT` | flash | Full metadata from a sale deed PDF |
+| [hierarchy_prompts.py](file:///d:/Master_legal_AI/Server/prompts/hierarchy_prompts.py) | `HIERARCHY_PROMPT` | flash | Build nested tree JSON from EC text |
+| [validation_prompts.py](file:///d:/Master_legal_AI/Server/prompts/validation_prompts.py) | [construct_validation_prompt()](file:///d:/Master_legal_AI/Server/prompts/validation_prompts.py#3-154) | flash-lite | Forensic audit: EC vs deed metadata |
+| [supporting_prompts.py](file:///d:/Master_legal_AI/Server/prompts/supporting_prompts.py) | `SUPPORTING_DOC_VERIFICATION_PROMPT` | flash | Verify supporting identity documents |
+
+### Validation Prompt Rules (Key Design Decisions)
+The validation prompt is the most critical. It uses **8 validation rules**:
+1. **Doc Number** — exact match (format differences OK)
+2. **Date** — same calendar date (format differences OK)
+3. **Names** — phonetic + initial expansion allowed; Power-of-Attorney mappings valid
+4. **Kinship** — supplemental info (EC empty + deed has kinship) = MATCHED, direct contradiction = NOT MATCHED
+5. **Nature** — synonyms accepted (e.g., "Conveyance Non Metro/UA" = "Sale Deed")
+6. **Survey Number** — exact or overlap match
+7. **Extent** — within ±5-10% = MATCHED (REASONABLE); unit conversions valid
+8. **Supporting Docs** — checks Aadhaar/PAN/Voter ID for parties; Death Certificate required for partition deeds
+
+---
+
+## Frontend Architecture
+
+### Pages
+
+| Route | Component | Purpose |
+|-------|-----------|---------|
+| `/` | [LandingPage](file:///d:/Master_legal_AI/Client/src/pages/LandingPage.tsx#5-65) | Entry point: routes to Map or Verify |
+| `/verify` | [Index](file:///d:/Master_legal_AI/Client/src/pages/Index.tsx#4-55) | Document upload and batch validation |
+| `/map` | [MapPage](file:///d:/Master_legal_AI/Client/src/pages/MapPage.tsx#6-52) | Interactive map + land info + EC download |
+| `/hierarchy` | [HierarchyPage](file:///d:/Master_legal_AI/Client/src/pages/HierarchyPage.tsx#19-808) | ReactFlow hierarchy, PDF preview, AI chat |
+
+### Key Components
+
+| Component | Purpose |
+|-----------|---------|
+| [UploadForm](file:///d:/Master_legal_AI/Client/src/components/UploadForm.tsx#37-473) | Main form: file upload / local path, streaming reader, result display |
+| `StreamingMessages` | Real-time NDJSON stream log + step progress bar |
+| `ValidationResults` | Grid display of per-document validation results |
+| `ValidationResultItem` | Single document result card with comparisons |
+| `ReactFlowHierarchy` | Interactive ReactFlow canvas with custom nodes and edge types |
+| [HierarchyPage](file:///d:/Master_legal_AI/Client/src/pages/HierarchyPage.tsx#19-808) | Full-page view: ReactFlow + resizable panel + PDF preview + chat |
+| `DocChat` | AI chat interface for a selected document |
+| `PdfAnnotator` | PDF viewer with highlight/annotation support (react-pdf-highlighter) |
+| `SurveyTimeline` | Timeline view within the hierarchy page |
+| `TrustabilityScore` | Visual trustability gauge for validated docs |
+| `FileDropZone` | Drag-and-drop file input |
+| `map/MapView` | OpenLayers map component |
+| `map/InfoSidebar` | Sidebar shown on map click: land info + EC download |
+| `map/Navbar` | Map page navigation bar |
+
+### HierarchyPage Data Flow
+1. Reads `requestId` + `surveyNumber` query params
+2. If `surveyNumber` → `POST /search-survey-timeline` (filtered view)
+3. Else → `GET /get-global-hierarchy/{id}` (full tree)
+4. Fetches `GET /get-validation-results/{id}` in parallel
+5. Fetches `GET /get-node-notes` and merges into node data
+6. On node click: opens resizable panel with metadata summary + PDF + validation
+7. Supports: collaborative notes (auto-saved), supporting doc upload/verify, single-doc re-audit, PDF annotations, AI chat
+
+---
+
+## Configuration
+
+### Server [.env](file:///d:/Master_legal_AI/Server/.env)
+```
+GEMINI_API_KEY=...           # Google AI Studio key
+GEMINI_MODEL=gemini-2.5-flash-lite  # Default model
+OLLAMA_URL=http://localhost:11434    # (currently unused in main flow)
+VALIDATOR_MODEL=gemma3:1b           # (currently unused)
+CHUNK_SIZE=8                        # EC pages per Gemini chunk
+MATCH_LIMIT=50                      # Default max matched docs (0 = unlimited)
+TNGIS_EC_API_URL=...
+TNGIS_LANDINFO_API_URL=...
+```
+
+### Client [.env](file:///d:/Master_legal_AI/Server/.env)
+```
+VITE_API_URL=http://localhost:8000   # Backend base URL
+```
+
+---
+
+## Output Directory Structure (Server)
+```
+outputs/
+├── validate/
+│   └── <request-id>/
+│       ├── ec_raw_full.txt          # Raw EC text from Gemini
+│       ├── ec_final.json            # Parsed EC transactions
+│       ├── hierarchy_tree.json      # Hierarchy tree data
+│       ├── hierarchy_view.html      # Static Mermaid visualization
+│       ├── matched_docs/            # Copied sale deed PDFs
+│       ├── <docno>_metadata.txt     # Gemini-extracted deed metadata
+│       ├── <docno>_validation.json  # Individual validation result
+│       └── results.json             # All validation results
+└── storage/
+    └── vault/                       # Persistent PDF copies (cross-request)
+```
+
+---
+
+## Notable Design Patterns
+
+1. **Generator-based streaming**: The entire backend pipeline uses Python generators, allowing NDJSON streaming to the frontend without holding results in memory.
+
+2. **Parallel execution for large datasets**: Both sale deed extraction and validation switch to `ThreadPoolExecutor(max_workers=3)` when `total_docs >= 10` to prevent timeouts.
+
+3. **Idempotent caching**: `ec_final.json` and `_metadata.txt` files are checked before re-running Gemini to avoid redundant API calls.
+
+4. **Survey number hierarchy**: Parent-child detection uses prefix matching with boundary rules (e.g., `46/1` ≠ prefix of `46/11`, but is prefix of `46/1A`).
+
+5. **Dual input mode**: Supports both file uploads (multipart) and local server paths (JSON), determined by `Content-Type` header.
+
+6. **Request-scoped logging**: Each request gets a unique logger writing to `.logs/<endpoint>/<uuid>/` files.
+
+7. **Global vault**: Matched PDFs are persistently copied to `outputs/storage/vault/` so they survive across requests for `/chat-with-doc`, hierarchy view etc.
+
+8. **Standardized API response**: All responses are wrapped in `{ statusCode, body: { statusCode, responseMessage, response } }` via `Utils.construct_output()`.

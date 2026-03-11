@@ -35,7 +35,7 @@ interface PdfAnnotatorProps {
     url: string;
     docId: string;
     onAnnotationChange?: (highlights: IHighlight[]) => void;
-    scrollToPage?: number;
+    scrollToPage?: { page: number; timestamp: number };
 }
 
 const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({ url, docId, onAnnotationChange, scrollToPage }) => {
@@ -76,19 +76,22 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({ url, docId, onAnnotationCha
 
     // Scroll to page logic
     useEffect(() => {
-        if (scrollToPage && highlighterRef.current) {
-            console.log("Scrolling to page:", scrollToPage);
-            // Create a phantom highlight to trigger scroll
-            const phantomHighlight = {
+        if (scrollToPage?.page && highlighterRef.current) {
+            const pageNum = scrollToPage.page;
+            console.log("Scrolling to page:", pageNum);
+            // Create a temporary highlight for visual feedback
+            const tempHighlight = {
+                id: `temp-${Date.now()}`,
                 position: {
-                    pageNumber: scrollToPage,
-                    boundingRect: { x1: 0, y1: 0, x2: 0, y2: 0, width: 0, height: 0 },
-                    rects: []
+                    pageNumber: pageNum,
+                    boundingRect: { x1: 10, y1: 10, x2: 90, y2: 30, width: 100, height: 100 },
+                    rects: [{ x1: 10, y1: 10, x2: 90, y2: 30, width: 100, height: 100 }]
                 },
-                content: {},
-                comment: { text: '' }
+                content: { text: "Referenced Section" },
+                comment: { text: 'Navigated from chat citation', emoji: '📍' }
             };
-            highlighterRef.current.scrollTo(phantomHighlight);
+            
+            highlighterRef.current.scrollTo(tempHighlight);
         }
     }, [scrollToPage]);
 

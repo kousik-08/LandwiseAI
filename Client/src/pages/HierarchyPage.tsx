@@ -16,6 +16,7 @@ import DocChat from "@/features/analysis/components/DocChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
+import { useDebouncedNoteSaver } from "@/hooks/useDebouncedNoteSaver";
 
 export default function HierarchyPage() {
     const [searchParams] = useSearchParams();
@@ -54,6 +55,9 @@ export default function HierarchyPage() {
     const [verificationResult, setVerificationResult] = useState<any>(null);
     const [pdfAnnotations, setPdfAnnotations] = useState<any[]>([]);
     const [validatingSingle, setValidatingSingle] = useState(false);
+    const [scrollToPage, setScrollToPage] = useState<{ page: number, timestamp: number } | undefined>(undefined);
+
+    const debouncedSaveNote = useDebouncedNoteSaver();
 
     useEffect(() => {
         const fetchInitialData = async () => {
@@ -129,37 +133,27 @@ export default function HierarchyPage() {
         fetchInitialData();
     }, [requestId, surveyNumber, limit]);
 
-    const handleUpdateNodeNotes = useCallback((docNo: string, notes: string) => {
-        if (timeline) {
+    const handleUpdateNodeNotes = useCallback(
+        (docNo: string, notes: string) => {
+            if (!timeline) return;
+
             const updatedData = {
                 ...timeline,
                 react_flow_data: {
                     ...timeline.react_flow_data,
                     nodes: timeline.react_flow_data.nodes.map((node: any) =>
-                        node.data.document_number === docNo ? { ...node, data: { ...node.data, notes } } : node
-                    )
-                }
+                        node.data.document_number === docNo
+                            ? { ...node, data: { ...node.data, notes } }
+                            : node,
+                    ),
+                },
             };
+
             setTimeline(updatedData);
-
-            // Save to backend (debounced)
-            const saveNote = async () => {
-                try {
-                    const API_URL = API_BASE_URL;
-                    await fetch(`${API_URL}/api/v1/save-node-note`, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ doc_no: docNo, note: notes })
-                    });
-                } catch (e) {
-                    console.error("Failed to save note:", e);
-                }
-            };
-
-            if ((window as any)._noteTimer) clearTimeout((window as any)._noteTimer);
-            (window as any)._noteTimer = setTimeout(saveNote, 1000);
-        }
-    }, [timeline]);
+            debouncedSaveNote(docNo, notes);
+        },
+        [timeline, debouncedSaveNote],
+    );
 
     const handleVerifySupportingDoc = async () => {
         if (!uploadFile || !selectedDoc?.data) return;
@@ -241,6 +235,7 @@ export default function HierarchyPage() {
         setUploadFile(null);
         setActiveTab("summary");
         setPdfAnnotations([]); // Reset annotations for new doc
+        setScrollToPage(undefined); // Reset scroll position
 
         const node = timeline?.react_flow_data.nodes.find((n: any) => n.data.document_number === docNo);
         let path = timeline?.doc_map?.[docNo] || node?.data?.pdf_url;
@@ -496,8 +491,13 @@ export default function HierarchyPage() {
 
                                     <div className="flex-1 overflow-hidden flex flex-col relative bg-muted/20">
                                         {activeTab === "chat" && selectedDoc && (
-                                            <div className="absolute inset-0 z-20 animate-in slide-in-from-right duration-300">
-                                                <DocChat docNo={selectedDoc.docNo} onClose={() => setActiveTab("summary")} />
+                                            <div className="absolute inset-x-0 top-0 bottom-0 z-20 animate-in slide-in-from-right duration-300">
+                                                <DocChat 
+                                                    docNo={selectedDoc.docNo} 
+                                                    requestId={requestId || ""}
+                                                    onClose={() => setActiveTab("summary")} 
+                                                    onPageClick={(page) => setScrollToPage({ page, timestamp: Date.now() })}
+                                                />
                                             </div>
                                         )}
 
@@ -774,6 +774,7 @@ export default function HierarchyPage() {
                                                         url={selectedDoc.url}
                                                         docId={selectedDoc.docNo}
                                                         onAnnotationChange={(h) => setPdfAnnotations(h)}
+                                                        scrollToPage={scrollToPage}
                                                     />
 
                                                     {/* Single PDF Matching Button - Always visible if PDF exists */}

@@ -5,6 +5,8 @@ import zipfile
 import shutil
 import uuid
 import re
+import hashlib
+from datetime import datetime
 from typing import Optional
 from fastapi import HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
@@ -17,6 +19,72 @@ from api.validate.sale_deed_processor import SaleDeedProcessor
 from api.validate.validator import Validator
 from api.validate.hierarchy_generator import HierarchyGenerator
 from api.validate.supporting_verifier import SupportingVerifier
+
+
+CACHE_INDEX_PATH = os.path.join("outputs", "validate_cache_index.json")
+CACHE_PIPELINE_VERSION = "v1"
+
+
+def _load_cache_index() -> dict:
+    if not os.path.exists(CACHE_INDEX_PATH):
+        return {}
+    try:
+        with open(CACHE_INDEX_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_cache_index(index: dict) -> None:
+    os.makedirs(os.path.dirname(CACHE_INDEX_PATH), exist_ok=True)
+    with open(CACHE_INDEX_PATH, "w", encoding="utf-8") as f:
+        json.dump(index, f, ensure_ascii=False, indent=2)
+
+
+def _compute_file_hash_from_path(path: str) -> str:
+    hasher = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _compute_dir_pdf_hash(dir_path: str) -> str:
+    """Compute a stable hash over all PDFs in a directory tree."""
+    hasher = hashlib.sha256()
+    pdf_paths = []
+    for root, _, files in os.walk(dir_path):
+        for name in files:
+            if name.lower().endswith(".pdf"):
+                pdf_paths.append(os.path.join(root, name))
+    pdf_paths.sort()
+    for path in pdf_paths:
+        rel = os.path.relpath(path, dir_path).replace("\\", "/")
+        hasher.update(rel.encode("utf-8"))
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def _make_cache_key_for_local_paths(
+    ec_pdf_path: str,
+    registration_docs_dir: str,
+    transaction_limit: Optional[int],
+) -> str:
+    ec_hash = _compute_file_hash_from_path(ec_pdf_path)
+    docs_hash = _compute_dir_pdf_hash(registration_docs_dir)
+    limit_part = "all" if transaction_limit in (None, 0) else str(transaction_limit)
+    return f"local:{ec_hash}:{docs_hash}:tx={limit_part}"
+
+
+def _make_cache_key_for_files_hashes(
+    ec_hash: str,
+    zip_hash: str,
+    transaction_limit: Optional[int],
+) -> str:
+    limit_part = "all" if transaction_limit in (None, 0) else str(transaction_limit)
+    return f"files:{ec_hash}:{zip_hash}:tx={limit_part}"
 
 
 class WorkflowRequest(BaseModel):
@@ -376,6 +444,14 @@ def workflow_generator(
             "results": results,
             "hierarchy_path": f"validate/{processing_id}/hierarchy_view.html",
         }
+        # Persist final result for potential cache reuse
+        try:
+            final_path = os.path.join(processing_output_dir, "final_result.json")
+            with open(final_path, "w", encoding="utf-8") as f:
+                json.dump(final_result, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            # Do not fail the workflow if caching persistence has an issue
+            print(f"Failed to persist final_result for caching: {e}")
         # Note: 'result' events are part of the stream.
         # When not streaming, we capture this and wrap it using construct_output
         yield event("result", data=final_result)
@@ -586,6 +662,9 @@ async def handle_validate(
     actual_ec_pdf_path = None
     actual_registration_docs_dir = None
 
+    ec_content_hash: Optional[str] = None
+    zip_content_hash: Optional[str] = None
+
     if type == "local_path":
         # Validate required fields
         if not ec_pdf_path:
@@ -635,19 +714,21 @@ async def handle_validate(
                 status_code=400, detail="sale_deeds_zip is required for files type"
             )
 
-        # Save EC PDF to input folder
+        # Save EC PDF to input folder and compute hash
         ec_pdf_filename = ec_pdf_file.filename or "ec.pdf"
         actual_ec_pdf_path = os.path.join(processing_input_dir, ec_pdf_filename)
 
+        ec_bytes = await ec_pdf_file.read()
         with open(actual_ec_pdf_path, "wb") as f:
-            content = await ec_pdf_file.read()
-            f.write(content)
+            f.write(ec_bytes)
+        ec_content_hash = hashlib.sha256(ec_bytes).hexdigest()
 
-        # Save ZIP as sale_deeds.zip as requested
+        # Save ZIP as sale_deeds.zip and compute hash
         zip_path = os.path.join(processing_input_dir, "sale_deeds.zip")
+        zip_bytes = await sale_deeds_zip.read()
         with open(zip_path, "wb") as f:
-            content = await sale_deeds_zip.read()
-            f.write(content)
+            f.write(zip_bytes)
+        zip_content_hash = hashlib.sha256(zip_bytes).hexdigest()
 
         # Extract ZIP to input directory
         # This avoids creating an extra 'sale_deeds' folder if the zip already contains it
@@ -686,6 +767,93 @@ async def handle_validate(
             status_code=400,
             detail=f"Invalid type: {type}. Must be 'local_path' or 'files'",
         )
+
+    # ---- Cache lookup (whole-workflow result) ----
+    cache_key: Optional[str] = None
+    cache_entry: Optional[dict] = None
+    final_result_path: Optional[str] = None
+
+    try:
+        if type == "files" and ec_content_hash and zip_content_hash:
+            cache_key = _make_cache_key_for_files_hashes(
+                ec_content_hash, zip_content_hash, transaction_limit
+            )
+        elif type == "local_path":
+            cache_key = _make_cache_key_for_local_paths(
+                actual_ec_pdf_path, actual_registration_docs_dir, transaction_limit
+            )
+    except Exception as e:
+        # If cache key computation fails, just log and continue without cache
+        logger.log_error(f"Cache key computation failed: {e}")
+        cache_key = None
+
+    if cache_key:
+        index = _load_cache_index()
+        cache_entry = index.get(cache_key)
+        if cache_entry and cache_entry.get("pipeline_version") == CACHE_PIPELINE_VERSION:
+            final_result_path = cache_entry.get("final_result_path")
+            if final_result_path and os.path.exists(final_result_path):
+                try:
+                    with open(final_result_path, "r", encoding="utf-8") as f:
+                        cached_result = json.load(f)
+                except Exception as e:
+                    logger.log_error(f"Failed to load cached result: {e}")
+                    cached_result = None
+
+                if cached_result is not None:
+                    # For streaming requests, return a tiny cached stream
+                    if stream:
+                        def cached_stream():
+                            yield json.dumps(
+                                {
+                                    "type": "log",
+                                    "message": f"Using cached result for request_id={cached_result.get('request_id')}",
+                                }
+                            ) + "\n"
+                            yield json.dumps(
+                                {
+                                    "type": "result",
+                                    "data": cached_result,
+                                    "cached": True,
+                                }
+                            ) + "\n"
+
+                        response = StreamingResponse(
+                            cached_stream(),
+                            media_type="application/x-ndjson",
+                        )
+                        duration = (time.time() - start_time) * 1000
+                        logger.log_output(
+                            duration_ms=duration,
+                            success=True,
+                            data={
+                                "request_id": cached_result.get("request_id"),
+                                "cache_hit": True,
+                            },
+                        )
+                        return response
+
+                    # Non-streaming: just return the cached result structure
+                    duration = (time.time() - start_time) * 1000
+                    logger.log_output(
+                        duration_ms=duration,
+                        success=True,
+                        data={"request_id": cached_result.get("request_id"), "cache_hit": True},
+                    )
+                    return cached_result
+
+    # If we reach here, either no cache_key or no usable cache entry; record target path so
+    # the result can be reused next time.
+    if cache_key:
+        index = _load_cache_index()
+        final_result_path = os.path.join(processing_output_dir, "final_result.json")
+        index[cache_key] = {
+            "request_id": processing_id,
+            "final_result_path": final_result_path,
+            "created_at": datetime.utcnow().isoformat() + "Z",
+            "pipeline_version": CACHE_PIPELINE_VERSION,
+        }
+        _save_cache_index(index)
 
     try:
         if stream:
@@ -897,6 +1065,12 @@ async def handle_chat_with_doc(doc_no: str, message: str, history: list = None, 
     3. Use a helpful, professional tone.
     4. Format your response in Markdown.
     5. Translate Tamil names or terms where helpful but retain original names for accuracy.
+
+    CRITICAL CITATION RULES:
+    - You MUST cite the page number for every piece of information you provide.
+    - Use the format [[Page:X]] for citations, where X is the page number.
+    - Example: "The executant of this deed is John Doe [[Page:2]]."
+    - If information spans multiple pages, cite them like [[Page:2,3]].
     
     Chat History:
     {json.dumps(history if history else [], indent=2)}

@@ -17,14 +17,38 @@ interface DocChatProps {
     docNo: string;
     requestId?: string;
     onClose?: () => void;
+    onPageClick?: (page: number) => void;
 }
 
-const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose }) => {
+const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClick }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    const storageKey = `chat_history_v3_${docNo}_${requestId || 'global'}`;
+    const [isLoaded, setIsLoaded] = useState(false);
+
+    // Load initial messages from sessionStorage
+    useEffect(() => {
+        const saved = sessionStorage.getItem(storageKey);
+        if (saved) {
+            try {
+                setMessages(JSON.parse(saved));
+            } catch (e) {
+                console.error("Failed to parse saved chat", e);
+            }
+        }
+        setIsLoaded(true);
+    }, [storageKey]);
+
+    // Save messages to sessionStorage whenever they change
+    useEffect(() => {
+        if (isLoaded) {
+            sessionStorage.setItem(storageKey, JSON.stringify(messages));
+        }
+    }, [messages, storageKey, isLoaded]);
 
     // Auto scroll to bottom
     useEffect(() => {
@@ -75,6 +99,7 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose }) => {
 
     const clearChat = () => {
         setMessages([]);
+        sessionStorage.removeItem(storageKey);
     };
 
     return (
@@ -154,7 +179,28 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose }) => {
                                 : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200"
                         )}>
                             <div className="prose prose-sm dark:prose-invert max-w-none">
-                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                <ReactMarkdown
+                                    components={{
+                                        // Custom component for links to handle page citations
+                                        a: ({ node, ...props }) => {
+                                            if (props.href?.startsWith("#page-")) {
+                                                const page = parseInt(props.href.replace("#page-", ""));
+                                                return (
+                                                    <button
+                                                        onClick={() => onPageClick?.(page)}
+                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary font-bold rounded hover:bg-primary/20 transition-colors mx-0.5"
+                                                    >
+                                                        <Maximize2 className="w-3 h-3" />
+                                                        {props.children}
+                                                    </button>
+                                                );
+                                            }
+                                            return <a {...props} />;
+                                        }
+                                    }}
+                                >
+                                    {msg.content.replace(/\[\[Page:(\d+)\]\]/g, "[Page $1](#page-$1)")}
+                                </ReactMarkdown>
                             </div>
                         </div>
                         <span className="text-[8px] text-slate-400 mt-1 uppercase font-bold tracking-widest">

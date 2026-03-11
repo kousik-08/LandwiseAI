@@ -17,6 +17,7 @@ import DocChat from "@/features/analysis/components/DocChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
+import { useDebouncedNoteSaver } from "@/hooks/useDebouncedNoteSaver";
 
 interface Transaction {
     claimant: string;
@@ -88,7 +89,9 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
     const [pdfAnnotations, setPdfAnnotations] = useState<any[]>([]);
     const [validatingSingle, setValidatingSingle] = useState(false);
     const [validationCache, setValidationCache] = useState<Record<string, any>>({});
-    const [scrollToPage, setScrollToPage] = useState<number | undefined>(undefined);
+    const [scrollToPage, setScrollToPage] = useState<{ page: number, timestamp: number } | undefined>(undefined);
+
+    const debouncedSaveNote = useDebouncedNoteSaver();
 
     const handleSearch = async () => {
         if (!surveyNumber.trim()) {
@@ -231,39 +234,27 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
     }, [explorationMode, masterTimeline]);
 
 
-    const handleUpdateNodeNotes = useCallback((docNo: string, notes: string) => {
-        if (timeline) {
+    const handleUpdateNodeNotes = useCallback(
+        (docNo: string, notes: string) => {
+            if (!timeline) return;
+
             const updatedData = {
                 ...timeline,
                 react_flow_data: {
                     ...timeline.react_flow_data,
-                    nodes: timeline.react_flow_data.nodes.map(node =>
-                        node.data.document_number === docNo ? { ...node, data: { ...node.data, notes } } : node
-                    )
-                }
+                    nodes: timeline.react_flow_data.nodes.map((node) =>
+                        node.data.document_number === docNo
+                            ? { ...node, data: { ...node.data, notes } }
+                            : node,
+                    ),
+                },
             };
+
             setTimeline(updatedData);
-
-            // Save to backend (debounced)
-            const saveNote = async () => {
-                try {
-                    const API_URL = API_BASE_URL;
-                    await fetch(`${API_URL}/api/v1/save-node-note`, {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({ doc_no: docNo, note: notes })
-                    });
-                } catch (e) {
-                    console.error("Failed to save note:", e);
-                }
-            };
-
-            if ((window as any)._noteTimer) clearTimeout((window as any)._noteTimer);
-            (window as any)._noteTimer = setTimeout(saveNote, 1000);
-        }
-    }, [timeline]);
+            debouncedSaveNote(docNo, notes);
+        },
+        [timeline, debouncedSaveNote],
+    );
 
     const handleNodeClick = useCallback((docNo: string, txData?: Transaction) => {
         console.log("Handling click for doc:", docNo);
@@ -839,7 +830,12 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                         <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/20 overflow-hidden mt-2">
                                             {activeTab === "chat" && previewDoc && (
                                                 <div className="absolute inset-x-0 top-0 bottom-[300px] z-20 animate-in slide-in-from-right duration-300">
-                                                    <DocChat docNo={previewDoc.docNo} requestId={requestId} onClose={() => setActiveTab("summary")} />
+                                                    <DocChat 
+                                                        docNo={previewDoc.docNo} 
+                                                        requestId={requestId} 
+                                                        onClose={() => setActiveTab("summary")} 
+                                                        onPageClick={(page) => setScrollToPage({ page, timestamp: Date.now() })}
+                                                    />
                                                 </div>
                                             )}
 
@@ -974,7 +970,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                                                         variant="ghost"
                                                                                         size="sm"
                                                                                         className="h-6 mt-2 text-[10px] font-bold bg-white/50 hover:bg-white text-slate-600 border border-slate-200"
-                                                                                        onClick={() => setScrollToPage(parseInt(supDoc.page_number))}
+                                                                                        onClick={() => setScrollToPage({ page: parseInt(supDoc.page_number), timestamp: Date.now() })}
                                                                                     >
                                                                                         <ArrowRight className="w-3 h-3 mr-1" />
                                                                                         View on Page {supDoc.page_number}
@@ -1035,7 +1031,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                                                                     className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-all active:scale-95"
                                                                                                     onClick={(e) => {
                                                                                                         e.stopPropagation();
-                                                                                                        setScrollToPage(parseInt(comp.page_number));
+                                                                                                        setScrollToPage({ page: parseInt(comp.page_number), timestamp: Date.now() });
                                                                                                     }}
                                                                                                     title={`Jump to Page ${comp.page_number}`}
                                                                                                 >
