@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LandwiseAI — Market Analysis & Strategic Brief</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --navy:        #1A367E;
+    --navy-700:    #152B66;
+    --navy-500:    #2447A3;
+    --ink:         #111827;
+    --slate:       #64748B;
+    --slate-200:   #CBD5E1;
+    --rule:        #E2E8F0;
+    --section:     #F1F5F9;
+    --surface:     #F8FAFC;
+    --blue-50:     #EBF1FF;
+    --phase:       #3B82F6;
+    --amber:       #F59E0B;
+    --amber-bg:    #FEF3C7;
+    --amber-fg:    #D97706;
+    --emerald:     #10B981;
+    --green-bg:    #DCFCE7;
+    --green-fg:    #166534;
+    --rose:        #DC2626;
+    --rose-bg:     #FEE2E2;
+    --rose-fg:     #B91C1C;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--surface);
+    color: var(--ink);
+    line-height: 1.55;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4, h5 {
+    font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+    letter-spacing: -0.025em;
+    color: var(--ink);
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  a { color: var(--navy); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .container { max-width: 1280px; margin: 0 auto; padding: 0 24px; }
+  .section { padding: 80px 0; }
+  .section-tight { padding: 48px 0; }
+  .section-alt { background: var(--section); }
+
+  /* Top bar */
+  .topbar {
+    position: sticky; top: 0; z-index: 50;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 64px;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 12px;
+    font-weight: 800; letter-spacing: -0.02em; font-size: 16px;
+  }
+  .logo-mark {
+    width: 36px; height: 36px; border-radius: 10px;
+    background: var(--navy);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px -4px rgba(26,54,126,0.4);
+  }
+  .logo-mark svg { width: 18px; height: 18px; color: white; }
+  .nav { display: flex; gap: 28px; }
+  .nav a {
+    font-size: 13px; font-weight: 600; color: var(--slate);
+  }
+  .nav a:hover { color: var(--navy); text-decoration: none; }
+
+  /* Hero */
+  .hero {
+    background: linear-gradient(180deg, var(--surface) 0%, white 100%);
+    padding: 96px 0 64px;
+    border-bottom: 1px solid var(--rule);
+    position: relative; overflow: hidden;
+  }
+  .hero::before {
+    content: ""; position: absolute; top: -200px; right: -100px;
+    width: 600px; height: 600px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(26,54,126,0.08) 0%, transparent 70%);
+  }
+  .hero::after {
+    content: ""; position: absolute; bottom: -200px; left: -100px;
+    width: 500px; height: 500px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(59,130,246,0.06) 0%, transparent 70%);
+  }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; border-radius: 999px;
+    background: var(--blue-50); color: var(--navy);
+    font-size: 11px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hero h1 {
+    font-size: clamp(36px, 5vw, 60px);
+    font-weight: 800; line-height: 1.05;
+    margin: 24px 0 24px;
+    max-width: 880px;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--phase) 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead {
+    font-size: 18px; color: var(--slate); max-width: 720px; line-height: 1.65;
+  }
+  .hero-meta {
+    margin-top: 36px; display: flex; flex-wrap: wrap; gap: 24px;
+    font-size: 13px; color: var(--slate);
+  }
+  .hero-meta strong { color: var(--ink); font-weight: 700; }
+
+  /* Section header */
+  .section-head { margin-bottom: 40px; max-width: 720px; }
+  .section-eyebrow {
+    font-size: 11px; font-weight: 800; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--navy);
+  }
+  .section-head h2 {
+    font-size: clamp(28px, 3.4vw, 38px); font-weight: 800;
+    margin: 8px 0 12px; letter-spacing: -0.02em;
+  }
+  .section-head p { color: var(--slate); font-size: 16px; }
+
+  /* Cards */
+  .grid { display: grid; gap: 20px; }
+  .grid-2 { grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); }
+  .grid-3 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid-4 { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+
+  .card {
+    background: white; border: 1px solid var(--rule);
+    border-radius: 14px; padding: 24px;
+    transition: transform .25s, box-shadow .25s, border-color .25s;
+    position: relative; overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px -8px rgba(17,24,39,0.08);
+    border-color: var(--slate-200);
+  }
+  .card-accent { height: 3px; position: absolute; top: 0; left: 0; right: 0; }
+  .accent-amber { background: var(--amber); }
+  .accent-emerald { background: var(--emerald); }
+  .accent-slate { background: var(--slate-200); }
+  .accent-navy { background: var(--navy); }
+  .accent-rose { background: var(--rose); }
+
+  .card h3 {
+    font-size: 16px; font-weight: 700; margin-bottom: 8px;
+  }
+  .card p { font-size: 14px; color: var(--slate); }
+  .card-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--blue-50); color: var(--navy);
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 16px;
+  }
+  .card-icon svg { width: 18px; height: 18px; }
+
+  /* Stat cards */
+  .stat-card {
+    background: white; border: 1px solid var(--rule);
+    border-radius: 14px; padding: 24px;
+    position: relative; overflow: hidden;
+  }
+  .stat-card .top-rule { height: 3px; margin: -24px -24px 20px; }
+  .stat-label {
+    font-size: 11px; font-weight: 700; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--slate);
+  }
+  .stat-value {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 36px; font-weight: 800; letter-spacing: -0.025em;
+    margin: 8px 0 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-unit {
+    font-size: 12px; color: var(--slate); font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .stat-source {
+    font-size: 11px; color: var(--slate); font-style: italic;
+    border-top: 1px solid var(--rule); padding-top: 12px;
+  }
+
+  /* Pills */
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .pill-amber { background: var(--amber-bg); color: var(--amber-fg); }
+  .pill-green { background: var(--green-bg); color: var(--green-fg); }
+  .pill-blue { background: var(--blue-50); color: var(--navy); }
+  .pill-rose { background: var(--rose-bg); color: var(--rose-fg); }
+  .pill-slate { background: var(--section); color: var(--slate); }
+
+  /* Comparison table */
+  .compare-wrap {
+    background: white; border: 1px solid var(--rule);
+    border-radius: 14px; overflow: hidden;
+  }
+  .compare {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  .compare th, .compare td {
+    padding: 14px 16px; text-align: left; vertical-align: top;
+    border-bottom: 1px solid var(--rule);
+  }
+  .compare thead th {
+    background: var(--section); font-size: 11px;
+    font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--slate); white-space: nowrap;
+  }
+  .compare th.firmname { width: 200px; }
+  .compare th.us { background: var(--blue-50); color: var(--navy); }
+  .compare tr:last-child td { border-bottom: none; }
+  .compare td.firm { font-weight: 700; color: var(--ink); }
+  .compare td.us { background: rgba(235, 241, 255, 0.4); }
+  .compare-mini { color: var(--slate); font-size: 12px; margin-top: 2px; }
+  .check { color: var(--emerald); font-weight: 800; }
+  .partial { color: var(--amber); font-weight: 800; }
+  .miss { color: var(--rose); font-weight: 800; }
+
+  /* Capability matrix */
+  .matrix {
+    display: grid; grid-template-columns: 2.5fr repeat(3, 1fr);
+    gap: 1px; background: var(--rule);
+    border-radius: 14px; overflow: hidden; border: 1px solid var(--rule);
+  }
+  .matrix > div {
+    background: white; padding: 16px;
+    font-size: 13px;
+  }
+  .matrix .matrix-head {
+    background: var(--section); font-size: 11px;
+    font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--slate);
+  }
+  .matrix .gap-name { font-weight: 700; }
+  .matrix .gap-name small {
+    display: block; color: var(--slate); font-weight: 500;
+    margin-top: 2px; font-size: 12px;
+  }
+
+  /* Recommendations */
+  .rec {
+    display: flex; gap: 20px; padding: 24px;
+    background: white; border: 1px solid var(--rule);
+    border-radius: 14px; transition: border-color .2s, transform .2s;
+  }
+  .rec:hover {
+    border-color: var(--navy); transform: translateY(-1px);
+  }
+  .rec-rank {
+    flex-shrink: 0;
+    width: 44px; height: 44px; border-radius: 10px;
+    background: var(--navy); color: white;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Plus Jakarta Sans'; font-size: 18px; font-weight: 800;
+  }
+  .rec h4 {
+    font-size: 16px; font-weight: 700; margin-bottom: 6px;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  .rec p { font-size: 14px; color: var(--slate); margin-bottom: 10px; }
+  .rec-meta { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* Business value calc */
+  .biz-card {
+    background: linear-gradient(135deg, var(--navy) 0%, var(--navy-500) 100%);
+    color: white; border-radius: 18px; padding: 40px;
+    box-shadow: 0 20px 40px -16px rgba(26,54,126,0.4);
+  }
+  .biz-card h3 { color: white; font-size: 22px; }
+  .biz-card .label { font-size: 11px; letter-spacing: 0.14em; opacity: 0.7; text-transform: uppercase; font-weight: 700; }
+  .biz-card .number {
+    font-family: 'Plus Jakarta Sans'; font-size: 44px; font-weight: 800;
+    letter-spacing: -0.025em; font-variant-numeric: tabular-nums;
+  }
+  .biz-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 32px; margin-top: 24px;
+  }
+  .biz-grid > div { border-left: 2px solid rgba(255,255,255,0.2); padding-left: 16px; }
+
+  /* Footer */
+  .footer {
+    background: var(--ink); color: rgba(255,255,255,0.7);
+    padding: 48px 0;
+  }
+  .footer h4 { color: white; font-size: 14px; margin-bottom: 12px; }
+  .footer-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 32px; margin-bottom: 32px;
+  }
+  .footer ul { list-style: none; }
+  .footer li {
+    font-size: 12px; line-height: 1.8; word-break: break-word;
+  }
+  .footer a { color: rgba(255,255,255,0.6); }
+  .footer a:hover { color: white; }
+  .footer-bottom {
+    border-top: 1px solid rgba(255,255,255,0.1);
+    padding-top: 24px; font-size: 12px;
+  }
+
+  /* Utility */
+  .row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .spacer-sm { height: 16px; }
+  .spacer-md { height: 32px; }
+  ul.bul { list-style: none; }
+  ul.bul li {
+    padding-left: 22px; position: relative;
+    font-size: 14px; margin-bottom: 8px; color: var(--slate);
+  }
+  ul.bul li::before {
+    content: ""; position: absolute; left: 0; top: 8px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--navy);
+  }
+  ul.bul li strong { color: var(--ink); font-weight: 700; }
+
+  @media (max-width: 720px) {
+    .nav { display: none; }
+    .hero h1 { font-size: 32px; }
+    .matrix { grid-template-columns: 2fr repeat(3, 1fr); }
+    .compare-wrap { overflow-x: auto; }
+    .compare { min-width: 760px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ── Top bar ────────────────────────────────────────────── -->
+<header class="topbar">
+  <div class="container topbar-inner">
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+      </div>
+      <div>
+        <div>LandwiseAI</div>
+        <div style="font-size:10px; font-weight:700; color:var(--slate); letter-spacing:0.14em; text-transform:uppercase;">Market Analysis</div>
+      </div>
+    </div>
+    <nav class="nav">
+      <a href="#product">Product</a>
+      <a href="#market">Market</a>
+      <a href="#competitors">Competitors</a>
+      <a href="#gaps">Gaps</a>
+      <a href="#bets">Bets</a>
+      <a href="#value">Value</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ── Hero ──────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="container" style="position:relative; z-index:1;">
+    <span class="badge">Strategic Brief · India PropTech / LegalTech</span>
+    <h1>
+      LandwiseAI is a defensible play on <span class="grad">India's ₹1,250–5,000 Cr<br/>title-vetting market</span> — but only if it picks the right battle.
+    </h1>
+    <p class="lead">
+      A clear-eyed look at LandwiseAI's product moat, the seven competitors that already serve adjacent slices of this market, where the addressable gap actually lives, and the 10 strategic bets — ranked by leverage — that move the needle from "Tamil Nadu pilot" to "national title-vetting infrastructure."
+    </p>
+    <div class="hero-meta">
+      <div><strong>9</strong> direct & adjacent competitors profiled</div>
+      <div>•</div>
+      <div><strong>₹33.53 lakh Cr</strong> housing credit covered</div>
+      <div>•</div>
+      <div><strong>66%</strong> of India civil cases are land disputes</div>
+      <div>•</div>
+      <div><strong>20-year</strong> avg land-litigation pendency</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Product ──────────────────────────────────────────── -->
+<section class="section" id="product">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">What LandwiseAI Is Today</div>
+      <h2>An AI title-verification workbench for legal advisors and banks</h2>
+      <p>
+        Currently scoped to Tamil Nadu, the platform turns raw Encumbrance Certificates and Sale Deeds into a chain-of-title hierarchy, a 0–100 risk score, and a sign-able 9-section legal opinion — work that traditionally takes a senior advocate 2–6 weeks per parcel.
+      </p>
+    </div>
+
+    <div class="grid grid-3">
+      <div class="card">
+        <div class="card-accent accent-navy"></div>
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        </div>
+        <h3>Document Intelligence</h3>
+        <p>Gemini-vision OCR + LLM extraction handles bilingual Tamil-English ECs and Sale Deeds. Auto-detects discrepancies in extent, consideration, claimant name, and survey number across the EC ↔ deed pair.</p>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-emerald"></div>
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><line x1="6" y1="8" x2="11" y2="11"/><line x1="18" y1="8" x2="13" y2="11"/></svg>
+        </div>
+        <h3>Chain of Title (ReactFlow)</h3>
+        <p>Reconstructs a 30-year ownership hierarchy from 397+ EC transactions in seconds. Visualises mortgages, releases, partitions, and POAs; flags encumbrance gaps over 3 years.</p>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-amber"></div>
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        </div>
+        <h3>AI Risk Score</h3>
+        <p>0–100 scoring with A–F grade, AI summary, and factor breakdown (encumbrance gaps, lis pendens, restricted-land flags, doc trustability). Cached in DB so the LLM runs once per audit, not per page-load.</p>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-navy"></div>
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </div>
+        <h3>Structured Legal Opinion</h3>
+        <p>9-section draft: Possession, Land Nature, TN Land Reforms, Title Flow, Specific Protections, Acquisitions, Lis Pendens, Documents Checklist, Final Verdict. Markdown + branded PDF + digital signing.</p>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-emerald"></div>
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </div>
+        <h3>Per-Deed Chat (RAG)</h3>
+        <p>Lawyer can ask in natural language: "Was the discharge for mortgage 254/2011 registered in the same sub-registry?" — answers grounded in the specific PDF.</p>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-slate"></div>
+        <div class="card-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18M9 21V9"/></svg>
+        </div>
+        <h3>PDF Vault & Batch Audit</h3>
+        <p>Categorised vault (EC / Sale Deed / Patta / POA), green/red/yellow status colors, audit-trail timeline, and multi-parcel batch mode for industrial-land aggregators.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Market ──────────────────────────────────────────── -->
+<section class="section section-alt" id="market">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Market Sizing</div>
+      <h2>Where the money already is</h2>
+      <p>
+        India's housing-credit book is ₹33.53 lakh Cr and growing at double digits. Every disbursed file requires a legal vetting — that's the immediate addressable pool. Industrial land aggregation, RERA verification, and NRI-driven due diligence layer on top.
+      </p>
+    </div>
+
+    <div class="grid grid-4">
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--navy);"></div>
+        <div class="stat-label">Housing Credit (Sep '24)</div>
+        <div class="stat-value">₹33.53<span style="font-size:18px; color:var(--slate); font-weight:700;"> Lakh Cr</span></div>
+        <div class="stat-unit">Outstanding · Banks 81% · HFCs 19%</div>
+        <div class="stat-source">NHB Trends &amp; Progress Report, 2024 (PIB)</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--phase);"></div>
+        <div class="stat-label">FY24 Disbursals</div>
+        <div class="stat-value">₹9.07<span style="font-size:18px; color:var(--slate); font-weight:700;"> Lakh Cr</span></div>
+        <div class="stat-unit">Individual housing loans · ~25 lakh files/yr</div>
+        <div class="stat-source">National Housing Bank, 2024</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--amber);"></div>
+        <div class="stat-label">Bank Vetting TAM</div>
+        <div class="stat-value">₹1,250–5,000<span style="font-size:18px; color:var(--slate); font-weight:700;"> Cr/yr</span></div>
+        <div class="stat-unit">@ ₹5K–20K legal review per file</div>
+        <div class="stat-source">Derived: NHB volumes × Axis Bank fee schedule</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--emerald);"></div>
+        <div class="stat-label">India Legal-Tech Market</div>
+        <div class="stat-value">$1.25<span style="font-size:18px; color:var(--slate); font-weight:700;"> Bn by '30</span></div>
+        <div class="stat-unit">15.2% CAGR · property segment underserved</div>
+        <div class="stat-source">Grand View Research, 2025</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--rose);"></div>
+        <div class="stat-label">Land-Related Civil Cases</div>
+        <div class="stat-value">66<span style="font-size:18px; color:var(--slate); font-weight:700;">%</span></div>
+        <div class="stat-unit">Of all India civil litigation</div>
+        <div class="stat-source">DAKSH State of Indian Judiciary, 2018</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--amber);"></div>
+        <div class="stat-label">Avg Litigation Pendency</div>
+        <div class="stat-value">~20<span style="font-size:18px; color:var(--slate); font-weight:700;"> years</span></div>
+        <div class="stat-unit">Land/title disputes</div>
+        <div class="stat-source">NITI Aayog Conclusive Land Titling Draft, Nov 2019</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--navy);"></div>
+        <div class="stat-label">TN Registration Revenue</div>
+        <div class="stat-value">₹14,525<span style="font-size:18px; color:var(--slate); font-weight:700;"> Cr</span></div>
+        <div class="stat-unit">Dec 2024 YTD · several lakh deeds/yr</div>
+        <div class="stat-source">CAG Tamil Nadu Revenue Audit, 2024</div>
+      </div>
+      <div class="stat-card">
+        <div class="top-rule" style="background:var(--phase);"></div>
+        <div class="stat-label">FY25 Top-8 Cities</div>
+        <div class="stat-value">5.44<span style="font-size:18px; color:var(--slate); font-weight:700;"> Lakh units</span></div>
+        <div class="stat-unit">Housing registrations · Mumbai 1.41L alone</div>
+        <div class="stat-source">Business Standard / Knight Frank, Apr 2025</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Competitors ──────────────────────────────────────── -->
+<section class="section" id="competitors">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Competitive Landscape</div>
+      <h2>Seven companies already touch this market — none own it end-to-end</h2>
+      <p>
+        Landeed leads on direct record-fetch and consumer brand. Teal owns bank distribution. Square Yards is plugged into RBIH. The marketplace players (PropClap, NoBroker, Vakilsearch) compete on price, not depth. LandwiseAI's wedge is the AI-native legal-opinion workflow that none of them have built.
+      </p>
+    </div>
+
+    <div class="compare-wrap">
+      <table class="compare">
+        <thead>
+          <tr>
+            <th class="firmname">Firm</th>
+            <th>Model</th>
+            <th>State Coverage</th>
+            <th>AI Extraction</th>
+            <th>Bank Channel</th>
+            <th>Direct Record Fetch</th>
+            <th class="us">vs LandwiseAI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="firm">Landeed
+              <div class="compare-mini">YC S22 · ~$16.3M raised</div>
+            </td>
+            <td>AI + consumer mobile app</td>
+            <td>7+ states</td>
+            <td><span class="check">●</span> Strong</td>
+            <td><span class="partial">◐</span> Light</td>
+            <td><span class="check">●</span> mypatta-grade</td>
+            <td class="us">Beats us on coverage &amp; mobile; weaker on legal opinion</td>
+          </tr>
+          <tr>
+            <td class="firm">Teal India
+              <div class="compare-mini">Omidyar + Info Edge backed</div>
+            </td>
+            <td>B2B data + advocate panel</td>
+            <td>14 states / 400 districts</td>
+            <td><span class="partial">◐</span> Mixed</td>
+            <td><span class="check">●</span> Direct to banks</td>
+            <td><span class="check">●</span> 900+ agencies</td>
+            <td class="us">Beats us on bank distribution; weaker on chain-of-title UX</td>
+          </tr>
+          <tr>
+            <td class="firm">Square Yards
+              <div class="compare-mini">Title Search + RBIH/ULI</div>
+            </td>
+            <td>Real-estate platform play</td>
+            <td>Pan-India</td>
+            <td><span class="partial">◐</span> Building</td>
+            <td><span class="check">●</span> RBI ULI live</td>
+            <td><span class="check">●</span> 100M records</td>
+            <td class="us">Distribution moat via ULI; not focused on legal-opinion depth</td>
+          </tr>
+          <tr>
+            <td class="firm">PropClap
+              <div class="compare-mini">"India's largest" claim</div>
+            </td>
+            <td>Advocate marketplace</td>
+            <td>Pan-India listing</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td class="us">Pure directory — we win on automation by 10×</td>
+          </tr>
+          <tr>
+            <td class="firm">NoBroker Legal
+              <div class="compare-mini">₹4K–₹45K packages</div>
+            </td>
+            <td>Bundled with brokerage</td>
+            <td>Major metros</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td class="us">Brand &amp; B2C funnel; we win on B2B workflow</td>
+          </tr>
+          <tr>
+            <td class="firm">Vakilsearch / Zolvit
+              <div class="compare-mini">~₹6,999 legal opinion</div>
+            </td>
+            <td>Lawyer marketplace</td>
+            <td>Pan-India</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td class="us">Volume + brand; no AI moat</td>
+          </tr>
+          <tr>
+            <td class="firm">PropertyChek
+              <div class="compare-mini">24h / 4h priority SLA</div>
+            </td>
+            <td>Advocate-led DD</td>
+            <td>Major cities</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td><span class="miss">○</span> None</td>
+            <td class="us">Operations-led; we should licence them tech</td>
+          </tr>
+          <tr>
+            <td class="firm">mypatta
+              <div class="compare-mini">Data-fetch utility</div>
+            </td>
+            <td>Records API</td>
+            <td>7 states</td>
+            <td><span class="miss">○</span> N/A</td>
+            <td><span class="miss">○</span> N/A</td>
+            <td><span class="check">●</span> Specialty</td>
+            <td class="us">Should be an integration partner, not a competitor</td>
+          </tr>
+          <tr style="background: rgba(235, 241, 255, 0.5);">
+            <td class="firm us" style="background: var(--blue-50);"><strong>LandwiseAI</strong>
+              <div class="compare-mini">9-section opinion + RAG chat</div>
+            </td>
+            <td class="us"><span class="pill pill-blue">AI workbench</span></td>
+            <td class="us"><span class="pill pill-amber">TN only</span></td>
+            <td class="us"><span class="check">●</span> Best-in-class</td>
+            <td class="us"><span class="pill pill-rose">Not yet</span></td>
+            <td class="us"><span class="pill pill-rose">Manual upload</span></td>
+            <td class="us"><strong style="color:var(--navy)">Wedge: deepest AI legal-opinion engine, weakest distribution.</strong></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px; font-size:12px; color:var(--slate); font-style:italic;">
+      Funding figures: Tracxn / YourStory / Inc42, 2022–2025. Pricing as listed on company sites, 2025.
+    </p>
+  </div>
+</section>
+
+<!-- ── Capability Gap Matrix ───────────────────────────── -->
+<section class="section section-alt" id="gaps">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Where We're Behind</div>
+      <h2>The capability gap matrix</h2>
+      <p>
+        Eight features that competitors prominently advertise but LandwiseAI either lacks or has only as a manual workaround. Each is a wedge a competitor could exploit if we don't close the gap.
+      </p>
+    </div>
+
+    <div class="matrix">
+      <div class="matrix-head">Capability</div>
+      <div class="matrix-head" style="text-align:center;">LandwiseAI Today</div>
+      <div class="matrix-head" style="text-align:center;">Best Competitor</div>
+      <div class="matrix-head" style="text-align:center;">Strategic Cost</div>
+
+      <div class="gap-name">Direct EC / Patta / Adangal fetch
+        <small>Eliminate manual upload of state records</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-rose">Manual upload</span></div>
+      <div style="text-align:center;">Landeed, mypatta</div>
+      <div style="text-align:center;"><span class="pill pill-amber">High</span></div>
+
+      <div class="gap-name">RERA project verification
+        <small>Builder default-history scoring for under-construction</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-rose">Not in scope</span></div>
+      <div style="text-align:center;">Surepass, Square Yards</div>
+      <div style="text-align:center;"><span class="pill pill-amber">High</span></div>
+
+      <div class="gap-name">Bank LOS / RBI ULI integration
+        <small>Score-as-API in loan-origination flow</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-rose">No API</span></div>
+      <div style="text-align:center;">Square Yards (RBIH live)</div>
+      <div style="text-align:center;"><span class="pill pill-rose">Critical</span></div>
+
+      <div class="gap-name">Multi-state coverage
+        <small>KA Bhoomi, TS Dharani, AP Webland, MH 7/12</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-amber">TN only</span></div>
+      <div style="text-align:center;">Teal (14 states)</div>
+      <div style="text-align:center;"><span class="pill pill-rose">Critical</span></div>
+
+      <div class="gap-name">Mobile / WhatsApp UX
+        <small>Tier-2/3 buyer reach in vernacular</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-rose">Web only</span></div>
+      <div style="text-align:center;">Landeed (Play Store)</div>
+      <div style="text-align:center;"><span class="pill pill-amber">Med</span></div>
+
+      <div class="gap-name">Lis Pendens court-feed
+        <small>Live integration with NJDG / eCourts</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-amber">Manual section</span></div>
+      <div style="text-align:center;">Provakil (8K+ courts)</div>
+      <div style="text-align:center;"><span class="pill pill-amber">Med</span></div>
+
+      <div class="gap-name">Title insurance bundling
+        <small>Distribution channel for HDFC ERGO / Tata AIG</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-rose">Not offered</span></div>
+      <div style="text-align:center;">No-one yet</div>
+      <div style="text-align:center;"><span class="pill pill-green">Open lane</span></div>
+
+      <div class="gap-name">Tamil → English deed translation
+        <small>NRI &amp; non-TN buyer enablement</small>
+      </div>
+      <div style="text-align:center;"><span class="pill pill-rose">Not offered</span></div>
+      <div style="text-align:center;">Manual advocate (₹5K+)</div>
+      <div style="text-align:center;"><span class="pill pill-green">Quick win</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Recommendations ──────────────────────────────────── -->
+<section class="section" id="bets">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Strategic Bets · Ranked by Leverage</div>
+      <h2>10 moves that change the trajectory</h2>
+      <p>
+        These aren't generic SaaS advice. Each is a specific, India-property-specific bet against a named competitor or unmet need, ordered by impact-to-effort ratio.
+      </p>
+    </div>
+
+    <div class="grid" style="gap:14px;">
+      <div class="rec">
+        <div class="rec-rank">1</div>
+        <div>
+          <h4>Plug into Bank LOS / RBI Unified Lending Interface (ULI)
+            <span class="pill pill-amber">Highest revenue</span>
+            <span class="pill pill-blue">12-month build</span>
+          </h4>
+          <p>Square Yards entered via RBIH; the second-mover slot is open. Sell title-health-score as an API priced ₹1,500–3,000 per file. Captures the ₹1,250–5,000 Cr/yr bank vetting pool. Start with 2–3 PSU + private bank pilots.</p>
+          <div class="rec-meta">
+            <span class="pill pill-blue">Distribution moat</span>
+            <span class="pill pill-slate">Competes with: Square Yards, Teal</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">2</div>
+        <div>
+          <h4>Direct fetch from tnreginet.gov.in EC + Patta-Chitta + Adangal
+            <span class="pill pill-green">Removes friction</span>
+          </h4>
+          <p>Eliminate manual upload — the #1 reason banks won't ship a self-serve flow. Add Karnataka Bhoomi, Telangana Dharani, AP Webland next. These four states cover ~40% of South Indian property volume. Partner with mypatta or build in-house.</p>
+          <div class="rec-meta">
+            <span class="pill pill-blue">Foundational</span>
+            <span class="pill pill-slate">Competes with: Landeed</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">3</div>
+        <div>
+          <h4>Embedded title-insurance distribution (HDFC ERGO / Tata AIG)
+            <span class="pill pill-green">Open lane</span>
+            <span class="pill pill-amber">Margin engine</span>
+          </h4>
+          <p>IRDAI-approved but distribution-starved. Bundle a ₹5K–15K title-insurance premium on every A/B-grade opinion; LandwiseAI takes 15–25% commission. Converts software ARR into per-transaction take-rate revenue.</p>
+          <div class="rec-meta">
+            <span class="pill pill-blue">Net-new monetisation</span>
+            <span class="pill pill-slate">No current player here</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">4</div>
+        <div>
+          <h4>Lis Pendens automation via eCourts / NJDG court-feed
+            <span class="pill pill-blue">Defensible moat</span>
+          </h4>
+          <p>The weakest of the 9-section opinion today. A live court-feed integration (Provakil-style) turns it from "advocate calls the court" to "data refreshes nightly." No marketplace player can replicate this; it's a moat against PropClap and NoBroker.</p>
+          <div class="rec-meta">
+            <span class="pill pill-slate">Competes with: Provakil licensing</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">5</div>
+        <div>
+          <h4>Batch-audit SaaS tier for industrial-land aggregators / SEZ developers
+            <span class="pill pill-amber">High ACV</span>
+          </h4>
+          <p>100+ parcel deals priced at ₹5–25 lakh/yr seat licence. This is where Teal makes most of its enterprise revenue. Targets the same DD heads at Adani, Reliance, Tata Realty, JSW Infrastructure who already need this monthly.</p>
+          <div class="rec-meta">
+            <span class="pill pill-blue">Enterprise contract</span>
+            <span class="pill pill-slate">Competes with: Teal enterprise</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">6</div>
+        <div>
+          <h4>Advocate-marketplace overlay for B/C/D-grade opinions
+            <span class="pill pill-blue">Convert tail to revenue</span>
+          </h4>
+          <p>When the AI Title Health Score &lt; 70, route to a panel advocate for ₹7,500–15,000 with revenue share. Converts the failure mode (LandwiseAI says "this title is risky, talk to a lawyer") into a monetised hand-off rather than a dead-end.</p>
+          <div class="rec-meta">
+            <span class="pill pill-slate">Hybrid: AI + advocate panel</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">7</div>
+        <div>
+          <h4>WhatsApp-first vernacular status updates for tier-2 TN buyers
+            <span class="pill pill-green">Cheap to build</span>
+            <span class="pill pill-amber">B2C funnel</span>
+          </h4>
+          <p>Coimbatore, Madurai, Trichy, Salem buyers transact via informal advocates and WhatsApp. A Tamil status bot (audit started → score ready → opinion signed) beats a web dashboard. Becomes a top-of-funnel for individual buyers paying ₹4,999.</p>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">8</div>
+        <div>
+          <h4>Tamil → English deed translation as a paid add-on (~₹500/deed)
+            <span class="pill pill-green">Quick win</span>
+          </h4>
+          <p>Captures NRI buyers (Singapore / US Tamil diaspora) who today pay advocates ₹5K+ for the same. The model already does it internally; expose it as a standalone product. ~₹5–10 lakh ARR with no incremental compute cost.</p>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">9</div>
+        <div>
+          <h4>RERA-project verification module via Surepass API
+            <span class="pill pill-blue">New segment</span>
+          </h4>
+          <p>Targets the under-construction segment Landeed doesn't cover well. Pull builder default history, RERA filing status, and complaint count per project. Bundle into an existing legal opinion or sell standalone at ₹999 per project to retail buyers.</p>
+        </div>
+      </div>
+
+      <div class="rec">
+        <div class="rec-rank">10</div>
+        <div>
+          <h4>Free encumbrance-fee &amp; stamp-duty calculator (top-of-funnel)
+            <span class="pill pill-green">Lead-gen</span>
+          </h4>
+          <p>Use TN guideline values (revised Jul 2024) to auto-pre-fill stamp duty and registration fees. A free tool that captures email + phone, then upsells to the legal opinion. Same playbook ClearTax used to dominate ITR.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Business value ────────────────────────────────────── -->
+<section class="section section-alt" id="value">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-eyebrow">Business Value</div>
+      <h2>What the math actually says</h2>
+      <p>
+        These are the numbers to put on a sales deck. Each is grounded in a public source rather than a marketing claim.
+      </p>
+    </div>
+
+    <div class="biz-card">
+      <h3>If LandwiseAI captures just 10% of the bank-side legal-vetting market</h3>
+      <p style="opacity:0.85; margin-top:8px; font-size:14px;">25 lakh new home loan files/yr × 10% × ₹2,000 priced API call</p>
+      <div class="biz-grid">
+        <div>
+          <div class="label">Annual Recurring Revenue</div>
+          <div class="number">₹500 Cr</div>
+        </div>
+        <div>
+          <div class="label">Files / year</div>
+          <div class="number">2.5 L</div>
+        </div>
+        <div>
+          <div class="label">Bank cost saving</div>
+          <div class="number">₹3K – 17K</div>
+          <div style="font-size:11px; opacity:0.75; margin-top:4px;">per file vs Rs 5K–20K manual</div>
+        </div>
+        <div>
+          <div class="label">Avg time saved</div>
+          <div class="number">90%+</div>
+          <div style="font-size:11px; opacity:0.75; margin-top:4px;">vs 2-week manual baseline</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="spacer-md"></div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="card-accent accent-emerald"></div>
+        <h3 style="margin-bottom:12px;">For Banks &amp; HFCs</h3>
+        <ul class="bul">
+          <li><strong>5–10× faster turnaround</strong> on legal opinion (hours vs 2 weeks) shrinks loan-disbursal time directly</li>
+          <li><strong>₹3K–17K saved per file</strong> on legal vetting fees, scaling at ₹2K API price</li>
+          <li><strong>Audit-trail for regulator</strong> — every flag, gap, mismatch logged with timestamps and reasoning</li>
+          <li><strong>NPA reduction</strong> from catching defective titles before disbursal — relevant to RBI's Asset Quality Reviews</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-amber"></div>
+        <h3 style="margin-bottom:12px;">For Legal Advisors</h3>
+        <ul class="bul">
+          <li><strong>4–5× productivity</strong> per senior advocate (3–4 opinions/week → 15–20)</li>
+          <li><strong>Same fee, lower effort</strong> — opinions still bill at ₹25K–50K but draft in 30 min</li>
+          <li><strong>Defensible work product</strong> — every clause cites the source deed page, ready for digital signing</li>
+          <li><strong>NRI segment unlock</strong> — Tamil-to-English translation makes diaspora due diligence trivial</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-navy"></div>
+        <h3 style="margin-bottom:12px;">For Retail Buyers</h3>
+        <ul class="bul">
+          <li><strong>₹4,999–6,999 self-serve</strong> opinion vs ₹15K–50K traditional advocate route</li>
+          <li><strong>WhatsApp status updates</strong> in Tamil — accessible to first-time buyers in tier-2/3 cities</li>
+          <li><strong>Title insurance bundling</strong> — concrete recourse if defect surfaces post-purchase</li>
+          <li><strong>Pre-purchase clarity</strong> — direct attack on the 66% of civil litigation that's land-related</li>
+        </ul>
+      </div>
+      <div class="card">
+        <div class="card-accent accent-rose"></div>
+        <h3 style="margin-bottom:12px;">For Industrial Land Aggregators</h3>
+        <ul class="bul">
+          <li><strong>₹5–25 lakh/yr enterprise tier</strong> with batch audit on 100+ parcels</li>
+          <li><strong>Project-feasibility days, not months</strong> — chain-of-title gaps surface immediately, not after legal review</li>
+          <li><strong>SEZ / industrial-park use case</strong> — Adani Ports, Tata Realty, Reliance Industries all do this monthly</li>
+          <li><strong>Risk dashboards</strong> for portfolio-level due diligence across geographies</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ────────────────────────────────────────────── -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div>
+        <h4>About this brief</h4>
+        <ul>
+          <li>Synthesised from 15+ web sources, May 2026</li>
+          <li>Codebase audited from LandwiseAI Beta repo</li>
+          <li>Built as a single self-contained HTML prototype</li>
+          <li>For internal strategy use only</li>
+        </ul>
+      </div>
+      <div>
+        <h4>Primary Sources</h4>
+        <ul>
+          <li><a href="https://www.pib.gov.in/PressReleasePage.aspx?PRID=2110726" target="_blank" rel="noopener">NHB Trends &amp; Progress 2024 (PIB)</a></li>
+          <li><a href="https://www.grandviewresearch.com/horizon/outlook/legal-technology-market/india" target="_blank" rel="noopener">Grand View Research — India LegalTech</a></li>
+          <li><a href="https://prsindia.org/files/bills_acts/bills_parliament/1970/Report-of-the-Committee-to-Draft-Model-Act-Rules-and-Regulation-on-Conclusive-Land-Titling.pdf" target="_blank" rel="noopener">NITI Aayog Land Titling Draft, 2019</a></li>
+          <li><a href="https://www.dakshindia.org/Technology-and-Analytics-for-Law-and-Justice/Startups-Legal-Tech-India" target="_blank" rel="noopener">DAKSH Indian Judiciary Report</a></li>
+          <li><a href="https://cag.gov.in/webroot/uploads/download_audit_report/2024/Revenue-report-4-2024-06683d9af5f16a2.59212214.pdf" target="_blank" rel="noopener">CAG Tamil Nadu Revenue Audit 2024</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Competitor Sources</h4>
+        <ul>
+          <li><a href="https://www.ycombinator.com/companies/landeed" target="_blank" rel="noopener">Landeed (YC S22)</a></li>
+          <li><a href="https://www.tealindia.in/" target="_blank" rel="noopener">Teal India</a></li>
+          <li><a href="https://www.squareyards.com/title-search" target="_blank" rel="noopener">Square Yards Title Search</a></li>
+          <li><a href="https://propclap.com/" target="_blank" rel="noopener">PropClap</a></li>
+          <li><a href="https://mypatta.in/" target="_blank" rel="noopener">mypatta</a></li>
+          <li><a href="https://www.nobroker.in/legal-services/property-due-diligence-lsdd" target="_blank" rel="noopener">NoBroker Legal</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Built with</h4>
+        <ul>
+          <li>Inter + Plus Jakarta Sans typography</li>
+          <li>Navy primary <span class="mono" style="color:rgba(255,255,255,0.9)">#1A367E</span></li>
+          <li>Status amber <span class="mono" style="color:rgba(255,255,255,0.9)">#F59E0B</span> · emerald <span class="mono" style="color:rgba(255,255,255,0.9)">#10B981</span></li>
+          <li>14px border-radius, soft shadows</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      LandwiseAI · Strategic Brief · Generated <span class="mono">2026.05.08</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

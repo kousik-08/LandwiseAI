@@ -1,6 +1,6 @@
-# PattaFlow Frontend
+# LandwiseAI Frontend
 
-PattaFlow is a state-of-the-art document verification and analysis platform. This frontend provides a premium interface for streaming upload, real-time processing visualization, and detailed validation of EC (Encumbrance Certificate) and Registration Documents.
+LandwiseAI is a state-of-the-art document verification and analysis platform. This frontend provides a premium interface for streaming upload, real-time processing visualization, and detailed validation of EC (Encumbrance Certificate) and Registration Documents.
 
 ## ✨ Features
 
@@ -14,7 +14,7 @@ PattaFlow is a state-of-the-art document verification and analysis platform. Thi
 
 ## 🛠️ Project Structure
 
-- `/`: Landing Page - Introduction to PattaFlow.
+- `/`: Landing Page - Introduction to LandwiseAI.
 - `/verify`: Document Verification - The core processing interface.
 - `/map`: Geospatial Analysis - Interactive map for land data visualization.
 
@@ -30,7 +30,7 @@ PattaFlow is a state-of-the-art document verification and analysis platform. Thi
 1. Navigate to the project directory:
 
    ```bash
-   cd pattaflow-frontend
+   cd landwiseai-frontend
    ```
 
 2. Install dependencies:
@@ -45,7 +45,7 @@ PattaFlow is a state-of-the-art document verification and analysis platform. Thi
 
 ### Running the Application
 
-1. **Start the Backend**: Ensuring the PattaFlow Backend service is running (typically at `http://localhost:8000`).
+1. **Start the Backend**: Ensuring the LandwiseAI Backend service is running (typically at `http://localhost:8000`).
 2. **Start the Frontend**:
    ```bash
    npm run dev

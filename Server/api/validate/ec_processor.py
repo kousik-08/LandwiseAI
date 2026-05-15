@@ -85,24 +85,60 @@ class ECProcessor:
         blocks = re.findall(
             r"--- TRANSACTION START ---.*?--- TRANSACTION END ---", raw_text, flags=re.S
         )
-        transactions = []
+        transactions: List[Dict[str, Any]] = []
         for block in blocks:
-            transactions.append(
-                {
-                    "document_number": self._extract_field(block, "Document No"),
-                    "date": self._extract_field(block, "Date"),
-                    "nature_of_document": self._extract_field(
-                        block, "Nature of Document"
-                    ),
-                    "property_type": self._extract_field(block, "Nature of the land"),
-                    "sellers": self._split_names(self._extract_field(block, "Sellers")),
-                    "buyers": self._split_names(self._extract_field(block, "Buyers")),
-                    "survey_number": self._extract_field(block, "Survey No"),
-                    "property_extent": self._extract_field(block, "Extent"),
-                    "consideration": self._extract_field(block, "Consideration"),
-                    "market_value": self._extract_field(block, "Market Value"),
-                }
-            )
+            # Base transaction structure for this EC entry
+            base_tx: Dict[str, Any] = {
+                "document_number": self._extract_field(block, "Document No"),
+                "date": self._extract_field(block, "Date"),
+                "nature_of_document": self._extract_field(
+                    block, "Nature of Document"
+                ),
+                "property_type": self._extract_field(block, "Nature of the land"),
+                "sellers": self._split_names(self._extract_field(block, "Sellers")),
+                "buyers": self._split_names(self._extract_field(block, "Buyers")),
+                "property_extent": self._extract_field(block, "Extent"),
+                "consideration": self._extract_field(block, "Consideration"),
+                "market_value": self._extract_field(block, "Market Value"),
+            }
+
+            # Survey number can contain multiple entries for the same document like "13, 13/2, 13/3A".
+            survey_raw = self._extract_field(block, "Survey No")
+            # Split by common delimiters, but keep full tokens including subdivision (e.g., "13/2").
+            survey_parts = [
+                s.strip()
+                for s in re.split(r"[;,]", survey_raw)
+                if s.strip()
+            ] or [survey_raw]
+
+            def normalize_sn(s: str) -> str:
+                # Remove common noise like " - 3 ACRE", "(Part)", whitespace, etc.
+                s = re.sub(r"\s*-\s*.*$", "", s) # Remove everything after hyphen
+                s = re.sub(r"\(.*?\)", "", s)    # Remove parenthetical notes
+                # Keep only alphanumeric and slash
+                s = re.sub(r"[^a-zA-Z0-9/]", "", s)
+                return s.strip()
+
+            for sn_raw in survey_parts:
+                sn = sn_raw.strip()
+                normalized_sn = normalize_sn(sn)
+                
+                tx = base_tx.copy()
+                tx["survey_number"] = normalized_sn
+                tx["survey_raw"] = sn
+                tx["involved_surveys"] = [normalize_sn(s) for s in survey_parts]
+
+                # Optionally capture base survey and subdivision for downstream use
+                if "/" in normalized_sn:
+                    base, sub = normalized_sn.split("/", 1)
+                    tx["survey_base"] = base.strip()
+                    tx["sub_division"] = sub.strip()
+                else:
+                    tx["survey_base"] = normalized_sn.strip()
+                    tx["sub_division"] = None
+
+                transactions.append(tx)
+
         return transactions
 
 

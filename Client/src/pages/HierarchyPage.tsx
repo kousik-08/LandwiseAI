@@ -14,15 +14,37 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import DocChat from "@/features/analysis/components/DocChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
+import NotesSummary, { type NoteJumpTarget } from "@/features/notes/components/NotesSummary";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
+import { landwiseApi } from "@/lib/landwise-api";
 import { useDebouncedNoteSaver } from "@/hooks/useDebouncedNoteSaver";
+import { toast } from "sonner";
 
 export default function HierarchyPage() {
     const [searchParams] = useSearchParams();
     const requestId = searchParams.get("requestId");
     const surveyNumber = searchParams.get("surveyNumber");
     const limit = searchParams.get("limit");
+    // Optional — when provided, PdfAnnotator persists notes to the server and
+    // the Notes Summary cockpit becomes available. Pages that don't have a
+    // parcel context (e.g. legacy /verify flow) still work via localStorage,
+    // but we ALSO auto-resolve parcelId from request_id below so the Notes
+    // Cockpit becomes available without the user having to pass it manually.
+    const parcelIdFromUrl = searchParams.get("parcelId");
+    const [resolvedParcelId, setResolvedParcelId] = useState<string | null>(parcelIdFromUrl);
+    const parcelId = resolvedParcelId;
+    // Deep-link params used by the Notes Cockpit (LegalDashboard) to land the
+    // user directly on a specific deed + highlight when they click a note.
+    const deepLinkDocNo = searchParams.get("docNo");
+    const deepLinkNoteId = searchParams.get("noteId");
+    const deepLinkPage = searchParams.get("page");
 
     const [loading, setLoading] = useState(true);
     const [statusIndex, setStatusIndex] = useState(0);
@@ -56,6 +78,33 @@ export default function HierarchyPage() {
     const [pdfAnnotations, setPdfAnnotations] = useState<any[]>([]);
     const [validatingSingle, setValidatingSingle] = useState(false);
     const [scrollToPage, setScrollToPage] = useState<{ page: number, timestamp: number } | undefined>(undefined);
+    // Triggers a precise scroll-to-highlight + flash animation in PdfAnnotator
+    // when a note is clicked from the annotations panel or the cockpit.
+    const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; timestamp: number } | undefined>(undefined);
+    const [notesSummaryOpen, setNotesSummaryOpen] = useState(false);
+
+    // Auto-resolve parcelId from request_id when the URL didn't carry one.
+    // Without this, opening /hierarchy from /verify would not have a parcel
+    // context and the Notes Cockpit + server-side note persistence would be
+    // unavailable.
+    useEffect(() => {
+        if (parcelIdFromUrl || !requestId) return;
+        let cancelled = false;
+        (async () => {
+            try {
+                const data = await landwiseApi.getParcelByRequest(requestId);
+                if (!cancelled && data?.parcel_id) {
+                    setResolvedParcelId(data.parcel_id);
+                }
+            } catch (e) {
+                // 404 is expected for analyses that pre-date the parcel
+                // tracking — fail silently, the page still works.
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [requestId, parcelIdFromUrl]);
 
     const debouncedSaveNote = useDebouncedNoteSaver();
 
@@ -132,6 +181,44 @@ export default function HierarchyPage() {
 
         fetchInitialData();
     }, [requestId, surveyNumber, limit]);
+
+    // Deep-link landing: once the timeline data is loaded, if the URL points
+    // at a specific doc/note (from a Notes Cockpit click), open that deed in
+    // the side panel and scroll to the highlight. We guard with a ref-style
+    // boolean so this only fires once per page load.
+    const [deepLinkApplied, setDeepLinkApplied] = useState(false);
+    useEffect(() => {
+        if (deepLinkApplied) return;
+        if (!timeline || !deepLinkDocNo) return;
+        // Use the existing node-click pipeline so the panel opens with proper
+        // metadata + url, then schedule the focus pulse after PdfAnnotator has
+        // had a chance to fetch the doc's annotations from the server.
+        handleNodeClick(deepLinkDocNo);
+        const t = setTimeout(() => {
+            // Land on the annotations tab — the notes panel now sits in the
+            // top half and leaves the PDF visible underneath, so the user
+            // sees both the source note and the highlight flash.
+            setActiveTab(deepLinkNoteId ? "annotations" : "summary");
+            setPanelOpen(true);
+            const pageHint = deepLinkPage ? parseInt(deepLinkPage) : NaN;
+            const ts = Date.now();
+            if (!Number.isNaN(pageHint)) {
+                setScrollToPage({ page: pageHint, timestamp: ts });
+            }
+            if (deepLinkNoteId) {
+                setFocusHighlightId({
+                    id: deepLinkNoteId,
+                    page: Number.isNaN(pageHint) ? undefined : pageHint,
+                    timestamp: ts,
+                });
+            }
+        }, 700);
+        setDeepLinkApplied(true);
+        return () => clearTimeout(t);
+        // handleNodeClick is referentially stable enough for this purpose; we
+        // intentionally exclude it to avoid re-triggering the deep-link.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timeline, deepLinkDocNo, deepLinkPage, deepLinkNoteId, deepLinkApplied]);
 
     const handleUpdateNodeNotes = useCallback(
         (docNo: string, notes: string) => {
@@ -230,26 +317,46 @@ export default function HierarchyPage() {
         }
     };
 
-    const handleNodeClick = useCallback((docNo: string) => {
+    const handleNodeClick = useCallback((docNo: string, nodeData?: any) => {
         setVerificationResult(null);
         setUploadFile(null);
         setActiveTab("summary");
         setPdfAnnotations([]); // Reset annotations for new doc
         setScrollToPage(undefined); // Reset scroll position
 
-        const node = timeline?.react_flow_data.nodes.find((n: any) => n.data.document_number === docNo);
+        const normalize = (s: string) => s ? s.replace(/\s+/g, '').replace(/[-\/]/g, '').toLowerCase() : '';
+        const normDocNo = normalize(docNo);
+
+        // Locate node & path. If ReactFlow passed us nodeData, that is the exact clicked node.
+        const nodeFromFlow = nodeData ? { data: nodeData } : null;
+        const node = nodeFromFlow || timeline?.react_flow_data.nodes.find(
+            (n: any) => n.data?.document_number && normalize(n.data.document_number) === normDocNo
+        );
         let path = timeline?.doc_map?.[docNo] || node?.data?.pdf_url;
 
-        // Try to get data from timeline transactions, fallback to node data
-        const txData = timeline?.all_transactions?.find((t: any) => t.document_number === docNo) || node?.data;
+        // Prefer full transaction data but always merge in richer node survey info (incl. KIDE) and area
+        const allTxs = timeline?.all_transactions || [];
+        const tx = allTxs.find((t: any) => normalize(t.document_number) === normDocNo);
+        const nodeSurvey =
+            node?.data?.survey_number ||
+            node?.data?.KIDE ||
+            node?.data?.kide;
+        const nodeArea = node?.data?.sq_feet || node?.data?.square_feet;
 
-        // Find validation results
+        const txData = tx
+            ? {
+                ...tx,
+                // Ensure subdivided survey (e.g. 13/3) from node wins over flat base value
+                survey_number: nodeSurvey || tx.survey_number,
+                square_feet: nodeArea || tx.square_feet,
+            }
+            : node?.data;
+
+        // Find validation results (with relaxed normalization)
         let resultItem = results.find(r => r.document_number === docNo);
         if (!resultItem) {
-            const normalizedDoc = docNo.replace(/\s+/g, '').replace(/[-\/]/g, '');
-            resultItem = results.find(r =>
-                r.document_number.replace(/\s+/g, '').replace(/[-\/]/g, '') === normalizedDoc
-            );
+            const normalizedDoc = normDocNo;
+            resultItem = results.find(r => normalize(r.document_number) === normalizedDoc);
         }
 
         const validation = resultItem?.validation_result;
@@ -263,6 +370,170 @@ export default function HierarchyPage() {
             setPanelOpen(true);
         }
     }, [timeline, results]);
+
+    /**
+     * In-document note click — pulses the highlight rectangle and scrolls
+     * the PDF to it. We deliberately DO NOT also call setScrollToPage here:
+     * react-pdf-highlighter's scrollTo() accepts a Highlight and renders a
+     * temporary yellow indicator at its boundingRect. Calling it with our
+     * page-only stub (boundingRect = {x1:10,y1:10,x2:90,y2:30}) paints a
+     * misplaced yellow stripe scaled to ~80% of the page width — exactly
+     * the "wrong-position highlight" symptom users were seeing. The
+     * focusHighlightId path uses the note's REAL boundingRect, so it both
+     * navigates to the right page AND renders the indicator at the actual
+     * selected region.
+     */
+    const handleFocusLocalNote = useCallback((anno: any) => {
+        const page = anno?.position?.pageNumber;
+        if (!anno?.id) return;
+        setFocusHighlightId({ id: anno.id, timestamp: Date.now() });
+        toast.info(`Jumping to page ${page ?? "?"}`, {
+            description: anno.comment?.text || anno.content?.text || "",
+            duration: 1800,
+        });
+    }, []);
+
+    /**
+     * Notes Cockpit click-through handler. Closes the cockpit, loads the right
+     * PDF if we're not already on it, then triggers PdfAnnotator's
+     * focusHighlightId so the highlight scrolls into view. Lands on the
+     * "annotations" tab so the user sees both the note + the PDF flash —
+     * the notes panel and the PDF are now stacked (top + bottom), neither
+     * covers the other.
+     */
+    const handleJumpToNote = useCallback((target: NoteJumpTarget) => {
+        setNotesSummaryOpen(false);
+        const stripPdf = (s: string) => s.replace(/\.pdf$/i, "");
+        const sameDoc =
+            !!selectedDoc?.docNo &&
+            (stripPdf(selectedDoc.docNo) === stripPdf(target.doc_no) ||
+                stripPdf(target.doc_no).includes(stripPdf(selectedDoc.docNo)) ||
+                stripPdf(selectedDoc.docNo).includes(stripPdf(target.doc_no)));
+
+        if (!sameDoc) {
+            handleNodeClick(stripPdf(target.doc_no));
+        }
+        setTimeout(() => {
+            setActiveTab("annotations");
+            setPanelOpen(true);
+            const ts = Date.now();
+            setScrollToPage({ page: target.note.page_number, timestamp: ts });
+            // page hint lets PdfAnnotator fall back to a page-level scroll
+            // when the highlight id can't be resolved within the retry window
+            // (slow PDF/server loads on cross-doc deep links).
+            setFocusHighlightId({
+                id: target.note.id,
+                page: target.note.page_number,
+                timestamp: ts,
+            });
+        }, sameDoc ? 50 : 600);
+    }, [handleNodeClick, selectedDoc]);
+
+    const getFullSurveyNumber = (data: any): string | undefined => {
+        if (!data) return undefined;
+
+        // Highest priority: geospatial key (often already like "13/3")
+        const kide =
+            data.kide ||
+            data.KIDE;
+
+        const base =
+            kide ||
+            data.survey_number ||
+            data.survey_no ||
+            data.Survey_No ||
+            data.SURVEY_NO;
+
+        const sub =
+            data.sub_division ||
+            data.subdivision ||
+            data.sub_div ||
+            data.sub_div_no ||
+            data.subDivision;
+
+        if (!base) return undefined;
+        const baseStr = String(base);
+
+        // If base already carries subdivision (e.g. "13/3"), do not append anything.
+        if (baseStr.includes("/") || !sub) return baseStr;
+
+        return `${baseStr}/${sub}`;
+    };
+
+    const handleOpenInMap = useCallback((docNoOverride?: string) => {
+        const targetDocNo = docNoOverride || selectedDoc?.docNo;
+        if (!targetDocNo) return;
+
+        const normDoc = (s: string) => s ? s.replace(/\s+/g, '').replace(/[-\/]/g, '').toLowerCase() : '';
+        const currentDocNoNorm = normDoc(targetDocNo);
+
+        // Find metadata for the specific document if we're using an override
+        let docData = selectedDoc?.data;
+        if (docNoOverride && timeline?.all_transactions) {
+            const tx = timeline.all_transactions.find((t: any) => normDoc(t.document_number) === currentDocNoNorm);
+            if (tx) docData = tx;
+        }
+
+        // Find ALL survey numbers associated with this document in the registry to highlight all relevant areas
+        const surveysForThisDoc = new Set<string>();
+
+        // 1. Scan all transactions in the timeline for this document
+        if (timeline?.all_transactions) {
+            timeline.all_transactions.forEach((tx: any) => {
+                if (normDoc(tx.document_number) === currentDocNoNorm) {
+                    const sn = getFullSurveyNumber(tx);
+                    if (sn) {
+                        // If sn itself is comma-separated, split it
+                        sn.split(',').forEach((s: string) => {
+                            const trimmed = s.trim();
+                            if (trimmed) surveysForThisDoc.add(trimmed);
+                        });
+                    }
+                }
+            });
+        }
+
+        // 2. Supplement from validation results (comparisons) which might have additional matches
+        const resultItem = results.find(r => normDoc(r.document_number) === currentDocNoNorm);
+        if (resultItem?.validation_result?.comparisons) {
+            resultItem.validation_result.comparisons.forEach((comp: any) => {
+                // Look for survey number related fields
+                if (comp.field.toLowerCase().includes("survey")) {
+                    const val = comp.metadata_value || comp.ec_value;
+                    if (val && typeof val === 'string') {
+                        val.split(',').forEach((s: string) => {
+                            const trimmed = s.trim();
+                            if (trimmed) surveysForThisDoc.add(trimmed);
+                        });
+                    }
+                }
+            });
+        }
+
+        // Join both into a comma-separated string for the MapView's multi-highlight support
+        const allSurveys = Array.from(surveysForThisDoc).join(', ');
+        const sn = allSurveys || (docData ? getFullSurveyNumber(docData) : undefined);
+
+        if (!sn || !docData) return;
+
+        const meta = {
+            surveyNumber: sn,
+            executant: docData.executant,
+            claimant: docData.claimant,
+            nature: docData.nature,
+            landType: docData.nature_of_land,
+            area: docData.square_feet || docData.sq_feet || "N/A",
+            docNo: docData.document_number,
+            date: docData.date
+        };
+
+        // Save metadata to sessionStorage to avoid passing it in the URL
+        if (typeof window !== "undefined") {
+            sessionStorage.setItem(`map_meta_${sn}`, JSON.stringify(meta));
+            const url = `/map?surveyNumber=${encodeURIComponent(String(sn))}`;
+            window.open(url, "_blank");
+        }
+    }, [selectedDoc, timeline, results]);
 
     if (loading) {
         return (
@@ -408,6 +679,18 @@ export default function HierarchyPage() {
                         <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 px-3 py-1">
                             {timeline?.all_transactions?.length || 0} Transactions
                         </Badge>
+                        {parcelId && (
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                                onClick={() => setNotesSummaryOpen(true)}
+                                title="View every note across every PDF for this parcel"
+                            >
+                                <StickyNote className="w-3.5 h-3.5" />
+                                Notes Cockpit
+                            </Button>
+                        )}
                         <Button
                             variant="outline"
                             size="sm"
@@ -491,52 +774,119 @@ export default function HierarchyPage() {
 
                                     <div className="flex-1 overflow-hidden flex flex-col relative bg-muted/20">
                                         {activeTab === "chat" && selectedDoc && (
-                                            <div className="absolute inset-x-0 top-0 bottom-0 z-20 animate-in slide-in-from-right duration-300">
-                                                <DocChat 
-                                                    docNo={selectedDoc.docNo} 
+                                            // z-[150] sits above PdfAnnotator's TEXT/DRAW toggle (z-100) and the
+                                            // Single-PDF-Matching button (z-30) on the panel below, so those
+                                            // controls don't bleed through the chat overlay. They remain in the
+                                            // DOM and reappear automatically when the chat tab is closed.
+                                            <div className="absolute inset-x-0 top-0 bottom-0 z-[150] animate-in slide-in-from-right duration-300">
+                                                <DocChat
+                                                    docNo={selectedDoc.docNo}
                                                     requestId={requestId || ""}
-                                                    onClose={() => setActiveTab("summary")} 
+                                                    onClose={() => setActiveTab("summary")}
                                                     onPageClick={(page) => setScrollToPage({ page, timestamp: Date.now() })}
                                                 />
                                             </div>
                                         )}
 
+                                        {/* Notes panel — sits in the SAME slot as the metadata summary
+                                            so the PDF below stays visible. Previously this was an
+                                            `absolute inset-0` overlay that covered the PDF, which
+                                            meant clicking a note scrolled the PDF underneath but the
+                                            user couldn't see it happen. */}
                                         {activeTab === "annotations" && selectedDoc && (
-                                            <div className="absolute inset-0 z-20 animate-in slide-in-from-right duration-300 bg-white flex flex-col p-4">
+                                            <div className="bg-white border-b shadow-sm z-10 max-h-[60%] flex flex-col p-4 animate-in slide-in-from-top-2 duration-200">
                                                 <div className="flex items-center justify-between mb-4">
-                                                    <h3 className="text-xs font-extra-bold uppercase tracking-tighter text-slate-400">PDF Annotations</h3>
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setActiveTab("summary")}><X className="w-3 h-3" /></Button>
+                                                    <h3 className="text-xs font-extra-bold uppercase tracking-tighter text-slate-400">
+                                                        PDF Annotations &middot; {pdfAnnotations.length}
+                                                    </h3>
+                                                    <div className="flex items-center gap-1">
+                                                        {parcelId && (
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-6 text-[10px] font-bold gap-1 text-primary hover:bg-primary/5"
+                                                                onClick={() => setNotesSummaryOpen(true)}
+                                                                title="See notes across every PDF for this parcel"
+                                                            >
+                                                                <StickyNote className="w-3 h-3" />
+                                                                Parcel Notes
+                                                            </Button>
+                                                        )}
+                                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setActiveTab("summary")}><X className="w-3 h-3" /></Button>
+                                                    </div>
                                                 </div>
                                                 <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
                                                     {pdfAnnotations.length === 0 ? (
                                                         <div className="flex flex-col items-center justify-center py-8 opacity-40 grayscale">
                                                             <StickyNote className="w-8 h-8 mb-2" />
                                                             <p className="text-[10px] font-medium">No highlights yet</p>
+                                                            <p className="text-[10px] text-slate-400 mt-1 max-w-[180px] text-center leading-snug not-italic">
+                                                                Select text on the PDF and add a note. It will appear here.
+                                                            </p>
                                                         </div>
                                                     ) : (
-                                                        pdfAnnotations.map((anno: any) => (
-                                                            <Card key={anno.id} className="p-3 border-primary/5 hover:border-primary/20 transition-all cursor-pointer bg-slate-50/50">
-                                                                <div className="flex flex-col gap-1">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <Badge className="text-[8px] h-4 bg-primary/10 text-primary border-0">PAGE {anno.position.pageNumber}</Badge>
+                                                        pdfAnnotations.map((anno: any) => {
+                                                            const pageNum = anno.position?.pageNumber;
+                                                            return (
+                                                                // Card-level click also jumps (whole row is a hit
+                                                                // target), but the PAGE pill is the explicit, visible
+                                                                // CTA — gradient-filled with an arrow so it's
+                                                                // obviously interactive.
+                                                                <Card
+                                                                    key={anno.id}
+                                                                    className="p-3 border-primary/5 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer bg-slate-50/50 group"
+                                                                    onClick={() => handleFocusLocalNote(anno)}
+                                                                    role="button"
+                                                                    tabIndex={0}
+                                                                    onKeyDown={(e) => {
+                                                                        if (e.key === "Enter" || e.key === " ") {
+                                                                            e.preventDefault();
+                                                                            handleFocusLocalNote(anno);
+                                                                        }
+                                                                    }}
+                                                                    title="Jump to this highlight in the PDF"
+                                                                >
+                                                                    <div className="flex flex-col gap-1">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleFocusLocalNote(anno);
+                                                                                }}
+                                                                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-extra-bold uppercase tracking-wider bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-sm hover:shadow hover:scale-[1.03] active:scale-[0.97] transition-all"
+                                                                                title={`Open page ${pageNum ?? "?"} in the PDF`}
+                                                                            >
+                                                                                <ArrowRight className="w-3 h-3" />
+                                                                                PAGE {pageNum ?? "?"}
+                                                                            </button>
+                                                                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                Click to jump
+                                                                            </span>
+                                                                        </div>
+                                                                        {anno.content?.text && (
+                                                                            <p className="text-[11px] font-extra-bold text-slate-800 mt-1 line-clamp-2">"{anno.content.text.slice(0, 80)}..."</p>
+                                                                        )}
+                                                                        <div className="flex items-start gap-2 mt-2 p-2 bg-white rounded-lg border border-slate-100">
+                                                                            <MessageSquare className="w-3 h-3 text-primary shrink-0 mt-0.5" />
+                                                                            <p className="text-[10px] text-slate-600 italic leading-snug">{anno.comment?.text}</p>
+                                                                        </div>
                                                                     </div>
-                                                                    <p className="text-[11px] font-extra-bold text-slate-800 mt-1">"{anno.content.text?.slice(0, 60)}..."</p>
-                                                                    <div className="flex items-start gap-2 mt-2 p-2 bg-white rounded-lg border border-slate-100">
-                                                                        <MessageSquare className="w-3 h-3 text-primary shrink-0 mt-0.5" />
-                                                                        <p className="text-[10px] text-slate-600 italic leading-snug">{anno.comment.text}</p>
-                                                                    </div>
-                                                                </div>
-                                                            </Card>
-                                                        ))
+                                                                </Card>
+                                                            );
+                                                        })
                                                     )}
                                                 </div>
                                             </div>
                                         )}
 
-                                        {/* Metadata / Summary Panel */}
+                                        {/* Metadata / Summary Panel — shown only on the summary tab.
+                                            On the annotations tab, the notes list (above) takes this
+                                            slot instead, so the PDF stays visible underneath in both
+                                            cases. */}
                                         <div className={cn(
                                             "bg-white border-b shadow-sm z-10 transition-all duration-300 overflow-y-auto custom-scrollbar",
-                                            activeTab === "chat" ? "hidden" : "max-h-[60%] p-5 space-y-4"
+                                            activeTab === "summary" ? "max-h-[60%] p-5 space-y-4" : "hidden"
                                         )}>
                                             {selectedDoc?.data ? (
                                                 <>
@@ -554,8 +904,21 @@ export default function HierarchyPage() {
                                                             </div>
                                                             <div className="flex items-center gap-1.5 text-[10px] text-primary font-bold">
                                                                 <MapPin className="w-3.5 h-3.5" />
-                                                                <span>S.No: {selectedDoc.data.survey_number || "N/A"}</span>
+                                                                <span>
+                                                                    S.No: {getFullSurveyNumber(selectedDoc.data) || "N/A"}
+                                                                </span>
                                                             </div>
+                                                            {getFullSurveyNumber(selectedDoc.data) && (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="mt-1 h-7 px-2 text-[10px] font-bold flex items-center gap-1"
+                                                                    onClick={() => handleOpenInMap()}
+                                                                >
+                                                                    <MapPin className="w-3 h-3" />
+                                                                    View on Map
+                                                                </Button>
+                                                            )}
                                                         </div>
                                                     </div>
 
@@ -634,7 +997,18 @@ export default function HierarchyPage() {
                                                     <div className="pt-2">
                                                         {selectedDoc?.validation?.comparisons ? (
                                                             <div className="bg-slate-50/50 rounded-xl p-4 border border-slate-200">
-                                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-3 px-1">Audit Verification Results</span>
+                                                                <div className="flex items-center justify-between mb-3 px-1">
+                                                                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">Audit Verification Results</span>
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-[10px] font-bold flex items-center gap-1.5 bg-primary/5 border-primary/10 text-primary hover:bg-primary/10"
+                                                                        onClick={() => handleOpenInMap(selectedDoc.docNo)}
+                                                                    >
+                                                                        <MapPin className="w-3.5 h-3.5" />
+                                                                        VIEW ON MAP
+                                                                    </Button>
+                                                                </div>
                                                                 <div className="flex flex-col gap-2">
                                                                     {selectedDoc.validation.comparisons.map((comp: any, i: number) => {
                                                                         const isSupporting = comp.field === "Supporting Documents";
@@ -773,8 +1147,10 @@ export default function HierarchyPage() {
                                                     <PdfAnnotator
                                                         url={selectedDoc.url}
                                                         docId={selectedDoc.docNo}
+                                                        parcelId={parcelId || undefined}
                                                         onAnnotationChange={(h) => setPdfAnnotations(h)}
                                                         scrollToPage={scrollToPage}
+                                                        focusHighlightId={focusHighlightId}
                                                     />
 
                                                     {/* Single PDF Matching Button - Always visible if PDF exists */}
@@ -804,6 +1180,56 @@ export default function HierarchyPage() {
                     </ResizablePanelGroup>
                 </CardContent>
             </Card>
+
+            {/* Parcel-wide Notes Cockpit. Aggregates every note across every PDF
+                for this parcel; clicking a row opens the right deed and flashes
+                the highlight. Only available when the URL provides parcelId. */}
+            {parcelId && (
+                <Dialog open={notesSummaryOpen} onOpenChange={setNotesSummaryOpen}>
+                    <DialogContent className="max-w-6xl w-[min(95vw,1100px)] p-0 overflow-hidden h-[85vh] flex flex-col">
+                        <DialogHeader className="sr-only">
+                            <DialogTitle>Notes Cockpit</DialogTitle>
+                        </DialogHeader>
+                        <NotesSummary
+                            parcelId={parcelId}
+                            currentDocNo={selectedDoc?.docNo}
+                            onJumpToNote={handleJumpToNote}
+                            // CRITICAL: the cockpit MUST load the same PDF the
+                            // user marked the note on. Document Analysis and
+                            // the Hierarchy panel both serve the validation
+                            // output via `/files/<file_path>`. If the cockpit
+                            // instead serves a different version (e.g. the
+                            // raw vault upload), react-pdf-highlighter scales
+                            // the saved position against a different viewport
+                            // and the highlight lands offset from the words.
+                            //
+                            // Lookup order:
+                            //   1. validation result file_path  (same source as Analysis/Hierarchy)
+                            //   2. vault download-by-path       (fallback for docs without a result)
+                            pdfUrlResolver={(docNo: string) => {
+                                if (!docNo) return null;
+                                const norm = (s: string) =>
+                                    (s || "").replace(/\.pdf$/i, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+                                const target = norm(docNo);
+                                const match = results.find(
+                                    (r: any) =>
+                                        norm(r.document_number) === target ||
+                                        norm(r.doc_no) === target ||
+                                        norm(r.file_path) === target,
+                                );
+                                if (match?.file_path) {
+                                    return `${API_BASE_URL}/files/${match.file_path.replace(/\\/g, "/")}`;
+                                }
+                                // Returning null lets NotesSummary render the
+                                // "PDF unavailable" empty state. The old
+                                // download-by-path fallback 404'd for any doc
+                                // not in the validation results.
+                                return null;
+                            }}
+                        />
+                    </DialogContent>
+                </Dialog>
+            )}
         </div>
     );
 }

@@ -1,0 +1,1515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Landwise Legal Advisor — End-to-End Functional Flow</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#F0F3F8;--surface:#FFFFFF;--border:#E0E6EF;
+  --text:#0C1829;--text2:#4A5A72;--text3:#8A9BB8;
+  --accent:#1A3FD4;--accent-l:#EBF0FF;
+  --green:#0A6E47;--green-l:#E4F5EE;
+  --amber:#A05A00;--amber-l:#FEF3E2;
+  --red:#8B1A1A;--red-l:#FEE8E8;
+  --purple:#4B1FA8;--purple-l:#EDE9FF;
+  --f1:'Segoe UI',sans-serif;
+}
+body{font-family:var(--f1);background:var(--bg);color:var(--text);line-height:1.6}
+
+/* ── HEADER ── */
+header{background:linear-gradient(135deg,#1A3FD4,#0F2A8F);color:#fff;padding:40px 48px;position:sticky;top:0;z-index:200;box-shadow:0 6px 24px rgba(0,0,0,.2)}
+header h1{font-size:28px;font-weight:800;letter-spacing:-.02em;margin-bottom:6px}
+header p{font-size:14px;opacity:.85}
+.header-meta{display:flex;gap:24px;margin-top:14px;font-size:12px;opacity:.7}
+.header-meta span{display:flex;align-items:center;gap:6px}
+
+/* ── LAYOUT ── */
+.layout{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 120px)}
+
+/* ── SIDEBAR ── */
+.sidebar{background:var(--surface);border-right:1px solid var(--border);padding:24px 16px;position:sticky;top:120px;height:calc(100vh - 120px);overflow-y:auto}
+.sidebar-section{margin-bottom:20px}
+.sidebar-section h4{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;padding-left:8px}
+.sidebar-section ul{list-style:none}
+.sidebar-section li{margin:2px 0}
+.sidebar-section a{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;font-size:12px;color:var(--text2);text-decoration:none;transition:all .15s}
+.sidebar-section a:hover{background:var(--accent-l);color:var(--accent)}
+.sidebar-section a.active{background:var(--accent-l);color:var(--accent);font-weight:600}
+.nav-num{font-size:9px;font-weight:700;width:18px;height:18px;background:var(--border);border-radius:4px;display:flex;align-items:center;justify-content:center;color:var(--text3);flex-shrink:0}
+.nav-num.done{background:var(--green-l);color:var(--green)}
+.nav-num.active-num{background:var(--accent);color:#fff}
+
+/* ── MAIN ── */
+.main{padding:40px 48px;overflow-y:auto}
+
+/* ── PHASE SECTION ── */
+.phase{background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:32px;overflow:hidden}
+.phase-header{padding:20px 24px;border-bottom:2px solid var(--border);display:flex;align-items:center;gap:14px}
+.phase-num{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0;color:#fff}
+.phase-title{font-size:18px;font-weight:700;letter-spacing:-.01em}
+.phase-subtitle{font-size:12px;color:var(--text3);margin-top:2px}
+.phase-body{padding:24px}
+
+/* ── ACTOR ROW ── */
+.actor-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.actor-tag{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:100px;font-size:11px;font-weight:600;border:1.5px solid}
+.actor-lawyer{background:#EBF0FF;color:#1A3FD4;border-color:#1A3FD4}
+.actor-site{background:#E4F5EE;color:#0A6E47;border-color:#0A6E47}
+.actor-system{background:#EDE9FF;color:#4B1FA8;border-color:#4B1FA8}
+.actor-portfolio{background:#FEF3E2;color:#A05A00;border-color:#A05A00}
+
+/* ── STEP FLOW ── */
+.step-flow{display:flex;flex-direction:column;gap:0}
+.step-row{display:grid;grid-template-columns:40px 1fr;gap:0;position:relative}
+.step-row:not(:last-child) .step-line{position:absolute;left:19px;top:40px;bottom:-10px;width:2px;background:var(--border)}
+.step-circle{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0;z-index:1;border:2px solid}
+.step-body{padding:0 0 24px 16px}
+.step-card{background:var(--bg);border:1.5px solid var(--border);border-radius:10px;padding:14px 16px;transition:all .2s}
+.step-card:hover{border-color:var(--accent);box-shadow:0 4px 12px rgba(26,63,212,.08)}
+.step-title{font-size:13px;font-weight:700;margin-bottom:5px}
+.step-desc{font-size:12px;color:var(--text2);line-height:1.6;margin-bottom:8px}
+.step-details{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.step-detail-box{background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:10px 12px}
+.step-detail-box h5{font-size:10px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.step-detail-box ul{list-style:none}
+.step-detail-box li{font-size:11px;color:var(--text2);padding:2px 0;padding-left:14px;position:relative}
+.step-detail-box li::before{content:'›';position:absolute;left:0;color:var(--accent);font-weight:700}
+
+/* ── DECISION DIAMOND ── */
+.decision{background:var(--amber-l);border:2px solid #FCD34D;border-radius:10px;padding:14px 16px;margin:12px 0 12px 56px}
+.decision-title{font-size:12px;font-weight:700;color:var(--amber);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.decision-branches{display:flex;gap:12px;flex-wrap:wrap}
+.decision-branch{flex:1;min-width:160px;background:#fff;border:1.5px solid #FCD34D;border-radius:7px;padding:9px 12px}
+.decision-branch h6{font-size:10px;font-weight:700;margin-bottom:4px}
+.decision-branch p{font-size:11px;color:var(--text2)}
+.branch-green{border-color:#6EE7B7}
+.branch-green h6{color:var(--green)}
+.branch-red{border-color:#FCA5A5}
+.branch-red h6{color:var(--red)}
+.branch-amber{border-color:#FCD34D}
+.branch-amber h6{color:var(--amber)}
+
+/* ── MODULE BOX ── */
+.module-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin:14px 0}
+.module-box{background:var(--surface);border:1.5px solid var(--border);border-radius:9px;padding:14px;transition:all .2s}
+.module-box:hover{border-color:var(--accent);transform:translateY(-2px)}
+.module-box-icon{font-size:20px;margin-bottom:6px}
+.module-box-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:5px}
+.module-box-desc{font-size:11px;color:var(--text2);line-height:1.5}
+
+/* ── BADGE ROW ── */
+.badge-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:100px;font-size:10px;font-weight:600}
+.badge-blue{background:var(--accent-l);color:var(--accent)}
+.badge-green{background:var(--green-l);color:var(--green)}
+.badge-amber{background:var(--amber-l);color:var(--amber)}
+.badge-red{background:var(--red-l);color:var(--red)}
+.badge-purple{background:var(--purple-l);color:var(--purple)}
+
+/* ── FLOW CONNECTOR ── */
+.flow-connector{text-align:center;padding:8px 0;color:var(--text3);font-size:18px;margin:0 56px}
+
+/* ── DATA TABLE ── */
+.data-table{width:100%;border-collapse:collapse;font-size:11px;margin:12px 0}
+.data-table th{background:var(--accent-l);color:var(--accent);padding:9px 12px;text-align:left;font-weight:700;border:1px solid var(--border)}
+.data-table td{padding:9px 12px;border:1px solid var(--border);color:var(--text2);vertical-align:top}
+.data-table tr:nth-child(even) td{background:var(--bg)}
+
+/* ── INFO BOX ── */
+.info-box{background:var(--accent-l);border-left:4px solid var(--accent);border-radius:6px;padding:14px 16px;margin:12px 0;font-size:12px}
+.info-box strong{color:var(--accent)}
+.warn-box{background:var(--amber-l);border-left:4px solid #FCD34D;border-radius:6px;padding:14px 16px;margin:12px 0;font-size:12px}
+.warn-box strong{color:var(--amber)}
+
+/* ── VIEW CARDS ── */
+.views-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:14px 0}
+.view-card{border:2px solid var(--border);border-radius:10px;padding:14px;cursor:pointer;transition:all .2s;text-align:center}
+.view-card:hover{border-color:var(--accent);background:var(--accent-l)}
+.view-card-icon{font-size:24px;margin-bottom:8px}
+.view-card-title{font-size:12px;font-weight:700}
+.view-card-sub{font-size:10px;color:var(--text3);margin-top:4px}
+
+/* ── STATUS LEGEND ── */
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2)}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+
+/* ── HIGHLIGHT CALLOUT ── */
+.callout{display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1.5px solid var(--border);border-radius:9px;padding:14px;margin:12px 0}
+.callout-icon{font-size:20px;flex-shrink:0;margin-top:2px}
+.callout-content h5{font-size:12px;font-weight:700;margin-bottom:4px}
+.callout-content p{font-size:11px;color:var(--text2);line-height:1.5}
+
+/* ── CHECKLIST PHASES ── */
+.ck-phases-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin:14px 0}
+.ck-phase-card{background:var(--bg);border:1.5px solid var(--border);border-radius:8px;padding:12px;text-align:center}
+.ck-phase-num{width:28px;height:28px;background:var(--accent);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin:0 auto 6px}
+.ck-phase-title{font-size:10px;font-weight:700;color:var(--text);margin-bottom:4px}
+.ck-phase-items{font-size:9px;color:var(--text3)}
+
+/* ── RISK MATRIX ── */
+.risk-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+.risk-card{border-radius:8px;padding:12px;border:1.5px solid}
+.risk-high{background:var(--red-l);border-color:#FCA5A5}
+.risk-high .risk-label{color:var(--red)}
+.risk-medium{background:var(--amber-l);border-color:#FCD34D}
+.risk-medium .risk-label{color:var(--amber)}
+.risk-low{background:var(--green-l);border-color:#6EE7B7}
+.risk-low .risk-label{color:var(--green)}
+.risk-label{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px}
+.risk-items{list-style:none}
+.risk-items li{font-size:10px;color:var(--text2);padding:2px 0}
+
+/* ── ANNOTATION COLORS ── */
+.ann-palette{display:flex;gap:10px;margin:10px 0}
+.ann-swatch{display:flex;align-items:center;gap:7px;padding:6px 12px;border-radius:7px;font-size:11px;font-weight:600}
+
+/* ── FOOTER ── */
+footer{background:var(--text);color:#fff;padding:28px 48px;text-align:center;font-size:12px;opacity:.9}
+footer p{margin-bottom:4px}
+
+/* ── SCROLL ACTIVE ── */
+section{scroll-margin-top:140px}
+
+@media(max-width:900px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{display:none}
+  .main{padding:20px}
+  .step-details,.module-grid,.views-row,.ck-phases-grid,.risk-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚖️ Landwise Legal Advisor — End-to-End Functional Flow</h1>
+  <p>A complete walkthrough of every actor, screen, module, decision point, and data state in the Legal Advisor product</p>
+  <div class="header-meta">
+    <span>📅 April 2026</span>
+    <span>🎯 Version 1.0</span>
+    <span>👥 Legal Advisors · Site Managers · Portfolio Managers</span>
+    <span>🗺 Tamil Nadu Land Regulations</span>
+  </div>
+</header>
+
+<div class="layout">
+
+<!-- ══ SIDEBAR ══ -->
+<aside class="sidebar">
+  <div class="sidebar-section">
+    <h4>Overview</h4>
+    <ul>
+      <li><a href="#actors"><span class="nav-num">→</span> Actors & Roles</a></li>
+      <li><a href="#views"><span class="nav-num">→</span> Platform Views</a></li>
+      <li><a href="#data-model"><span class="nav-num">→</span> Core Data Model</a></li>
+    </ul>
+  </div>
+  <div class="sidebar-section">
+    <h4>End-to-End Flow</h4>
+    <ul>
+      <li><a href="#phase1"><span class="nav-num active-num">1</span> Onboarding & Setup</a></li>
+      <li><a href="#phase2"><span class="nav-num">2</span> Document Upload</a></li>
+      <li><a href="#phase3"><span class="nav-num">3</span> AI Extraction</a></li>
+      <li><a href="#phase4"><span class="nav-num">4</span> Document Review</a></li>
+      <li><a href="#phase5"><span class="nav-num">5</span> Risk Analysis</a></li>
+      <li><a href="#phase6"><span class="nav-num">6</span> Cross-Doc Comparison</a></li>
+      <li><a href="#phase7"><span class="nav-num">7</span> Property History</a></li>
+      <li><a href="#phase8"><span class="nav-num">8</span> Checklist Verification</a></li>
+      <li><a href="#phase9"><span class="nav-num">9</span> Opinion Drafting</a></li>
+      <li><a href="#phase10"><span class="nav-num">10</span> Sign-off & Finalize</a></li>
+    </ul>
+  </div>
+  <div class="sidebar-section">
+    <h4>Supporting Flows</h4>
+    <ul>
+      <li><a href="#query-flow"><span class="nav-num">→</span> Query Resolution</a></li>
+      <li><a href="#escalation-flow"><span class="nav-num">→</span> Risk Escalation</a></li>
+      <li><a href="#modules"><span class="nav-num">→</span> Module Reference</a></li>
+      <li><a href="#integrations"><span class="nav-num">→</span> Integrations</a></li>
+    </ul>
+  </div>
+</aside>
+
+<!-- ══ MAIN CONTENT ══ -->
+<main class="main">
+
+<!-- ══════════════════════════════ -->
+<!-- ACTORS & ROLES                -->
+<!-- ══════════════════════════════ -->
+<section id="actors">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EBF0FF,#fff)">
+    <div class="phase-num" style="background:var(--accent)">👥</div>
+    <div>
+      <div class="phase-title">Actors & Roles</div>
+      <div class="phase-subtitle">Who does what in the Legal Advisor product</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <table class="data-table">
+      <tr><th>Actor</th><th>Primary Responsibilities</th><th>Key Actions</th><th>Success Metric</th></tr>
+      <tr>
+        <td><span class="badge badge-blue">⚖️ Legal Advisor</span></td>
+        <td>Verify documents, flag risks, complete checklist, draft & sign opinion</td>
+        <td>Read docs, annotate clauses, mark verdicts, draft opinion, digital sign</td>
+        <td>Opinion signed within 5 business days of complete document set</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-green">📊 Site Manager</span></td>
+        <td>Upload documents, organize into folder hierarchy, respond to queries</td>
+        <td>Upload scans, tag document type, escalate missing docs, reply to queries</td>
+        <td>Complete document set uploaded within agreed timelines</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-amber">🏢 Portfolio Manager</span></td>
+        <td>Monitor portfolio health, handle escalated high-risk issues</td>
+        <td>Review escalations, coordinate NOC procurement, track cross-parcel risks</td>
+        <td>Escalations resolved within 3 business days</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-purple">🤖 AI / System</span></td>
+        <td>OCR extraction, risk auto-detection, consistency checks, AI legal bot</td>
+        <td>Extract fields, compute confidence scores, flag auto-risks, suggest clauses</td>
+        <td>≥85% extraction accuracy; all auto-risks surfaced before checklist</td>
+      </tr>
+    </table>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════ -->
+<!-- PLATFORM VIEWS                -->
+<!-- ══════════════════════════════ -->
+<section id="views">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EDE9FF,#fff)">
+    <div class="phase-num" style="background:var(--purple)">🖥</div>
+    <div>
+      <div class="phase-title">Platform Views</div>
+      <div class="phase-subtitle">Four top-level views accessible from the top navigation bar</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="views-row">
+      <div class="view-card">
+        <div class="view-card-icon">⊞</div>
+        <div class="view-card-title">Dashboard</div>
+        <div class="view-card-sub">KPIs, risk heatmap, activity feed, alert queue across all parcels</div>
+      </div>
+      <div class="view-card">
+        <div class="view-card-icon">🗺</div>
+        <div class="view-card-title">Map View</div>
+        <div class="view-card-sub">Geographic parcel overlay with status colour-coding and layer toggles</div>
+      </div>
+      <div class="view-card" style="border-color:var(--accent);background:var(--accent-l)">
+        <div class="view-card-icon">⚖️</div>
+        <div class="view-card-title">Legal Advisor</div>
+        <div class="view-card-sub">Core 3-column workspace: parcel list → 9-tab centre → progress panel</div>
+      </div>
+      <div class="view-card">
+        <div class="view-card-icon">📁</div>
+        <div class="view-card-title">Doc Repository</div>
+        <div class="view-card-sub">Hierarchical folder tree: Project → Site → Survey → Subdivision → Doc Type</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>Legal Advisor View Layout:</strong> Left panel (parcel list + filters) · Centre panel (9 content tabs) · Right panel (progress phases, activity log, send report). This is the primary workspace for the end-to-end legal review flow.
+    </div>
+
+    <h4 style="font-size:13px;font-weight:700;margin:16px 0 8px">Legal Advisor — 9 Content Tabs</h4>
+    <table class="data-table">
+      <tr><th>Tab</th><th>Purpose</th><th>Primary Actor</th></tr>
+      <tr><td>📄 Documents</td><td>Grid of all docs for the parcel; click to open Document Reader modal</td><td>Legal Advisor</td></tr>
+      <tr><td>📜 Property History</td><td>30-year ownership & encumbrance timeline with clickable events</td><td>Legal Advisor</td></tr>
+      <tr><td>🤖 AI Legal Bot</td><td>Contextual Q&A on clauses; statute references; Madras HC precedents</td><td>Legal Advisor</td></tr>
+      <tr><td>🔗 Consistency Check</td><td>Auto-compare extracted fields across all docs; show mismatches</td><td>AI / Legal Advisor</td></tr>
+      <tr><td>📌 Annotations</td><td>All colour-coded highlights added to this parcel's documents</td><td>Legal Advisor</td></tr>
+      <tr><td>🔀 Compare</td><td>Side-by-side comparison of 2+ selected documents</td><td>Legal Advisor</td></tr>
+      <tr><td>✓ Checklist</td><td>5-phase structured verification checklist; verdicts gate opinion drafting</td><td>Legal Advisor</td></tr>
+      <tr><td>📝 Opinion</td><td>Draft, section-by-section review, and digital sign of legal opinion</td><td>Legal Advisor</td></tr>
+      <tr><td>📋 Audit Trail</td><td>Full immutable log of every action on the parcel</td><td>System</td></tr>
+    </table>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════ -->
+<!-- CORE DATA MODEL               -->
+<!-- ══════════════════════════════ -->
+<section id="data-model">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#F0F3F8,#fff)">
+    <div class="phase-num" style="background:#475569">🗄</div>
+    <div>
+      <div class="phase-title">Core Data Model</div>
+      <div class="phase-subtitle">Key entities and how they relate</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <table class="data-table">
+      <tr><th>Entity</th><th>Key Fields</th><th>Relates To</th></tr>
+      <tr><td><strong>Parcel</strong></td><td>surveyNumber, location, area, status, riskScore, completionScore, auditTrail</td><td>Documents, Owners, Encumbrances, ReviewChecklist, LegalOpinion</td></tr>
+      <tr><td><strong>Document</strong></td><td>type (EC/PATTA/SALE_DEED/GIFT_DEED/POA/MISC), source, extractedFields, annotations, uploadDate</td><td>Parcel, DocumentAnnotation, OwnershipTransfer</td></tr>
+      <tr><td><strong>Owner</strong></td><td>name, type (Individual/HUF/Company), share%, nriStatus, pan (encrypted)</td><td>Parcel, OwnershipTransfer</td></tr>
+      <tr><td><strong>Encumbrance</strong></td><td>type (Mortgage/Lien/Easement), holder, amount, status, nocStatus, dischargeDate</td><td>Parcel, Document</td></tr>
+      <tr><td><strong>OwnershipTransfer</strong></td><td>year, from→to owners, type (Sale/Gift/Inheritance), registrationNumber</td><td>Owner, Document, Parcel</td></tr>
+      <tr><td><strong>ReviewChecklist</strong></td><td>phase (5 phases), items[verdict, lawyerNotes], blocksOpinion</td><td>Parcel</td></tr>
+      <tr><td><strong>LegalOpinion</strong></td><td>sections[], verdict (Safe/Caution/Do Not Proceed), signature, locked, signedAt</td><td>Parcel, Checklist</td></tr>
+      <tr><td><strong>DocumentAnnotation</strong></td><td>type (Risk/Query/Verified/Condition), text, note, createdBy, resolved</td><td>Document</td></tr>
+    </table>
+
+    <div class="info-box">
+      <strong>Parcel Status Lifecycle:</strong> Pending → In Review → Flagged (if risk escalated) → Verified (checklist complete) → Completed (opinion signed). Status is auto-updated by system as workflow progresses.
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 1: ONBOARDING & PROJECT SETUP                      -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase1">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EBF0FF,#fff)">
+    <div class="phase-num" style="background:var(--accent)">1</div>
+    <div>
+      <div class="phase-title">Phase 1 — Onboarding & Project Setup</div>
+      <div class="phase-subtitle">Project created, parcels registered, team assigned</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-portfolio">🏢 Portfolio Manager</span>
+      <span class="actor-tag actor-system">🤖 System</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Create Project</div>
+            <div class="step-desc">Portfolio Manager creates a new Real Estate Project in Landwise, sets name, geographic scope, and target acquisition timeline.</div>
+            <div class="badge-row">
+              <span class="badge badge-blue">Project created</span>
+              <span class="badge badge-purple">System generates project ID</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Register Parcels (Survey Numbers)</div>
+            <div class="step-desc">Site Manager registers each land parcel with survey number, taluk, village, district, and approximate area. Each parcel begins in <strong>Pending</strong> status.</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>Inputs Required</h5>
+                <ul>
+                  <li>Survey Number (e.g. 85/1A)</li>
+                  <li>District / Taluk / Village</li>
+                  <li>Area (acres / sqft)</li>
+                  <li>Subdivision details if any</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>System Creates</h5>
+                <ul>
+                  <li>Parcel record (UUID)</li>
+                  <li>Empty folder in Doc Repository</li>
+                  <li>Blank ReviewChecklist</li>
+                  <li>Audit trail entry</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Assign Legal Advisor & Site Manager</div>
+            <div class="step-desc">Portfolio Manager assigns a Legal Advisor (lawyer) and Site Manager to the project. Role-based access controls are applied. Both receive onboarding notifications.</div>
+            <div class="badge-row">
+              <span class="badge badge-blue">RBAC: Lawyer, Site Manager, Portfolio Manager</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="callout">
+      <div class="callout-icon">📍</div>
+      <div class="callout-content">
+        <h5>Entry Point: Parcel List (Left Panel)</h5>
+        <p>After setup, the Legal Advisor sees all parcels in the left panel of the Legal Advisor view, colour-coded by status: grey (Pending), blue (In Review), amber (Flagged), green (Verified), dark (Completed). Filter tabs allow "All / Pending / Flagged / Verified".</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 2: DOCUMENT UPLOAD                                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase2">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#E4F5EE,#fff)">
+    <div class="phase-num" style="background:var(--green)">2</div>
+    <div>
+      <div class="phase-title">Phase 2 — Document Upload & Organisation</div>
+      <div class="phase-subtitle">Site Manager uploads all physical documents into the Doc Repository</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-site">📊 Site Manager</span>
+      <span class="actor-tag actor-system">🤖 System</span>
+    </div>
+
+    <div class="info-box">
+      <strong>Doc Repository Hierarchy:</strong> Project → Site → Survey Number → Subdivision → Document Type (EC / PATTA / SALE_DEED / GIFT_DEED / POA / MISC)
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Navigate to Doc Repository → Correct Folder</div>
+            <div class="step-desc">Site Manager uses the folder tree in the Doc Repository view. Expands Project → Site → Survey Number → Subdivision. System shows upload progress % per folder and missing required doc types highlighted in amber.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Upload Scanned Documents</div>
+            <div class="step-desc">Drag-and-drop or file picker upload of PDF/image files. For each upload, Site Manager tags: document type, year range, and source (Uploaded / EC Registry / Revenue Dept).</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>Required Document Types</h5>
+                <ul>
+                  <li>EC (Encumbrance Certificate) — 30 years</li>
+                  <li>PATTA (Land Revenue Record)</li>
+                  <li>SALE DEED (all transfers)</li>
+                  <li>GIFT DEED (if applicable)</li>
+                  <li>POWER OF ATTORNEY (if NRI owner)</li>
+                  <li>MISC (survey sketches, agreements)</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>System Actions on Upload</h5>
+                <ul>
+                  <li>Create Document record with UUID</li>
+                  <li>Queue for OCR/AI extraction</li>
+                  <li>Update folder upload progress %</li>
+                  <li>Log upload event to audit trail</li>
+                  <li>Notify Legal Advisor of new docs</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Track Upload Completeness</div>
+            <div class="step-desc">Right panel of Doc Repository shows per-folder statistics: total docs, verified count, pending count, missing required types. Site Manager can see at a glance what is still needed before the lawyer can begin.</div>
+            <div class="badge-row">
+              <span class="badge badge-green">Checklist: Documents phase pre-populated</span>
+              <span class="badge badge-blue">Lawyer notified when minimum set reached</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 3: AI EXTRACTION                                    -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase3">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EDE9FF,#fff)">
+    <div class="phase-num" style="background:var(--purple)">3</div>
+    <div>
+      <div class="phase-title">Phase 3 — AI / OCR Field Extraction</div>
+      <div class="phase-subtitle">System automatically extracts and structures key data from every uploaded document</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-system">🤖 AI / System</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--purple-l);border-color:var(--purple);color:var(--purple)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">OCR Processing</div>
+            <div class="step-desc">Uploaded PDF/image is run through OCR engine. Supports Tamil + English bilingual text. Raw text layer is stored on the Document record.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--purple-l);border-color:var(--purple);color:var(--purple)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Structured Field Extraction</div>
+            <div class="step-desc">AI model extracts typed fields from the document based on its type. Each field is stored with a confidence score (0–100%).</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>EC Fields Extracted</h5>
+                <ul>
+                  <li>Survey Number & Extent</li>
+                  <li>All encumbrance entries</li>
+                  <li>Mortgage holders & amounts</li>
+                  <li>Discharge dates</li>
+                  <li>Certificate period covered</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>Sale Deed Fields Extracted</h5>
+                <ul>
+                  <li>Seller & buyer names</li>
+                  <li>Sale consideration amount</li>
+                  <li>Registration number & date</li>
+                  <li>Schedule of property (area)</li>
+                  <li>Stamp duty & registration fees</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--purple-l);border-color:var(--purple);color:var(--purple)">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Auto-Risk Detection Pass</div>
+            <div class="step-desc">After extraction, the system runs a set of rule-based checks across all documents for the parcel and generates preliminary Risk Flag cards. These surface in the Document Reader's right column and in Phase 5.</div>
+            <div class="badge-row">
+              <span class="badge badge-red">Active mortgage detected → Risk flag</span>
+              <span class="badge badge-amber">NRI owner detected → Risk flag</span>
+              <span class="badge badge-red">Missing 30-yr EC period → Risk flag</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 4: DOCUMENT REVIEW                                  -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase4">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EBF0FF,#fff)">
+    <div class="phase-num" style="background:var(--accent)">4</div>
+    <div>
+      <div class="phase-title">Phase 4 — Document Review & Annotation</div>
+      <div class="phase-subtitle">Lawyer reads, verifies extractions, and annotates every document</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Select Parcel from Left Panel</div>
+            <div class="step-desc">Legal Advisor clicks a parcel card in the left panel. Parcel status changes to <strong>In Review</strong>. Centre panel loads the Documents tab with a grid of all uploaded documents for this parcel (colour-coded: green = verified, amber = pending, red = issue).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Open Document Reader Modal</div>
+            <div class="step-desc">Clicking a document card opens the full-screen Document Reader modal — a 3-column workspace:</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>Col 1 — PDF Viewer (35%)</h5>
+                <ul>
+                  <li>Render full PDF / image</li>
+                  <li>Text search & highlight</li>
+                  <li>Page nav, zoom</li>
+                  <li>Tamil/English toggle</li>
+                  <li>Annotate: select text → choose colour</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>Col 2 — Extracted Fields (40%)</h5>
+                <ul>
+                  <li>AI-extracted field + value</li>
+                  <li>Confidence % badge</li>
+                  <li>Lawyer can override value</li>
+                  <li>Mark field as verified ✓</li>
+                  <li>Linked annotations appear here</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>Col 3 — Risk Flags (25%)</h5>
+                <ul>
+                  <li>Auto-detected risks for this doc</li>
+                  <li>Accept / Dismiss / Escalate</li>
+                  <li>Severity indicator (High/Med/Low)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">3</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Annotate Clauses in PDF</div>
+            <div class="step-desc">Lawyer selects text in PDF, picks an annotation colour, and adds a note. Annotations are saved to DocumentAnnotation records.</div>
+            <div class="ann-palette">
+              <div class="ann-swatch" style="background:#FEE8E8;color:#8B1A1A">🔴 Risk — Legal issue requiring action</div>
+              <div class="ann-swatch" style="background:#FEF3E2;color:#A05A00">🟡 Query — Unclear, needs clarification</div>
+              <div class="ann-swatch" style="background:#E4F5EE;color:#0A6E47">🟢 Verified — Confirmed correct</div>
+              <div class="ann-swatch" style="background:#EDE9FF;color:#4B1FA8">🔵 Condition — Subject to condition</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">4</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Verify or Override Extracted Fields</div>
+            <div class="step-desc">For each extracted field, the lawyer reviews the AI value and confidence score. If confidence is &lt;70%, lawyer is prompted to verify manually. Lawyer can type a corrected value — the override is logged in the audit trail.</div>
+            <div class="badge-row">
+              <span class="badge badge-green">≥90% confidence → Auto-highlighted for quick confirm</span>
+              <span class="badge badge-amber">&lt;70% confidence → Mandatory lawyer override</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">5</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Use AI Legal Bot for Clause Insights</div>
+            <div class="step-desc">On any clause, lawyer clicks "Ask AI" → a contextual popup shows relevant Tamil Nadu statutes, Madras High Court precedents, and sample language. The AI chat allows custom questions about the document.</div>
+            <div class="badge-row">
+              <span class="badge badge-purple">TN-specific statute references</span>
+              <span class="badge badge-purple">Madras HC case snippets</span>
+              <span class="badge badge-purple">Similar property language samples</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 5: RISK ANALYSIS                                    -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase5">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#FEE8E8,#fff)">
+    <div class="phase-num" style="background:var(--red)">5</div>
+    <div>
+      <div class="phase-title">Phase 5 — Risk Analysis & Escalation</div>
+      <div class="phase-subtitle">Lawyer reviews auto-detected risks and decides: Accept, Dismiss, or Escalate</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+      <span class="actor-tag actor-portfolio">🏢 Portfolio Manager</span>
+      <span class="actor-tag actor-system">🤖 System</span>
+    </div>
+
+    <div class="risk-grid">
+      <div class="risk-card risk-high">
+        <div class="risk-label">🔴 High Risk Auto-Flags</div>
+        <ul class="risk-items">
+          <li>Active mortgage / undischarged lien</li>
+          <li>Missing EC period (gap in 30 years)</li>
+          <li>Court case / eCourts litigation hit</li>
+          <li>NRI owner without valid POA</li>
+          <li>Forest / wetland / coastal restriction</li>
+        </ul>
+      </div>
+      <div class="risk-card risk-medium">
+        <div class="risk-label">🟡 Medium Risk Auto-Flags</div>
+        <ul class="risk-items">
+          <li>Partial release of mortgage</li>
+          <li>NRI ownership (POA present)</li>
+          <li>Area discrepancy between EC & Patta</li>
+          <li>Revenue records not matching survey</li>
+          <li>Ownership gap (&gt;5 years undocumented)</li>
+        </ul>
+      </div>
+      <div class="risk-card risk-low">
+        <div class="risk-label">🟢 Low Risk / Informational</div>
+        <ul class="risk-items">
+          <li>Name spelling variation (minor)</li>
+          <li>Old satisfied mortgage (discharged)</li>
+          <li>Non-material area rounding difference</li>
+          <li>HUF ownership (documentation adequate)</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-flow" style="margin-top:16px">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--red-l);border-color:var(--red);color:var(--red)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Review Risk Flag Cards</div>
+            <div class="step-desc">Each risk card shows: severity badge, description, source document reference, and three action buttons. Lawyer must action every flag before checklist Phase 5 (Final) can be completed.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--red-l);border-color:var(--red);color:var(--red)">2</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Action Every Risk Flag</div>
+            <div class="step-desc">For each risk, the lawyer chooses one of three actions:</div>
+            <div class="decision">
+              <div class="decision-title">🔀 Risk Flag Decision</div>
+              <div class="decision-branches">
+                <div class="decision-branch branch-green">
+                  <h6>✓ Accept</h6>
+                  <p>Risk acknowledged; not blocking (e.g. old discharged mortgage). Lawyer adds note. Flag marked accepted, parcel continues.</p>
+                </div>
+                <div class="decision-branch branch-amber">
+                  <h6>✗ Dismiss</h6>
+                  <p>Flag not applicable to this parcel (e.g. false positive from OCR). Lawyer explains dismissal in note.</p>
+                </div>
+                <div class="decision-branch branch-red">
+                  <h6>⚠ Escalate</h6>
+                  <p>Blocking issue (active mortgage, NRI POA missing). Moves to Escalation Queue. Parcel status → Flagged. Portfolio Manager notified.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="escalation-flow" class="callout">
+      <div class="callout-icon">⚠️</div>
+      <div class="callout-content">
+        <h5>Escalation Sub-Flow (Critical Issues)</h5>
+        <p>1. Lawyer escalates risk → moves to Escalation Queue<br>
+        2. Portfolio Manager receives notification<br>
+        3. Site Manager contacts relevant authority (bank for NOC, revenue dept for name correction, etc.)<br>
+        4. Clarification document uploaded to Doc Repository<br>
+        5. Lawyer reviews uploaded doc, marks escalation "Resolved" with a note<br>
+        6. Parcel risk flag removed; workflow can continue</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 6: CROSS-DOC COMPARISON                            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase6">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#FEF3E2,#fff)">
+    <div class="phase-num" style="background:var(--amber)">6</div>
+    <div>
+      <div class="phase-title">Phase 6 — Cross-Document Comparison</div>
+      <div class="phase-subtitle">Compare extracted fields across all documents to detect inconsistencies</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+      <span class="actor-tag actor-system">🤖 System</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--amber-l);border-color:var(--amber);color:var(--amber)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Run Consistency Check (Auto)</div>
+            <div class="step-desc">The Consistency Check tab auto-runs when the lawyer switches to it. System compares shared fields across all documents for the parcel (owner name, area, survey number, registration dates) and generates a consistency report.</div>
+            <div class="badge-row">
+              <span class="badge badge-green">✓ Match — consistent across all docs</span>
+              <span class="badge badge-amber">⚠ Minor variation — likely typo/spelling</span>
+              <span class="badge badge-red">✗ Mismatch — requires clarification</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--amber-l);border-color:var(--amber);color:var(--amber)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Manual Compare Tab (Side-by-Side)</div>
+            <div class="step-desc">Lawyer selects 2 or more documents in the Compare tab. System shows a side-by-side table of extracted fields. Mismatched cells are highlighted in red. Confidence scores shown per value.</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>Common Discrepancy Types</h5>
+                <ul>
+                  <li>Owner name spelling mismatch</li>
+                  <li>Area figures differ (acres vs sqft rounding)</li>
+                  <li>Survey number sub-division notation</li>
+                  <li>Registration date vs execution date</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>Lawyer Actions on Discrepancy</h5>
+                <ul>
+                  <li>Mark "Acceptable Variation" (minor)</li>
+                  <li>Mark "Needs Clarification" → yellow Query annotation</li>
+                  <li>Add note explaining judgment call</li>
+                  <li>Trigger query to Site Manager</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--amber-l);border-color:var(--amber);color:var(--amber)">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Query Resolution Sub-Flow</div>
+            <div class="step-desc">When "Needs Clarification" is selected, a Query Annotation is created and Site Manager is notified via the notification bell. Query appears in a "Pending Queries" list in the right panel.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div id="query-flow" class="callout">
+      <div class="callout-icon">💬</div>
+      <div class="callout-content">
+        <h5>Query Resolution Sub-Flow (Document Discrepancy)</h5>
+        <p>1. Lawyer marks discrepancy "Needs Clarification" → yellow annotation created<br>
+        2. System adds to "Pending Queries" in right panel; Site Manager notified<br>
+        3. Site Manager uploads clarification document (e.g. name confirmation from revenue office)<br>
+        4. Lawyer reviews uploaded doc in Document Reader<br>
+        5. Lawyer marks query "Resolved"; annotation updated to green "Verified"<br>
+        6. Checklist item advances; consistency check re-runs</p>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 7: PROPERTY HISTORY                                 -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase7">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EBF0FF,#fff)">
+    <div class="phase-num" style="background:var(--accent)">7</div>
+    <div>
+      <div class="phase-title">Phase 7 — Property History Review</div>
+      <div class="phase-subtitle">30-year ownership and encumbrance timeline analysis</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Open Property History Tab</div>
+            <div class="step-desc">System renders a vertical interactive timeline merging: ownership transfers (sale deeds, gift deeds, inheritance) and encumbrance events (mortgage creation, partial release, full discharge) over 30 years.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Verify Ownership Chain Continuity</div>
+            <div class="step-desc">Lawyer checks that ownership chain is unbroken: every "To" owner in a transfer matches the "From" owner in the next transfer. Any gap year is highlighted in amber.</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>Timeline Event Types</h5>
+                <ul>
+                  <li>🔵 Sale (registered sale deed)</li>
+                  <li>🟢 Gift / Transfer</li>
+                  <li>🟡 Inheritance / Partition</li>
+                  <li>🔴 Mortgage created</li>
+                  <li>⚫ Mortgage discharged</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>Key Checks</h5>
+                <ul>
+                  <li>No ownership gaps &gt;5 years</li>
+                  <li>All mortgages have discharge events</li>
+                  <li>Current PATTA owner = last transfer "To"</li>
+                  <li>No overlapping ownership periods</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Click Events for Detail</div>
+            <div class="step-desc">Each timeline node is clickable — opens a detail popup with the linked document, all extracted fields for that event, and any annotations. Lawyer can drag the timeline to compare two periods side-by-side.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 8: CHECKLIST VERIFICATION                          -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase8">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#E4F5EE,#fff)">
+    <div class="phase-num" style="background:var(--green)">8</div>
+    <div>
+      <div class="phase-title">Phase 8 — Structured Checklist Verification</div>
+      <div class="phase-subtitle">5-phase gated workflow — each phase must be complete before the next unlocks</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+    </div>
+
+    <div class="ck-phases-grid">
+      <div class="ck-phase-card">
+        <div class="ck-phase-num">1</div>
+        <div class="ck-phase-title">Documents</div>
+        <div class="ck-phase-items">All required doc types uploaded? Legible? Correct period?</div>
+      </div>
+      <div class="ck-phase-card">
+        <div class="ck-phase-num">2</div>
+        <div class="ck-phase-title">Ownership</div>
+        <div class="ck-phase-items">All owners verified? Transfer chain complete? NRI compliance?</div>
+      </div>
+      <div class="ck-phase-card">
+        <div class="ck-phase-num">3</div>
+        <div class="ck-phase-title">Encumbrances</div>
+        <div class="ck-phase-items">All mortgages identified? NOCs obtained? Lien discharges confirmed?</div>
+      </div>
+      <div class="ck-phase-card">
+        <div class="ck-phase-num">4</div>
+        <div class="ck-phase-title">Compliance</div>
+        <div class="ck-phase-items">TN legal requirements met? Forest/wetland clear? Registration valid?</div>
+      </div>
+      <div class="ck-phase-card">
+        <div class="ck-phase-num">5</div>
+        <div class="ck-phase-title">Final Review</div>
+        <div class="ck-phase-items">All risks addressed? All queries resolved? Ready for opinion?</div>
+      </div>
+    </div>
+
+    <div class="info-box">
+      <strong>Verdict Options per Checklist Item:</strong>
+      &nbsp;<span class="badge badge-green">✓ Verified</span>&nbsp; — confirmed correct &nbsp;|&nbsp;
+      <span class="badge badge-amber">⚠ Queried</span>&nbsp; — pending clarification (blocks completion) &nbsp;|&nbsp;
+      <span class="badge badge-blue">∅ Waived</span>&nbsp; — not applicable (lawyer adds reason)
+    </div>
+
+    <div class="warn-box">
+      <strong>Gate Rule:</strong> If any Phase 1–4 item has an unresolved Query verdict, Phase 5 is locked. If Phase 5 is incomplete, the Opinion tab's Draft & Sign controls are disabled. This is a hard system enforcement.
+    </div>
+
+    <div class="step-flow" style="margin-top:16px">
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Complete Each Phase Sequentially</div>
+            <div class="step-desc">Lawyer works through phases in order. For each checklist item: read the description, refer to relevant document/annotation, choose verdict (Verified / Queried / Waived), optionally add a note. Progress shown as "3/7 items" per phase.</div>
+          </div>
+        </div>
+      </div>
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">2</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Checklist Completion Unlocks Opinion</div>
+            <div class="step-desc">Once all 5 phases are fully verified/waived, the system auto-unlocks the Opinion tab. Parcel's completionScore reaches 100. Right panel shows all phases as ✓ Done. Opinion drafting button activates.</div>
+            <div class="badge-row">
+              <span class="badge badge-green">completionScore = 100 → Opinion tab unlocked</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 9: OPINION DRAFTING                                 -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase9">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EBF0FF,#fff)">
+    <div class="phase-num" style="background:var(--accent)">9</div>
+    <div>
+      <div class="phase-title">Phase 9 — Legal Opinion Drafting</div>
+      <div class="phase-subtitle">Lawyer drafts, reviews, and approves each section of the legal opinion</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+      <span class="actor-tag actor-system">🤖 AI / System</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Open Opinion Tab (now unlocked)</div>
+            <div class="step-desc">System presents the opinion workspace with 5 pre-defined sections. Each section has an AI-generated draft (shown with purple left-border as "AI Generated"). Lawyer must review and explicitly accept each section.</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>Opinion Sections</h5>
+                <ul>
+                  <li>1. Title & Property Description</li>
+                  <li>2. Document Findings</li>
+                  <li>3. Risks & Encumbrances</li>
+                  <li>4. Legal Verdict</li>
+                  <li>5. Terms & Conditions</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>Section States</h5>
+                <ul>
+                  <li>Draft — AI-generated, unreviewed</li>
+                  <li>Editing — Lawyer is modifying</li>
+                  <li>Accepted ✓ — Lawyer approved</li>
+                  <li>(All 5 accepted → sign enabled)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Edit & Accept Each Section</div>
+            <div class="step-desc">For each section: click "Edit" to enter free-text editing mode (editable div). Lawyer writes/modifies the content. Clicks "Accept" to lock the section green. A section can be un-accepted and re-edited before the final sign. Accepted sections show a green border.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--accent-l);border-color:var(--accent);color:var(--accent)">3</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Choose Final Verdict</div>
+            <div class="step-desc">In the right panel "Send Report" card, lawyer selects the overall verdict before signing:</div>
+            <div class="decision">
+              <div class="decision-title">📋 Overall Legal Verdict</div>
+              <div class="decision-branches">
+                <div class="decision-branch branch-green">
+                  <h6>✅ Safe to Proceed</h6>
+                  <p>Title is clear. No blocking encumbrances. Recommend proceeding with acquisition.</p>
+                </div>
+                <div class="decision-branch branch-amber">
+                  <h6>⚠ Proceed with Caution</h6>
+                  <p>Minor issues noted. Conditions attached. Recommend proceeding subject to conditions.</p>
+                </div>
+                <div class="decision-branch branch-red">
+                  <h6>🚫 Do Not Proceed</h6>
+                  <p>Blocking legal issues identified. Title not clear. Recommend not acquiring.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  PHASE 10: SIGN-OFF & FINALIZE                            -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="phase10">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#E4F5EE,#fff)">
+    <div class="phase-num" style="background:var(--green)">10</div>
+    <div>
+      <div class="phase-title">Phase 10 — Digital Sign-off & Finalization</div>
+      <div class="phase-subtitle">Lawyer digitally signs the opinion — this is irreversible and locks the record</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="actor-row">
+      <span class="actor-tag actor-lawyer">⚖️ Legal Advisor</span>
+      <span class="actor-tag actor-system">🤖 System</span>
+    </div>
+
+    <div class="step-flow">
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">1</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Click "Sign & Finalise"</div>
+            <div class="step-desc">With all 5 sections accepted and a verdict selected, the "Sign & Finalise" button becomes active. Clicking it triggers a confirmation dialog: "You are about to digitally sign this opinion. This action cannot be undone."</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">2</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">System Applies Digital Signature</div>
+            <div class="step-desc">System computes a digital signature hash over the opinion content, lawyer identity, and timestamp. Stored on LegalOpinion.signature. The <code>locked = true</code> flag is set.</div>
+            <div class="step-details">
+              <div class="step-detail-box">
+                <h5>What Gets Locked</h5>
+                <ul>
+                  <li>Opinion content (no edits possible)</li>
+                  <li>All 5 section texts</li>
+                  <li>Final verdict</li>
+                  <li>Lawyer identity + timestamp</li>
+                </ul>
+              </div>
+              <div class="step-detail-box">
+                <h5>System Updates</h5>
+                <ul>
+                  <li>Parcel status → Completed</li>
+                  <li>LegalOpinion.locked = true</li>
+                  <li>signedAt = current timestamp</li>
+                  <li>Audit trail: "Opinion signed"</li>
+                  <li>Portfolio Manager notified</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">3</div>
+          <div class="step-line"></div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Export Signed Opinion PDF</div>
+            <div class="step-desc">Lawyer (or Portfolio Manager) exports the opinion as a watermarked, locked PDF. PDF includes: lawyer name watermark, signed timestamp, digital signature verification string. Copy-paste of content is disabled.</div>
+            <div class="badge-row">
+              <span class="badge badge-green">Watermark: lawyer name + timestamp</span>
+              <span class="badge badge-blue">PDF content copy-paste disabled</span>
+              <span class="badge badge-purple">Signature hash verifiable</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="step-row">
+        <div style="position:relative">
+          <div class="step-circle" style="background:var(--green-l);border-color:var(--green);color:var(--green)">4</div>
+        </div>
+        <div class="step-body">
+          <div class="step-card">
+            <div class="step-title">Parcel Marked Completed — Dashboard Updates</div>
+            <div class="step-desc">Parcel card in the left panel turns dark (Completed). Dashboard KPIs update: "Opinions Signed" count increments, "Pending" count decrements. Full audit trail remains accessible but immutable. Data retained for 7 years per policy.</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  MODULE REFERENCE                                          -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="modules">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#F0F3F8,#fff)">
+    <div class="phase-num" style="background:#475569">📦</div>
+    <div>
+      <div class="phase-title">Module Reference</div>
+      <div class="phase-subtitle">8 integrated functional modules and their purpose in the flow</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <div class="module-grid">
+      <div class="module-box">
+        <div class="module-box-icon">📄</div>
+        <div class="module-box-title">1. Document Reader & Extraction</div>
+        <div class="module-box-desc">Full-screen 3-column modal: PDF viewer · AI extracted fields with confidence · Risk flags. Tamil/English toggle. Text search. Used in Phase 4.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">🎨</div>
+        <div class="module-box-title">2. Document Annotations</div>
+        <div class="module-box-desc">Colour-coded highlights on PDF text: Risk (red) · Query (yellow) · Verified (green) · Condition (blue). Tracked per lawyer, per document, with timestamps. Used in Phases 4–6.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">🚩</div>
+        <div class="module-box-title">3. Risk Highlighter</div>
+        <div class="module-box-desc">Auto-detects legal risk patterns. Lawyer actions each flag: Accept / Dismiss / Escalate. Escalated items enter Portfolio Manager queue. Used in Phase 5.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">🔀</div>
+        <div class="module-box-title">4. Cross-Document Comparator</div>
+        <div class="module-box-desc">Side-by-side field comparison across 2+ documents. Mismatches highlighted. Lawyer marks discrepancies as acceptable or queries. Used in Phase 6.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">💡</div>
+        <div class="module-box-title">5. AI Legal Insight Bot</div>
+        <div class="module-box-desc">Contextual popup on any clause: TN statute references, Madras HC case law, sample language. Chat interface for custom questions. Used in Phase 4.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">✅</div>
+        <div class="module-box-title">6. Structured Review Checklist</div>
+        <div class="module-box-desc">5-phase gated checklist: Documents → Ownership → Encumbrances → Compliance → Final Review. Incomplete phases block opinion drafting. Used in Phase 8.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">📜</div>
+        <div class="module-box-title">7. Property History Timeline</div>
+        <div class="module-box-desc">Interactive 30-year vertical timeline merging ownership transfers + encumbrance events. Clickable nodes, drag-to-compare. Used in Phase 7.</div>
+      </div>
+      <div class="module-box">
+        <div class="module-box-icon">📝</div>
+        <div class="module-box-title">8. Opinion Drafting Workspace</div>
+        <div class="module-box-desc">5-section structured opinion with AI-generated drafts. Section-by-section accept. Final verdict selection. Digital signature locks. PDF export with watermark. Used in Phases 9–10.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<!--  INTEGRATIONS                                              -->
+<!-- ══════════════════════════════════════════════════════════ -->
+<section id="integrations">
+<div class="phase">
+  <div class="phase-header" style="background:linear-gradient(135deg,#EDE9FF,#fff)">
+    <div class="phase-num" style="background:var(--purple)">🔗</div>
+    <div>
+      <div class="phase-title">External Integrations</div>
+      <div class="phase-subtitle">Systems the Legal Advisor product connects to for data and verification</div>
+    </div>
+  </div>
+  <div class="phase-body">
+    <table class="data-table">
+      <tr><th>System</th><th>Data Fetched</th><th>Triggered When</th></tr>
+      <tr>
+        <td>🏛 Revenue Department API</td>
+        <td>Patta, Chitta, Adangal, A-Register (real-time land records)</td>
+        <td>On-demand during Phase 4 / 7 verification</td>
+      </tr>
+      <tr>
+        <td>📋 EC Registry</td>
+        <td>Official 30-year Encumbrance Certificate, mortgage & discharge history</td>
+        <td>On upload or batch import; feeds Phase 3 extraction</td>
+      </tr>
+      <tr>
+        <td>⚖️ eCourts Database</td>
+        <td>Litigation history for property address and owner names</td>
+        <td>Phase 5 risk detection pass</td>
+      </tr>
+      <tr>
+        <td>🏦 Bank APIs</td>
+        <td>Active loan status, NOC availability, discharge confirmation</td>
+        <td>Phase 5 escalation — encumbrance resolution</td>
+      </tr>
+      <tr>
+        <td>🌍 Environmental Constraint DB</td>
+        <td>Forest/wetland classification, coastal zone status, protected area flag</td>
+        <td>Phase 5 / Checklist Phase 4 (Compliance)</td>
+      </tr>
+      <tr>
+        <td>📧 Email / Notification Service</td>
+        <td>Alerts for new docs, pending queries, escalations, signed opinions</td>
+        <td>Real-time on any status change</td>
+      </tr>
+    </table>
+
+    <div class="info-box" style="margin-top:16px">
+      <strong>Security Layer:</strong> All documents encrypted at rest (AES-256) and in transit (TLS 1.3). PAN, Aadhaar, phone, email stored in encrypted vault. Role-based access enforced at API level. Complete audit trail logged with user, IP, timestamp, and change delta. Digital signatures use private key cryptography and are verifiable post-sign.
+    </div>
+  </div>
+</div>
+</section>
+
+</main>
+</div>
+
+<footer>
+  <p style="font-size:14px;font-weight:700;margin-bottom:8px">Landwise Legal Advisor — End-to-End Functional Flow</p>
+  <p>Version 1.0 &nbsp;·&nbsp; April 2026 &nbsp;·&nbsp; Confidential — Internal Use Only</p>
+  <p style="margin-top:8px;opacity:.6">Covers 10 workflow phases · 8 functional modules · 4 actor roles · 6 external integrations</p>
+</footer>
+
+<script>
+// Active sidebar link on scroll
+const sections = document.querySelectorAll('section[id]');
+const links = document.querySelectorAll('.sidebar a');
+window.addEventListener('scroll', () => {
+  let current = '';
+  sections.forEach(s => {
+    if (window.scrollY >= s.offsetTop - 160) current = s.id;
+  });
+  links.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+  });
+});
+// Click nav
+links.forEach(l => l.addEventListener('click', () => {
+  links.forEach(x => x.classList.remove('active'));
+  l.classList.add('active');
+}));
+</script>
+</body>
+</html>

@@ -160,13 +160,34 @@ class HierarchyGenerator:
                     processed_doc_nos.add(doc_key)
                 
                 # Ensure ancestors exist in by_sn for deep hierarchy
-                if '/' in sn:
-                    parts = sn.split('/')
-                    for depth in range(1, len(parts)):
-                        p_sn = "/".join(parts[:depth])
-                        p_norm = self._normalize_sn(p_sn)
-                        if p_norm not in by_sn:
-                            by_sn[p_norm] = {"survey_number": p_sn, "transactions": [], "children": {}}
+                current_sn = sn
+                while True:
+                    p_sn = None
+                    if '/' in current_sn:
+                        base, last_part = current_sn.rsplit('/', 1)
+                        # Check for alphanumeric subdivision at the END of the current_sn path
+                        # Example: 222/6A -> 222/6
+                        match = re.match(r'^(\d+)[A-Z]+$', last_part.upper())
+                        if match:
+                            p_sn = f"{base}/{match.group(1)}"
+                        else:
+                            # Fallback to pure slash split: 222/6 -> 222
+                            p_sn = base
+                    else:
+                        # Plain alphanumeric split: 6A -> 6
+                        match = re.match(r'^(\d+)[A-Z]+$', current_sn.upper())
+                        if match:
+                            p_sn = match.group(1)
+                    
+                    if not p_sn: break
+                    
+                    p_norm = self._normalize_sn(p_sn)
+                    if not p_norm or p_norm == self._normalize_sn(current_sn): break
+                    
+                    if p_norm not in by_sn:
+                        by_sn[p_norm] = {"survey_number": p_sn, "transactions": [], "children": {}}
+                    
+                    current_sn = p_sn
 
         # 4. Link into Hierarchy based on Parent Logic
         all_child_keys = set()
@@ -230,12 +251,22 @@ class HierarchyGenerator:
         links = []
 
         def build_mermaid_nodes(nodes, parent_tx_id=None):
-            def get_earliest_date(n):
+            def get_min_date(n):
                 txs = n.get('transactions', [])
-                if not txs: return "9999-12-31"
-                return self._parse_date_for_sort(min(txs, key=lambda x: self._parse_date_for_sort(x.get('date', '9999'))).get('date', '9999'))
+                current_min = "9999-12-31"
+                if txs:
+                    current_min = self._parse_date_for_sort(min(txs, key=lambda x: self._parse_date_for_sort(x.get('date', '9999'))).get('date', '9999'))
+                
+                # Recurse into children to find the true timeline start for this branch
+                children = n.get('children', {})
+                child_list = list(children.values()) if isinstance(children, dict) else children
+                for c in child_list:
+                    c_min = get_min_date(c)
+                    if c_min < current_min:
+                        current_min = c_min
+                return current_min
             
-            sorted_nodes = sorted(nodes, key=get_earliest_date)
+            sorted_nodes = sorted(nodes, key=get_min_date)
             for node in sorted_nodes:
                 sn = node.get('survey_number', 'N/A')
                 txs = sorted(node.get('transactions', []), key=lambda x: self._parse_date_for_sort(x.get('date', '')))
@@ -247,6 +278,14 @@ class HierarchyGenerator:
                     mermaid_lines.append(f'    {safe_id}["S.No: {sn}"]:::base')
                     if parent_tx_id: links.append(f"    {parent_tx_id} --> {safe_id}")
                     current_link_parent = safe_id
+                    
+                    # Ensure structural nodes have tooltip data
+                    node_data_map[safe_id] = {
+                        "date": "N/A", "doc": "NO TRANSACTION FOUND", "survey": sn,
+                        "nature": "Structural Node (Not present in EC transactions)",
+                        "executant": "N/A", "claimant": "N/A",
+                        "sq_feet": "N/A", "supporting_docs": "This node was inferred from subdivisions to maintain structural hierarchy."
+                    }
                 else:
                     for tx in txs:
                         self.node_counter += 1
@@ -478,8 +517,18 @@ class HierarchyGenerator:
             # Sort nodes by earliest transaction date for consistent horizontal layout
             def get_min_date(n):
                 txs = n.get('transactions', [])
-                if not txs: return "9999-12-31"
-                return min([self._parse_date_for_sort(t.get('date', '9999')) for t in txs])
+                current_min = "9999-12-31"
+                if txs:
+                    current_min = min([self._parse_date_for_sort(t.get('date', '9999')) for t in txs])
+                
+                # Recurse into children so structural nodes align with their first child
+                children = n.get('children', {})
+                child_list = list(children.values()) if isinstance(children, dict) else children
+                for c in child_list:
+                    c_min = get_min_date(c)
+                    if c_min < current_min:
+                        current_min = c_min
+                return current_min
             
             sorted_nodes = sorted(node_list, key=get_min_date)
             
@@ -533,7 +582,17 @@ class HierarchyGenerator:
                         "id": node_id,
                         "type": "default",
                         "position": {"x": node_x, "y": node_y},
-                        "data": {"label": f"S.No: {sn}", "survey_number": sn, "level": level},
+                        "data": {
+                            "label": f"S.No: {sn}", 
+                            "survey_number": sn, 
+                            "level": level,
+                            "document_number": "NO TRANSACTION FOUND",
+                            "nature": "Not present in EC transactions",
+                            "executant": "N/A",
+                            "claimant": "N/A",
+                            "sq_feet": "N/A",
+                            "notes": "This structural parent was added because subdivisions (children) exist, though this specific node has no transactions in the EC."
+                        },
                         "className": "sn-node"
                     })
                     if p_id:

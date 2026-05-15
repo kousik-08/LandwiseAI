@@ -6,25 +6,30 @@ class Utils:
     @staticmethod
     def setup_directories():
         """
-        Ensures all required directories exist at startup.
+        Ensures required local directories exist at startup. With S3
+        backend, only tmp/ and .logs/ are needed on disk; inputs/ and
+        outputs/ are virtual prefixes in the bucket.
         """
-        REQUIRED_DIRS = ["inputs", "outputs", "tmp", ".logs"]
-        for directory in REQUIRED_DIRS:
+        backend = (os.environ.get("STORAGE_BACKEND") or "local").strip().lower()
+
+        for directory in ["tmp", ".logs"]:
             os.makedirs(directory, exist_ok=True)
 
-        # Ensure log sub-directories exist before any request handlers/middleware use them
-        # Logs are split by endpoint in middleware: .logs/<endpoint>/
         LOG_SUBDIRS = ["validate", "download-ec", "getlandinfo", "other"]
         for sub in LOG_SUBDIRS:
             os.makedirs(os.path.join(".logs", sub), exist_ok=True)
 
-        # Validate outputs base (requests create outputs/validate/<uuid>/...)
-        os.makedirs(os.path.join("outputs", "validate"), exist_ok=True)
-        # Global vault for persistent PDF storage
-        os.makedirs(os.path.join("outputs", "storage", "vault"), exist_ok=True)
-        # Ensure inputs base exists
-        os.makedirs(os.path.join("inputs", "validate"), exist_ok=True)
-        print("Directory Structure Initialized")
+        if backend != "s3":
+            for d in [
+                "inputs",
+                "outputs",
+                os.path.join("outputs", "validate"),
+                os.path.join("outputs", "storage", "vault"),
+                os.path.join("inputs", "validate"),
+            ]:
+                os.makedirs(d, exist_ok=True)
+
+        print(f"Directory Structure Initialized (backend={backend})")
 
     @staticmethod
     def construct_output(

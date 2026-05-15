@@ -12,15 +12,42 @@
     cursor: crosshair !important;
 }
 
-/* Ensure highlighter layer is interactive */
-.pdf-highlighter__highlight-part {
-    background-color: rgba(255, 230, 0, 0.4) !important;
+/* ── Highlight visibility ──────────────────────────────────────────────
+ * The react-pdf-highlighter library ships its own CSS for highlights, but
+ * the library's selectors can lose the cascade in production builds. We
+ * pin explicit visibility here so notes always render clearly in BOTH the
+ * Document Analysis pane (persistent PdfAnnotator) and the Notes Cockpit
+ * preview (freshly mounted PdfAnnotator).
+ */
+
+/* Text highlights — yellow translucent wash over the selected text rects */
+.pdf-highlighter__highlight-part,
+.Highlight__part {
+    background-color: rgba(255, 230, 0, 0.45) !important;
     cursor: pointer;
     transition: background-color 0.2s;
 }
 
-.pdf-highlighter__highlight-part:hover {
-    background-color: rgba(255, 230, 0, 0.6) !important;
+.pdf-highlighter__highlight-part:hover,
+.Highlight__part:hover {
+    background-color: rgba(255, 230, 0, 0.65) !important;
+}
+
+/* Area highlights — yellow translucent fill PLUS a clear orange border so
+ * the drawn region is unmistakable even when the underlying area is busy
+ * with ink. Previously this class had no rule and area notes were rendered
+ * as invisible zero-styled divs in the cockpit preview. */
+.AreaHighlight,
+.AreaHighlight__part {
+    background-color: rgba(255, 200, 0, 0.32) !important;
+    border: 2px solid rgba(220, 100, 0, 0.85) !important;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.AreaHighlight:hover,
+.AreaHighlight__part:hover {
+    background-color: rgba(255, 200, 0, 0.5) !important;
 }
 
 /* Custom Tip (Annotation Input) */
@@ -55,12 +82,13 @@
 
 /* Popup Bubble */
 .anno-popup-card {
-    background: #1e293b;
-    color: white;
+    background: white;
+    color: #1e293b;
     padding: 12px;
     border-radius: 12px;
     width: 220px;
-    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+    border: 1px solid #e2e8f0;
 }
 
 .anno-popup-header {
@@ -71,24 +99,25 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    color: #94a3b8;
+    color: #64748b;
     margin-bottom: 6px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid #f1f5f9;
     padding-bottom: 6px;
 }
 
 .anno-popup-content {
     font-size: 11px;
     line-height: 1.5;
-    color: #e2e8f0;
+    color: #334155;
+    font-weight: 500;
 }
 
 /* Scroll Adjustment */
 .PdfHighlighter {
-    background: #525659 !important;
-    /* Standard dark PDF background */
+    background: #f1f5f9 !important;
+    /* Light grey PDF background */
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
 }
 
 .PdfHighlighter::-webkit-scrollbar {
@@ -96,11 +125,32 @@
 }
 
 .PdfHighlighter::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.1);
     border-radius: 10px;
 }
 
 /* Adjust Tip Positioning */
 .Tip {
     z-index: 1000;
+}
+
+/* ── Flash highlight when navigated from Notes Cockpit ─────────────────
+ * Pulses an amber halo + outline for 1.5s so the user's eye lands on the
+ * referenced highlight after a deep-link click. The flash uses outline +
+ * box-shadow only — NOT background-color — so the highlight's base fill
+ * keeps showing after the animation finishes. Earlier versions ended the
+ * animation at background-color: transparent with `forwards`, which left
+ * every highlight permanently invisible 1.5s after a click-through.
+ */
+@keyframes pdf-focus-flash {
+    0%   { outline: 0 solid rgba(245, 158, 11, 0);    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    20%  { outline: 3px solid rgba(245, 158, 11, 0.95); box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.45); }
+    100% { outline: 0 solid rgba(245, 158, 11, 0);    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+.__pdf_focused__ .pdf-highlighter__highlight-part,
+.__pdf_focused__ .Highlight__part,
+.__pdf_focused__ .AreaHighlight,
+.__pdf_focused__ .AreaHighlight__part {
+    animation: pdf-focus-flash 1.5s ease-out;
 }

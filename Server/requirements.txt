@@ -8,3 +8,7 @@ uvicorn
 python-multipart
 pymupdf
 Pillow
+pytesseract
+sqlalchemy
+psycopg2-binary
+boto3

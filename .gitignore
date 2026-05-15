@@ -25,3 +25,6 @@ Server/env/
 Server/.env
 Server/*.pdf
 Server/test_output/
+
+Server/*.dump
+Server/landwiseai.dump

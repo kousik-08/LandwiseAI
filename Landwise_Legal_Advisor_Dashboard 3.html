@@ -1,0 +1,1743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Landwise — Legal Advisor Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#F0F3F8;--surface:#FFFFFF;--border:#E0E6EF;
+  --text:#0C1829;--text2:#4A5A72;--text3:#8A9BB8;
+  --accent:#1A3FD4;--accent-l:#EBF0FF;
+  --green:#0A6E47;--green-l:#E4F5EE;--green-b:#6EE7B7;
+  --amber:#A05A00;--amber-l:#FEF3E2;--amber-b:#FCD34D;
+  --red:#8B1A1A;--red-l:#FEE8E8;--red-b:#FCA5A5;
+  --purple:#4B1FA8;--purple-l:#EDE9FF;--purple-b:#C4B5FD;
+  --f1:'Syne',sans-serif;--f2:'DM Sans',sans-serif;--fm:'JetBrains Mono',monospace;
+}
+body{font-family:var(--f2);background:var(--bg);color:var(--text);min-height:100vh}
+.shell{display:grid;grid-template-rows:56px 1fr;height:100vh;overflow:hidden;position:relative}
+
+/* ── TOP BAR ── */
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 24px;gap:0;z-index:200}
+.back-btn{display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:7px;background:var(--bg);border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--text2);cursor:pointer;margin-right:16px}
+.brand{font-family:var(--f1);font-size:18px;font-weight:800;letter-spacing:-0.02em}
+.brand span{color:var(--accent)}
+.top-tabs{display:flex;gap:2px;margin-left:24px}
+.ttab{padding:7px 16px;border-radius:7px;font-size:12.5px;font-weight:500;color:var(--text2);cursor:pointer;border:none;background:none;transition:all .15s;display:flex;align-items:center;gap:6px}
+.ttab:hover{background:var(--bg)}
+.ttab.active{background:var(--accent);color:#fff}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.project-pill{display:flex;align-items:center;gap:6px;background:var(--purple-l);border:1px solid var(--purple-b);border-radius:100px;padding:4px 12px;font-size:11px;font-weight:600;color:var(--purple)}
+
+/* ── GLOBAL SEARCH ── */
+.global-search-wrap{position:relative}
+.global-search-input{width:260px;padding:7px 12px 7px 32px;border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:var(--f2);background:var(--bg);outline:none;transition:all .15s}
+.global-search-input:focus{border-color:var(--accent);width:340px}
+.global-search-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:13px;color:var(--text3)}
+.gsr{position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.12);max-height:420px;overflow-y:auto;display:none;z-index:500;min-width:400px}
+.gsr.active{display:block}
+.gsr-cat{padding:8px 14px;font-size:9px;font-weight:700;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid var(--border);background:var(--bg)}
+.gsr-item{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
+.gsr-item:hover{background:var(--accent-l)}
+.gsr-item-icon{font-size:16px;flex-shrink:0}
+.gsr-item-text{flex:1}
+.gsr-item-title{font-size:11px;font-weight:600;color:var(--text)}
+.gsr-item-sub{font-size:9px;color:var(--text3);margin-top:2px}
+.gsr-item-badge{font-size:8px;font-weight:600;padding:2px 6px;border-radius:100px;font-family:var(--fm)}
+
+/* ── NOTIFICATION BELL ── */
+.notif-bell{position:relative;width:36px;height:36px;border-radius:8px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .12s}
+.notif-bell:hover{background:var(--accent-l);border-color:var(--accent)}
+.notif-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;background:var(--red);color:#fff;border-radius:50%;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid var(--surface);font-family:var(--fm)}
+.notif-panel{position:absolute;top:calc(100% + 8px);right:0;width:380px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.15);display:none;z-index:600;max-height:500px;overflow:hidden}
+.notif-panel.active{display:flex;flex-direction:column}
+.notif-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.notif-header-title{font-family:var(--f1);font-size:14px;font-weight:700}
+.notif-mark-all{font-size:10px;color:var(--accent);cursor:pointer;font-weight:600;background:none;border:none}
+.notif-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
+.notif-tab{flex:1;padding:8px;text-align:center;font-size:10px;font-weight:600;color:var(--text3);cursor:pointer;border:none;border-bottom:2px solid transparent;background:none}
+.notif-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.notif-list{flex:1;overflow-y:auto;max-height:360px}
+.notif-item{display:flex;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer}
+.notif-item:hover{background:var(--bg)}
+.notif-item.unread{background:var(--accent-l)}
+.notif-item-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.notif-item-content{flex:1;min-width:0}
+.notif-item-title{font-size:11px;font-weight:600;color:var(--text);line-height:1.4}
+.notif-item-desc{font-size:10px;color:var(--text2);margin-top:2px;line-height:1.4}
+.notif-item-time{font-size:9px;color:var(--text3);margin-top:4px;font-family:var(--fm)}
+
+.avatar{width:32px;height:32px;border-radius:50%;background:var(--purple);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff}
+
+/* ── MAIN 3-COL ── */
+.main{display:grid;grid-template-columns:280px 1fr 300px;overflow:hidden;height:100%}
+
+/* ── LEFT PANEL ── */
+.left-panel{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.panel-header{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.panel-h-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.panel-h-title{font-family:var(--f1);font-size:13px;font-weight:700}
+.search-bar{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:6px 10px}
+.search-bar input{background:none;border:none;outline:none;font-size:11px;color:var(--text);flex:1;font-family:var(--f2)}
+.filter-tabs{display:flex;gap:4px;margin-top:8px}
+.ftab{padding:3px 10px;border-radius:100px;font-size:10px;font-weight:500;color:var(--text3);border:1px solid var(--border);background:none;cursor:pointer}
+.ftab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.parcel-list{flex:1;overflow-y:auto;padding:8px}
+
+/* ── PARCEL ITEM ── */
+.parcel-item{padding:10px 12px;border-radius:9px;border:1.5px solid var(--border);margin-bottom:6px;cursor:pointer;transition:all .12s;background:var(--surface)}
+.parcel-item:hover{border-color:var(--accent);background:var(--accent-l)}
+.parcel-item.active{border-color:var(--accent);background:var(--accent-l)}
+.parcel-item.st-verified{border-left:3px solid var(--green)}
+.parcel-item.st-flagged{border-left:3px solid var(--red)}
+.parcel-item.st-pending{border-left:3px solid var(--amber)}
+.pi-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:3px}
+.pi-survey{font-family:var(--fm);font-size:11px;font-weight:600;color:var(--text)}
+.pi-status{font-size:8.5px;font-weight:600;padding:2px 7px;border-radius:100px;font-family:var(--fm);letter-spacing:.06em}
+.pi-loc{font-size:10px;color:var(--text3)}
+.pi-bottom{display:flex;align-items:center;gap:6px;margin-top:5px}
+.pi-docs{font-size:9.5px;color:var(--text2)}
+.pi-bar{flex:1;height:3px;background:var(--border);border-radius:2px;overflow:hidden}
+.pi-bar-fill{height:100%;border-radius:2px}
+.pi-score{font-family:var(--fm);font-size:9px;font-weight:600}
+
+/* ── CENTRE ── */
+.centre-panel{overflow-y:auto;display:flex;flex-direction:column}
+.survey-header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 20px;flex-shrink:0;position:sticky;top:0;z-index:10}
+.sh-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px}
+.sh-survey{font-family:var(--f1);font-size:18px;font-weight:700;letter-spacing:-.01em}
+.sh-meta{font-size:11px;color:var(--text3);margin-top:3px}
+.sh-actions{display:flex;gap:6px}
+.btn{padding:7px 14px;border-radius:8px;font-size:11.5px;font-weight:600;cursor:pointer;border:none;transition:all .12s;display:flex;align-items:center;gap:5px;font-family:var(--f2)}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#1535b8}
+.btn-secondary{background:var(--bg);border:1px solid var(--border);color:var(--text2)}
+.btn-secondary:hover{background:var(--border)}
+.btn-ghost{background:none;border:1px solid var(--border);color:var(--text2)}
+.btn-green{background:var(--green);color:#fff}
+.chips-row{display:flex;gap:6px;flex-wrap:wrap}
+.chip{display:flex;align-items:center;gap:5px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:4px 9px;font-size:10.5px;color:var(--text2)}
+
+/* Content tabs */
+.ctabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface);padding:0 20px;flex-shrink:0;position:sticky;top:89px;z-index:9;overflow-x:auto}
+.ctab{padding:10px 16px;font-size:12px;font-weight:500;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .12s;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.ctab:hover{color:var(--text)}
+.ctab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.ctab-count{font-family:var(--fm);font-size:8px;background:var(--accent-l);color:var(--accent);padding:1px 5px;border-radius:100px}
+.content-area{padding:20px;flex:1}
+
+/* Section */
+.section{margin-bottom:22px}
+.section-title{font-family:var(--f1);font-size:12px;font-weight:700;color:var(--text2);letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* ── DOCS GRID ── */
+.docs-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.doc-card{border:1.5px solid var(--border);border-radius:9px;padding:12px 11px;cursor:pointer;transition:all .12s;position:relative;background:var(--surface)}
+.doc-card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.doc-card.verified-doc{border-color:var(--green-b);background:var(--green-l)}
+.doc-card.issue-doc{border-color:var(--red-b);background:var(--red-l)}
+.doc-card.pending-doc{border-color:var(--amber-b);background:var(--amber-l)}
+.doc-dot{position:absolute;top:8px;right:8px;width:7px;height:7px;border-radius:50%}
+.doc-name{font-size:10.5px;font-weight:600;color:var(--text);line-height:1.3}
+.doc-src{font-family:var(--fm);font-size:8.5px;color:var(--text3);margin-top:3px}
+.doc-check-row{display:flex;align-items:center;gap:5px;margin-top:7px}
+.doc-check{width:14px;height:14px;border-radius:3px;border:1.5px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:9px;flex-shrink:0}
+.doc-check.checked{background:var(--green);border-color:var(--green);color:#fff}
+.doc-check-label{font-size:9.5px;color:var(--text2)}
+
+/* ── TIMELINE ── */
+.ec-timeline{position:relative;padding-left:16px}
+.ec-timeline::before{content:'';position:absolute;left:5px;top:0;bottom:0;width:1.5px;background:var(--border)}
+.ec-item{display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;position:relative}
+.ec-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;margin-top:3px;position:absolute;left:-21px;border:2px solid #fff}
+.ec-year{font-family:var(--fm);font-size:10px;font-weight:600;color:var(--text3);width:36px;flex-shrink:0}
+.ec-content{flex:1;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:7px 10px}
+.ec-type{font-size:11px;font-weight:600;color:var(--text)}
+.ec-detail{font-size:10px;color:var(--text2);margin-top:2px}
+.ec-badge{font-family:var(--fm);font-size:8px;font-weight:600;padding:1px 7px;border-radius:100px;margin-left:6px}
+
+/* ── AI CHAT ── */
+.ai-panel{background:var(--purple-l);border:1.5px solid var(--purple-b);border-radius:10px;padding:14px;margin-bottom:12px}
+.ai-header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.ai-icon{width:28px;height:28px;border-radius:8px;background:var(--purple);display:flex;align-items:center;justify-content:center;font-size:14px}
+.ai-title{font-family:var(--f1);font-size:13px;font-weight:700;color:var(--purple)}
+.ai-check-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.ai-check{display:flex;align-items:center;gap:6px;padding:6px 9px;border-radius:7px;background:#fff;border:1px solid var(--purple-b);font-size:10.5px;font-weight:500;color:var(--text)}
+.run-ai-btn{width:100%;margin-top:10px;padding:9px;background:var(--purple);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--f2);display:flex;align-items:center;justify-content:center;gap:6px;transition:background .12s}
+.run-ai-btn:hover{background:#3a188c}
+.ai-chat-container{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface);margin-top:12px}
+.ai-chat-messages{height:300px;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg)}
+.ai-msg{max-width:85%;padding:10px 14px;border-radius:10px;font-size:11px;line-height:1.6}
+.ai-msg.bot{background:var(--surface);border:1px solid var(--border);align-self:flex-start;color:var(--text)}
+.ai-msg.user{background:var(--purple);color:#fff;align-self:flex-end}
+.ai-msg .typing span{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--text3);margin:0 2px;animation:typingDot 1.2s infinite}
+.ai-msg .typing span:nth-child(2){animation-delay:.2s}
+.ai-msg .typing span:nth-child(3){animation-delay:.4s}
+@keyframes typingDot{0%,80%,100%{opacity:.3;transform:scale(.8)}40%{opacity:1;transform:scale(1.1)}}
+.ai-chat-input-wrap{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--border);background:var(--surface)}
+.ai-chat-input{flex:1;padding:9px 12px;border:1px solid var(--border);border-radius:8px;font-size:11px;font-family:var(--f2);outline:none;background:var(--bg)}
+.ai-chat-input:focus{border-color:var(--accent)}
+.ai-chat-send{padding:9px 16px;background:var(--purple);color:#fff;border:none;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--f2)}
+.ai-suggestions{display:flex;gap:6px;flex-wrap:wrap;padding:8px 14px;border-top:1px solid var(--border);background:var(--surface)}
+.ai-suggestion{padding:5px 10px;border:1px solid var(--purple-b);border-radius:100px;font-size:9px;color:var(--purple);cursor:pointer;background:var(--purple-l);font-weight:600;transition:all .1s}
+.ai-suggestion:hover{background:var(--purple);color:#fff}
+
+/* ── CONSISTENCY ── */
+.consistency-item{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;margin-bottom:5px;background:var(--bg);border:1px solid var(--border);font-size:11px;transition:all .12s}
+.consistency-item:hover{border-color:var(--accent)}
+.ci-icon{font-size:13px;flex-shrink:0}
+.ci-label{flex:1;color:var(--text2)}
+.ci-status{font-family:var(--fm);font-size:9px;font-weight:600;padding:2px 8px;border-radius:100px}
+.ci-actions{display:flex;gap:4px;margin-left:6px}
+.ci-btn{padding:3px 7px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);transition:all .1s}
+.ci-btn:hover{background:var(--border)}
+.ci-resolved{opacity:.5;text-decoration:line-through}
+
+/* ── SCORE CARD ── */
+.score-card{background:linear-gradient(135deg,#1A3FD4,#0F2A8F);border-radius:10px;padding:16px;color:#fff;display:flex;align-items:center;gap:16px;margin-bottom:14px}
+.score-ring{width:64px;height:64px;flex-shrink:0;position:relative}
+.score-ring svg{width:100%;height:100%}
+.score-ring-val{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-family:var(--fm);font-size:16px;font-weight:600;color:#fff}
+.score-info{}
+.score-label{font-size:11px;opacity:.7;margin-bottom:4px}
+.score-title{font-family:var(--f1);font-size:16px;font-weight:700}
+.score-sub{font-size:10px;opacity:.6;margin-top:3px}
+
+/* ── RIGHT PANEL ── */
+.right-panel{background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column}
+.rp-section{padding:14px 16px;border-bottom:1px solid var(--border)}
+.rp-title{font-family:var(--f1);font-size:12px;font-weight:700;color:var(--text2);letter-spacing:.04em;text-transform:uppercase;margin-bottom:10px}
+.progress-steps{display:flex;flex-direction:column;gap:6px}
+.ps-item{display:flex;align-items:center;gap:8px;padding:6px 0}
+.ps-circle{width:18px;height:18px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;border:1.5px solid}
+.ps-circle.done{background:var(--green);border-color:var(--green);color:#fff}
+.ps-circle.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.ps-circle.todo{background:#fff;border-color:var(--border);color:var(--text3)}
+.ps-label{font-size:11px;font-weight:500}
+.ps-label.done{color:var(--green)}
+.ps-label.active{color:var(--accent)}
+.ps-label.todo{color:var(--text3)}
+.heatmap{display:grid;grid-template-columns:repeat(8,1fr);gap:3px}
+.hm-cell{width:100%;aspect-ratio:1;border-radius:3px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--fm);font-size:7px;font-weight:600;transition:transform .1s;position:relative}
+.hm-cell:hover{transform:scale(1.3);z-index:5}
+.hm-tooltip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:var(--text);color:#fff;padding:4px 8px;border-radius:4px;font-size:8px;white-space:nowrap;margin-bottom:4px;z-index:10}
+.hm-cell:hover .hm-tooltip{display:block}
+.activity-feed{display:flex;flex-direction:column;gap:8px}
+.act-item{display:flex;gap:8px;align-items:flex-start}
+.act-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.act-text{font-size:11px;color:var(--text);line-height:1.4}
+.act-time{font-family:var(--fm);font-size:9px;color:var(--text3);margin-top:2px}
+.send-report{padding:14px 16px}
+.report-card{background:linear-gradient(135deg,var(--green-l),#fff);border:1.5px solid var(--green-b);border-radius:10px;padding:14px}
+.report-card-title{font-family:var(--f1);font-size:13px;font-weight:700;color:var(--green);margin-bottom:4px}
+.report-card-sub{font-size:11px;color:var(--text2);margin-bottom:10px;line-height:1.5}
+.verdict-select{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.vs-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1.5px solid var(--border);cursor:pointer;transition:all .12s;background:#fff}
+.vs-item:hover,.vs-item.selected{border-color:var(--green);background:var(--green-l)}
+.vs-dot{width:10px;height:10px;border-radius:50%}
+.vs-label{font-size:11px;font-weight:600}
+.send-btn{width:100%;padding:10px;background:var(--green);color:#fff;border:none;border-radius:8px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:var(--f2);display:flex;align-items:center;justify-content:center;gap:6px}
+.send-btn:hover{background:#085a38}
+
+/* Tab content */
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ── CHECKLIST ── */
+.ck-phases{display:flex;flex-direction:column;gap:16px}
+.ck-phase{border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.ck-phase-header{background:var(--bg);padding:12px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px;cursor:pointer}
+.ck-phase-header:hover{background:var(--border)}
+.ck-phase-progress{font-family:var(--fm);font-size:10px;color:var(--text2);margin-left:auto}
+.ck-phase-content{padding:12px;background:var(--surface)}
+.ck-item{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;padding:10px;border:1px solid var(--border);border-radius:7px;background:var(--bg)}
+.ck-item:last-child{margin-bottom:0}
+.ck-checkbox{width:18px;height:18px;border:1.5px solid var(--border);border-radius:4px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:1px;transition:all .12s}
+.ck-checkbox.checked{background:var(--accent);border-color:var(--accent);color:#fff;font-size:12px}
+.ck-content{flex:1}
+.ck-title{font-size:11px;font-weight:600;color:var(--text);margin-bottom:3px}
+.ck-detail{font-size:10px;color:var(--text3);line-height:1.4;margin-bottom:6px}
+.ck-badge{display:inline-block;padding:2px 6px;border-radius:100px;font-size:9px;font-weight:600;font-family:var(--fm)}
+.ck-done{background:var(--green-l);color:var(--green)}
+.ck-queried{background:var(--amber-l);color:var(--amber)}
+.ck-waived{background:var(--border);color:var(--text3)}
+.ck-verdict-btns{display:flex;gap:4px;margin-top:8px}
+.ck-verdict-btn{flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:9px;font-weight:600;cursor:pointer;transition:all .12s}
+.ck-verdict-btn:hover{background:var(--border)}
+.ck-verdict-btn.verify{border-color:var(--green);color:var(--green)}
+.ck-verdict-btn.query{border-color:var(--amber);color:var(--amber)}
+.ck-verdict-btn.waive{border-color:var(--text3);color:var(--text3)}
+
+/* ── OPINION ── */
+.op-section{border:1.5px solid var(--border);border-radius:9px;padding:14px;margin-bottom:14px;background:var(--bg);transition:all .15s}
+.op-section.editing{border-color:var(--accent);background:var(--accent-l)}
+.op-section.accepted{border-color:var(--green-b);background:var(--green-l)}
+.op-section-title{font-size:12px;font-weight:700;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.op-badge{display:inline-block;font-family:var(--fm);font-size:9px;background:var(--purple-l);color:var(--purple);padding:2px 6px;border-radius:100px;margin-left:auto}
+.op-badge.accepted-badge{background:var(--green-l);color:var(--green)}
+.op-text{font-size:11px;line-height:1.6;color:var(--text2);margin-bottom:8px}
+.op-text.ai-gen{background:rgba(169,152,255,.15);padding:8px;border-left:3px solid var(--purple);border-radius:4px}
+.op-text-editable{font-size:11px;line-height:1.6;color:var(--text);padding:10px;border:1px solid var(--accent);border-radius:6px;background:#fff;min-height:60px;outline:none;margin-bottom:8px}
+.op-actions{display:flex;gap:6px;margin-top:8px}
+.op-btn{flex:1;padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:9px;font-weight:600;cursor:pointer;transition:all .12s}
+.op-btn:hover{background:var(--border)}
+.op-btn-accept{border-color:var(--green);color:var(--green)}
+.op-btn-edit{border-color:var(--accent);color:var(--accent)}
+.op-sign-btn{width:100%;padding:12px;margin-top:16px;background:var(--accent);color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--f2);transition:all .12s}
+.op-sign-btn:hover{background:#1535b8}
+.op-sign-btn.locked{background:var(--green);cursor:not-allowed}
+
+/* ── AUDIT ── */
+.audit-item{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:10px}
+.audit-item:last-child{border-bottom:none}
+.audit-icon{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.audit-action{font-weight:600;color:var(--text)}
+.audit-user{color:var(--accent);font-weight:600}
+.audit-detail{color:var(--text2);margin-top:2px}
+.audit-time{font-family:var(--fm);font-size:9px;color:var(--text3);margin-top:2px}
+
+/* ── MODAL ── */
+.modal-overlay{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:1000;justify-content:center;align-items:center}
+.modal-overlay.active{display:flex}
+.modal-box{background:var(--surface);border-radius:12px;width:90vw;height:90vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);flex-shrink:0}
+.modal-title{font-family:var(--f1);font-size:16px;font-weight:700}
+.modal-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--text2);padding:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center}
+.modal-close:hover{color:var(--text)}
+.modal-body{flex:1;display:flex;overflow:hidden}
+
+/* Doc reader */
+.dr-workspace{display:flex;gap:0;height:100%;width:100%}
+.dr-pdf-viewer{flex:0 0 35%;border-right:1px solid var(--border);overflow-y:auto;background:var(--bg);padding:16px}
+.dr-extracted{flex:1;display:flex;flex-direction:column;border-right:1px solid var(--border);padding:16px;overflow-y:auto}
+.dr-risks{flex:0 0 25%;padding:16px;overflow-y:auto;background:var(--bg)}
+.dr-field{margin-bottom:16px}
+.dr-label{font-size:11px;font-weight:600;color:var(--text3);margin-bottom:6px;display:block}
+.dr-value{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;justify-content:space-between}
+.dr-confidence{font-size:10px;font-weight:600;padding:2px 6px;border-radius:100px;background:var(--accent-l);color:var(--accent);font-family:var(--fm)}
+.dr-toggle-row{display:flex;gap:8px;margin-bottom:16px}
+.dr-toggle-btn{padding:6px 12px;border-radius:7px;border:1px solid var(--border);background:var(--surface);font-size:11px;font-weight:600;cursor:pointer;transition:all .12s}
+.dr-toggle-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.dr-pdf-content{background:#fff;border:1px solid var(--border);border-radius:8px;padding:16px;font-size:12px;line-height:1.6;color:var(--text)}
+.dr-pdf-highlight{background:#FFFF99;color:#333}
+.rf-item{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px}
+.rf-header{display:flex;align-items:center;gap:6px;margin-bottom:6px}
+.rf-icon{font-size:16px}
+.rf-label{flex:1;font-size:11px;font-weight:600;color:var(--text)}
+.rf-text{font-size:10px;color:var(--text2);margin:6px 0;line-height:1.5}
+.rf-actions{display:flex;gap:4px}
+.rf-btn{flex:1;padding:5px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);font-size:9px;font-weight:600;cursor:pointer;transition:all .12s}
+.rf-btn:hover{background:var(--border)}
+.ann-color{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:all .12s}
+.ann-color:hover{transform:scale(1.15)}
+.ann-color.risk{background:#FF6B6B;border-color:#c92a2a}
+.ann-color.query{background:#FCD34D;border-color:#b8860b}
+.ann-color.verified-clr{background:#51CF66;border-color:#2b8a3e}
+.ann-color.condition{background:#A78BFA;border-color:#6d28d9}
+.ann-color.active{transform:scale(1.2);border-width:3px}
+
+/* Report modal */
+.report-actions-bar{display:flex;gap:8px;justify-content:center;padding:16px;border-top:1px solid var(--border);flex-shrink:0}
+
+/* ── DASHBOARD OVERVIEW ── */
+#dashboardContainer{display:none;position:absolute;top:56px;left:0;right:0;bottom:0;z-index:100;background:var(--bg);overflow-y:auto;padding:24px}
+#dashboardContainer.active{display:block}
+.db-kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:24px}
+.db-kpi{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px 16px;position:relative;overflow:hidden}
+.db-kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;border-radius:12px 12px 0 0}
+.db-kpi.kpi-blue::before{background:var(--accent)}
+.db-kpi.kpi-green::before{background:var(--green)}
+.db-kpi.kpi-red::before{background:#EF4444}
+.db-kpi.kpi-amber::before{background:#F59E0B}
+.db-kpi.kpi-purple::before{background:var(--purple)}
+.db-kpi-val{font-family:var(--fm);font-size:28px;font-weight:700;color:var(--text);margin-bottom:4px}
+.db-kpi-label{font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.06em}
+.db-kpi-sub{font-size:10px;color:var(--text2);margin-top:6px}
+.db-kpi-icon{position:absolute;right:14px;top:14px;font-size:22px;opacity:.2}
+.db-2col{display:grid;grid-template-columns:1fr 340px;gap:16px;margin-bottom:16px}
+.db-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:18px}
+.db-card-title{font-family:var(--f1);font-size:12px;font-weight:700;color:var(--text2);letter-spacing:.04em;text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+.db-parcel-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;border:1px solid var(--border);margin-bottom:6px;cursor:pointer;transition:all .12s;background:var(--bg)}
+.db-parcel-row:hover{border-color:var(--accent);background:var(--accent-l)}
+.db-bar-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:11px}
+.db-bar-label{width:90px;color:var(--text2);font-size:10px;flex-shrink:0}
+.db-bar-track{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden}
+.db-bar-fill{height:100%;border-radius:4px;transition:width .4s ease}
+.db-bar-count{font-family:var(--fm);font-size:10px;font-weight:600;width:28px;text-align:right;color:var(--text2)}
+.db-act-item{display:flex;gap:8px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border)}
+.db-act-item:last-child{border-bottom:none}
+.db-act-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:4px}
+.db-act-text{font-size:10.5px;color:var(--text);line-height:1.4;flex:1}
+.db-act-time{font-family:var(--fm);font-size:9px;color:var(--text3);margin-top:2px}
+.db-score-mini{display:flex;align-items:center;gap:8px}
+.db-score-bar{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.db-score-fill{height:100%;border-radius:3px}
+.db-alert{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border-radius:8px;margin-bottom:8px;border-left:3px solid}
+.db-alert.red{background:var(--red-l);border-color:var(--red)}
+.db-alert.amber{background:var(--amber-l);border-color:var(--amber)}
+.db-alert-text{font-size:10.5px;color:var(--text);flex:1}
+.db-alert-tag{font-size:9px;font-weight:700;padding:2px 7px;border-radius:100px;font-family:var(--fm);flex-shrink:0;margin-top:1px}
+
+/* ── MAP ── */
+#mapViewContainer{display:none;position:absolute;top:56px;left:0;right:0;bottom:0;z-index:100;background:var(--bg)}
+#mapViewContainer.active{display:flex}
+.map-sidebar{width:320px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.map-sidebar-header{padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.map-search-bar{display:flex;align-items:center;gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 12px;margin-top:8px}
+.map-search-bar input{background:none;border:none;outline:none;font-size:11px;color:var(--text);flex:1;font-family:var(--f2)}
+.map-layers{display:flex;gap:4px;margin-top:8px;flex-wrap:wrap}
+.map-layer-btn{padding:4px 10px;border-radius:100px;font-size:9px;font-weight:600;border:1px solid var(--border);background:var(--surface);color:var(--text2);cursor:pointer;transition:all .12s}
+.map-layer-btn.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.map-parcel-list{flex:1;overflow-y:auto;padding:8px}
+.map-parcel-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;border:1px solid var(--border);margin-bottom:6px;cursor:pointer;transition:all .12s;background:var(--surface)}
+.map-parcel-item:hover,.map-parcel-item.active{border-color:var(--accent);background:var(--accent-l)}
+.map-parcel-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.map-parcel-info{flex:1}
+.map-parcel-name{font-size:11px;font-weight:600}
+.map-parcel-loc{font-size:9px;color:var(--text3)}
+.map-area{flex:1;position:relative}
+#mainMap{width:100%;height:100%}
+.map-doc-card{width:260px}
+.map-doc-card-title{font-family:var(--f1);font-size:12px;font-weight:700}
+.map-doc-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:6px;cursor:pointer;transition:all .1s;font-size:10px;font-weight:500;color:var(--text)}
+.map-doc-item:hover{background:var(--accent-l);color:var(--accent)}
+
+/* Doc repo */
+#docRepoContainer{display:none;position:absolute;top:56px;left:0;right:0;bottom:0;z-index:100;background:var(--border)}
+#docRepoContainer.active{display:grid;grid-template-columns:260px 1fr 320px}
+.repo-sidebar{background:var(--surface);overflow-y:auto;display:flex;flex-direction:column;border-right:1px solid var(--border);height:100%}
+.repo-content{background:var(--surface);overflow-y:auto;padding:20px;height:100%}
+.repo-search{padding:12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.repo-search input{width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:var(--f2);background:var(--bg)}
+.folder-tree{padding:8px;flex:1;overflow-y:auto}
+.folder-item{display:block}
+.folder-toggle{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;border-radius:6px;transition:all .12s;background:none;border:none;width:100%;text-align:left;font-size:11px;font-weight:600;color:var(--text);font-family:var(--f2)}
+.folder-toggle:hover{background:var(--bg)}
+.folder-toggle.active{background:var(--accent-l);color:var(--accent)}
+.folder-children{padding-left:12px;display:none}
+.folder-item.open > .folder-children{display:block}
+.doc-item-tree{display:flex;align-items:center;gap:6px;padding:6px 8px;cursor:pointer;border-radius:6px;transition:all .12s;background:none;border:none;width:100%;text-align:left;font-size:10px;color:var(--text2);font-family:var(--f2)}
+.doc-item-tree:hover{background:var(--bg)}
+.breadcrumb{display:flex;align-items:center;gap:6px;margin-bottom:16px;padding:12px;background:var(--bg);border-radius:8px;font-size:10px;color:var(--text2);font-family:var(--fm)}
+.repo-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat-card{padding:12px;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center}
+.stat-number{font-size:16px;font-weight:700;color:var(--accent);font-family:var(--fm)}
+.stat-label{font-size:9px;color:var(--text3);margin-top:4px}
+.repo-file-item{display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);margin-bottom:8px;transition:all .12s}
+.repo-file-item:hover{border-color:var(--accent);background:var(--accent-l)}
+.repo-file-icon{font-size:20px}
+.repo-file-info{flex:1}
+.repo-file-name{font-size:11px;font-weight:600;color:var(--text)}
+.repo-file-meta{font-size:9px;color:var(--text3);margin-top:2px}
+.repo-file-btn{padding:4px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface);font-size:9px;font-weight:600;cursor:pointer;transition:all .12s}
+.repo-file-btn:hover{border-color:var(--accent);color:var(--accent)}
+#docRepoContainer .right-panel{background:var(--surface);border-left:1px solid var(--border);overflow-y:auto;display:flex;flex-direction:column;height:100%}
+
+/* ── TOAST ── */
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:2000;display:flex;flex-direction:column;gap:8px}
+.toast{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:10px;background:var(--surface);border:1px solid var(--border);box-shadow:0 8px 32px rgba(0,0,0,.12);min-width:300px;animation:slideInRight .3s ease;font-size:11px}
+.toast.success{border-left:4px solid var(--green)}
+.toast.warning{border-left:4px solid var(--amber)}
+.toast.error{border-left:4px solid var(--red)}
+.toast.info{border-left:4px solid var(--accent)}
+.toast-icon{font-size:16px;flex-shrink:0}
+.toast-content{flex:1}
+.toast-title{font-weight:600;color:var(--text)}
+.toast-msg{color:var(--text2);font-size:10px;margin-top:2px}
+.toast-close{background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0}
+@keyframes slideInRight{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideOutRight{from{opacity:1;transform:translateX(0)}to{opacity:0;transform:translateX(40px)}}
+
+::-webkit-scrollbar{width:4px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+::-webkit-scrollbar-track{background:transparent}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.content-area>*{animation:fadeUp .25s ease both}
+
+/* Leaflet popup override */
+.leaflet-popup-content-wrapper{padding:0;border-radius:10px;overflow:hidden}
+.leaflet-popup-content{margin:0;min-width:260px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- ══════════ TOP BAR ══════════ -->
+<div class="topbar">
+  <div class="back-btn">← Back</div>
+  <div class="brand">LAND<span>WISE</span></div>
+  <div class="top-tabs">
+    <button class="ttab active" data-view="dashboard">⊞ Dashboard</button>
+    <button class="ttab" data-view="map">🗺 Map View</button>
+    <button class="ttab" data-view="documents">📁 Doc Repository</button>
+    <button class="ttab" data-view="legal">⚖ Legal Advisor</button>
+  </div>
+  <div class="topbar-right">
+    <div class="global-search-wrap">
+      <span class="global-search-icon">🔍</span>
+      <input type="text" class="global-search-input" id="globalSearchInput" placeholder="Search parcels, documents, annotations…" autocomplete="off">
+      <div class="gsr" id="globalSearchResults"></div>
+    </div>
+    <div class="project-pill">🏘 Real Estate Project</div>
+    <div class="notif-bell" id="notifBell">
+      🔔
+      <div class="notif-badge" id="notifBadge">5</div>
+      <div class="notif-panel" id="notifPanel">
+        <div class="notif-header">
+          <div class="notif-header-title">Notifications</div>
+          <button class="notif-mark-all" id="markAllReadBtn">Mark all read</button>
+        </div>
+        <div class="notif-tabs" id="notifTabsBar">
+          <button class="notif-tab active" data-ntype="all">All</button>
+          <button class="notif-tab" data-ntype="documents">Documents</button>
+          <button class="notif-tab" data-ntype="flags">Flags</button>
+          <button class="notif-tab" data-ntype="reports">Reports</button>
+        </div>
+        <div class="notif-list" id="notifList"></div>
+      </div>
+    </div>
+    <div class="avatar">LA</div>
+  </div>
+</div>
+
+<!-- ══════════ DASHBOARD OVERVIEW ══════════ -->
+<div id="dashboardContainer">
+  <div id="dashboardContent"></div>
+</div>
+
+<!-- ══════════ MAIN 3-COLUMN (Legal Advisor) ══════════ -->
+<div class="main" id="mainLayout">
+  <div class="left-panel">
+    <div class="panel-header">
+      <div class="panel-h-top">
+        <div class="panel-h-title" id="parcelCountTitle">68 Parcels</div>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:10px" data-view="map">🗺 Map</button>
+      </div>
+      <div class="search-bar">
+        <span>🔍</span>
+        <input type="text" placeholder="Search survey number…" id="parcelSearchInput">
+      </div>
+      <div class="filter-tabs" id="parcelFilterTabs">
+        <button class="ftab active" data-filter="all">All</button>
+        <button class="ftab" data-filter="pending">Pending</button>
+        <button class="ftab" data-filter="flagged">Flagged</button>
+        <button class="ftab" data-filter="verified">Verified</button>
+      </div>
+    </div>
+    <div class="parcel-list" id="parcelList"></div>
+  </div>
+  <div class="centre-panel">
+    <div class="survey-header">
+      <div class="sh-top">
+        <div><div class="sh-survey" id="surveyTitle">Survey 45/2B</div><div class="sh-meta" id="surveyMeta">Kelambi Village · Hosur Taluk · Krishnagiri District</div></div>
+        <div class="sh-actions">
+          <button class="btn btn-primary" id="btnReVerify">🔄 Re-verify</button>
+          <button class="btn btn-secondary" id="btnExport">📋 Export</button>
+        </div>
+      </div>
+      <div class="chips-row" id="chipsRow"></div>
+    </div>
+    <div class="ctabs" id="ctabsBar">
+      <div class="ctab active" data-tab="docs">Documents <span class="ctab-count" id="docCountBadge">6</span></div>
+      <div class="ctab" data-tab="history">📜 Property History</div>
+      <div class="ctab" data-tab="ai">🤖 AI Legal Bot</div>
+      <div class="ctab" data-tab="consistency">🔗 Consistency Check</div>
+      <div class="ctab" data-tab="annotations">📌 Annotations <span class="ctab-count" id="annCountBadge">2</span></div>
+      <div class="ctab" data-tab="compare">🔀 Compare</div>
+      <div class="ctab" data-tab="checklist">✓ Checklist</div>
+      <div class="ctab" data-tab="opinion">📝 Opinion</div>
+      <div class="ctab" data-tab="audit">📋 Audit Trail</div>
+    </div>
+    <div class="content-area" id="contentArea"></div>
+  </div>
+  <div class="right-panel" id="rightPanel"></div>
+</div>
+
+<!-- ══════════ MAP VIEW ══════════ -->
+<div id="mapViewContainer">
+  <div class="map-sidebar">
+    <div class="map-sidebar-header">
+      <div style="font-family:var(--f1);font-size:14px;font-weight:700">🗺 Project Map</div>
+      <div class="map-search-bar">
+        <span style="color:var(--text3)">🔍</span>
+        <input type="text" placeholder="Search survey number on map…" id="mapSearchInput">
+      </div>
+      <div class="map-layers">
+        <button class="map-layer-btn active" data-layer="parcels">Parcels</button>
+        <button class="map-layer-btn" data-layer="satellite">Satellite</button>
+        <button class="map-layer-btn" data-layer="zones">Zones</button>
+      </div>
+    </div>
+    <div class="map-parcel-list" id="mapParcelList"></div>
+  </div>
+  <div class="map-area"><div id="mainMap"></div></div>
+</div>
+
+<!-- ══════════ DOC REPOSITORY ══════════ -->
+<div id="docRepoContainer">
+  <div class="repo-sidebar">
+    <div class="repo-search"><input type="text" placeholder="Search documents…"></div>
+    <div class="folder-tree" id="folderTree"></div>
+  </div>
+  <div class="repo-content" id="repoContent"></div>
+  <div class="right-panel" id="repoRightPanel"></div>
+</div>
+
+<!-- ══════════ DOC READER MODAL ══════════ -->
+<div class="modal-overlay" id="docModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title" id="modalDocTitle">Document Reader</div>
+      <button class="modal-close" id="closeDocModalBtn">✕</button>
+    </div>
+    <div class="modal-body" id="docModalBody"></div>
+  </div>
+</div>
+
+<!-- ══════════ REPORT EXPORT MODAL ══════════ -->
+<div class="modal-overlay" id="reportModal">
+  <div class="modal-box" style="max-width:900px;height:auto;max-height:90vh">
+    <div class="modal-header">
+      <div class="modal-title">Export Legal Opinion Report</div>
+      <button class="modal-close" id="closeReportModalBtn">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:24px" id="reportModalBody"></div>
+    <div class="report-actions-bar">
+      <button class="btn btn-primary" id="btnExportPDF">📄 Download PDF</button>
+      <button class="btn btn-secondary" id="btnExportPrint">🖨 Print</button>
+      <button class="btn btn-secondary" id="closeReportBtn2">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<!-- SCRIPT -->
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<script>
+/* ══════════ DATA ══════════ */
+var PARCELS = [
+  {id:"45/2B",loc:"Kelambi Village",taluk:"Hosur Taluk",district:"Krishnagiri",status:"verified",score:88,acres:3.45,owners:6,landType:"Dry Agricultural Land",glv:"8.4L/acre",lastSale:2019,courtCases:false,
+   docs:[{name:"Original Sale Deed",src:"tnreginet",year:2019,status:"verified",icon:"📄"},{name:"Patta",src:"eservices.tn",year:2023,status:"verified",icon:"📋"},{name:"Chitta and Adangal",src:"eservices.tn",year:2023,status:"verified",icon:"📊"},{name:"FMB Sketch",src:"TNSW",year:2020,status:"verified",icon:"📐"},{name:"Encumbrance Certificate",src:"tnreginet",year:"30yr",status:"pending",icon:"🔒"},{name:"A-Register Extract",src:"Revenue Dept",year:2022,status:"verified",icon:"📜"}],
+   timeline:[{year:1994,type:"ownership",title:"Settlement Deed — Original family division",detail:"Murugan family estate divided among 3 heirs · No encumbrance",status:"verified",color:"green"},{year:2001,type:"ownership",title:"Sale Deed — Murugan to Kumar",detail:"Full transfer · Reg No. 5423/2001 · ₹2.8L",status:"verified",color:"green"},{year:2008,type:"encumbrance",title:"Mortgage — Indian Bank",detail:"Agricultural loan ₹12L · Fully discharged Jan 2012",status:"resolved",color:"amber"},{year:2011,type:"ownership",title:"Sale Deed — Kumar to Rajan",detail:"Full transfer · Reg No. 7834/2011 · ₹18L",status:"verified",color:"green"},{year:2015,type:"encumbrance",title:"Mortgage — State Bank of India",detail:"₹45L outstanding · Partial release 2018 · 2.25 acres STILL ENCUMBERED",status:"active",color:"red"},{year:2019,type:"ownership",title:"Succession Certificate — Multi-owner Inheritance",detail:"Rajan: 45%, Meena R: 35%, Suresh K (NRI): 20%",status:"verified",color:"purple"},{year:2024,type:"current",title:"Current Status",detail:"Land fallow since 2021 · Awaiting NOC · 3 co-owners",status:"current",color:"grey"}],
+   consistency:[{label:"Owner name — consistent across Patta, EC, and Sale Deed",pass:true,resolved:false},{label:"Survey number — matches across all 6 documents",pass:true,resolved:false},{label:"Extent — FMB shows 3.45 acres, A-Register shows 3.52 acres",pass:false,resolved:false},{label:"Date sequence — all deeds in chronological order",pass:true,resolved:false},{label:"Owner name variation — \"Rajan\" in Sale Deed vs \"S. Rajan\" in Patta",pass:false,resolved:false},{label:"Village and taluk — consistent across all documents",pass:true,resolved:false},{label:"Land classification — Dry agricultural in all records",pass:true,resolved:false}],
+   annotations:[{id:1,type:"risk",title:"⚑ Flag — EC Document · Page 3",text:"Active SBI mortgage not fully discharged — partial release only. Bank NOC required for full transfer.",by:"Legal Advisor",time:"2 hours ago",status:"open"},{id:2,type:"query",title:"⚑ Note — Patta Document · Page 1",text:"Name variation — verify if \"Rajan\" and \"S. Rajan\" refer to the same individual. Request identity proof.",by:"Legal Advisor",time:"5 hours ago",status:"open"}],
+   checklist:{phase1:{title:"📄 Phase 1: Document Verification",items:[{id:"p1-1",title:"Original Sale Deed extracted & verified",detail:"Field confidence 92%+ · Lawyer approved all fields",done:true,verdict:"Verified by Legal Advisor · 2h ago"},{id:"p1-2",title:"Patta document extracted & verified",detail:"No name mismatches · Extent within tolerance",done:true,verdict:"Verified by Legal Advisor · 2h ago"},{id:"p1-3",title:"Encumbrance Certificate reviewed",detail:"Active SBI mortgage noted · NOC required",done:true,verdict:"Queried · Awaiting NOC proof"}]},phase2:{title:"🔗 Phase 2: Ownership Chain",items:[{id:"p2-1",title:"Title chain complete (1994–2024)",detail:"4 transfers identified · All links confirmed",done:true,verdict:"Verified by Legal Advisor · 1h ago"},{id:"p2-2",title:"All mortgages traced & cleared",detail:"1 active (SBI ₹45L) · 1 cleared (Indian Bank)",done:true,verdict:"Verified by Legal Advisor · 1h ago"}]},phase3:{title:"⚠ Phase 3: Risk Resolution",items:[{id:"p3-1",title:"Auto-detected risks reviewed",detail:"4 risks flagged · 2 accepted, 1 dismissed, 1 escalated",done:true,verdict:"Reviewed by Legal Advisor · 30 min ago"},{id:"p3-2",title:"NRI owner compliance (Suresh K., Dubai)",detail:"Requires registered POA or physical presence",done:false,verdict:null}]},phase4:{title:"📝 Phase 4: Opinion Drafting",items:[]}},
+   opinion:{sections:[{id:"summary",title:"Executive Summary",ai:true,accepted:false,text:"The subject property is located in Kelambi Village, Hosur Taluk, Krishnagiri District. Total extent: 3.45 acres (FMB) / 3.52 acres (Patta records). Current owners: Rajan S. (45%), Meena R. (35%), Suresh K. (20%). Title chain is complete from 1994 to present with no gaps detected."},{id:"title-v",title:"Title Verification",ai:true,accepted:false,text:"The title chain has been traced back to 1994 with the original settlement deed of the Murugan family estate. Subsequent sales occurred in 2001, 2011, and inheritance in 2019. All transfers are properly registered with the TN revenue department. No gaps or overlaps detected."},{id:"encumbrance",title:"Encumbrances & Mortgages",ai:true,accepted:false,text:"Two mortgages identified: (1) Indian Bank ₹12L in 2008, fully discharged 2012; (2) SBI ₹45L in 2015 with partial release 2018, leaving 2.25 acres encumbered. Bank NOC mandatory before transfer."},{id:"nri",title:"NRI Ownership Implications",ai:true,accepted:false,text:"Suresh K., NRI (20% share, Dubai). Per Section 184 of TN Registration Act, must be physically present or provide registered Power of Attorney."},{id:"recs",title:"Recommendations",ai:false,accepted:false,text:"1. Obtain SBI NOC for the remaining ₹45L mortgage.\n2. Secure NRI compliance from Suresh K.\n3. Resolve \"Rajan\" vs \"S. Rajan\" name variation.\n4. Clarify 0.07-acre FMB/Patta discrepancy."},{id:"verdict",title:"Legal Opinion",ai:false,accepted:false,text:"Status: Proceed with Caution. Title is substantially sound with a clear chain back to 1994. Three critical issues must be resolved before proceeding."}],signed:false},
+   coords:[12.7400,77.8300]},
+  {id:"46/1A",loc:"Kelambi Village",taluk:"Hosur Taluk",district:"Krishnagiri",status:"flagged",score:52,acres:2.1,owners:3,landType:"Dry Agricultural Land",glv:"7.8L/acre",lastSale:2018,courtCases:true,
+   docs:[{name:"Sale Deed",src:"tnreginet",year:2018,status:"verified",icon:"📄"},{name:"Patta",src:"eservices.tn",year:2022,status:"verified",icon:"📋"},{name:"Chitta and Adangal",src:"eservices.tn",year:2022,status:"issue",icon:"📊"},{name:"FMB Sketch",src:"TNSW",year:2019,status:"verified",icon:"📐"},{name:"Encumbrance Certificate",src:"tnreginet",year:"30yr",status:"issue",icon:"🔒"},{name:"A-Register Extract",src:"Revenue Dept",year:2021,status:"pending",icon:"📜"}],
+   timeline:[{year:2005,type:"ownership",title:"Sale Deed — Original purchase",detail:"Purchased from Lakshmi estate · ₹4L",status:"verified",color:"green"},{year:2018,type:"ownership",title:"Sale Deed — Transfer to current owner",detail:"Reg No. 9812/2018 · ₹22L",status:"verified",color:"green"},{year:2020,type:"encumbrance",title:"Court case filed",detail:"Dispute over boundary with Survey 46/1B",status:"active",color:"red"}],
+   consistency:[{label:"Owner name — matches across documents",pass:true,resolved:false},{label:"Survey boundary — dispute with adjacent survey 46/1B",pass:false,resolved:false},{label:"EC shows active litigation",pass:false,resolved:false}],
+   annotations:[{id:1,type:"risk",title:"⚠ Active court case",text:"Boundary dispute with adjacent survey number. Case pending in Hosur sub-court.",by:"Legal Advisor",time:"3 hours ago",status:"open"}],
+   checklist:{phase1:{title:"📄 Phase 1: Document Verification",items:[{id:"p1-1",title:"Sale Deed verified",detail:"Field confidence 90%+",done:true,verdict:"Verified"},{id:"p1-2",title:"EC reviewed",detail:"Active litigation found",done:true,verdict:"Flagged"}]},phase2:{title:"🔗 Phase 2: Ownership Chain",items:[{id:"p2-1",title:"Title chain check",detail:"2 transfers identified",done:false,verdict:null}]},phase3:{title:"⚠ Phase 3: Risk Resolution",items:[]},phase4:{title:"📝 Phase 4: Opinion Drafting",items:[]}},
+   opinion:{sections:[],signed:false},coords:[12.7420,77.8320]},
+  {id:"47/3",loc:"Mathigiri",taluk:"Hosur Taluk",district:"Krishnagiri",status:"pending",score:74,acres:5.2,owners:2,landType:"Wet Agricultural Land",glv:"12L/acre",lastSale:2020,courtCases:false,
+   docs:[{name:"Sale Deed",src:"tnreginet",year:2020,status:"verified",icon:"📄"},{name:"Patta",src:"eservices.tn",year:2023,status:"verified",icon:"📋"},{name:"Chitta and Adangal",src:"eservices.tn",year:2023,status:"verified",icon:"📊"},{name:"FMB Sketch",src:"TNSW",year:2021,status:"verified",icon:"📐"},{name:"Encumbrance Certificate",src:"tnreginet",year:"30yr",status:"pending",icon:"🔒"},{name:"A-Register Extract",src:"Revenue Dept",year:2023,status:"pending",icon:"📜"}],
+   timeline:[{year:2010,type:"ownership",title:"Settlement Deed",detail:"Family inheritance",status:"verified",color:"green"},{year:2020,type:"ownership",title:"Sale Deed — Current owner",detail:"Reg No. 4521/2020 · ₹60L",status:"verified",color:"green"}],
+   consistency:[{label:"All fields consistent across documents",pass:true,resolved:false},{label:"NRI owner detected — Suresh K.",pass:false,resolved:false}],
+   annotations:[],
+   checklist:{phase1:{title:"📄 Phase 1",items:[{id:"p1-1",title:"Documents uploaded",detail:"5/6 documents",done:true,verdict:"In progress"}]},phase2:{title:"🔗 Phase 2",items:[]},phase3:{title:"⚠ Phase 3",items:[]},phase4:{title:"📝 Phase 4",items:[]}},
+   opinion:{sections:[],signed:false},coords:[12.7380,77.8280]},
+  {id:"48/2A",loc:"Mathigiri",taluk:"Hosur Taluk",district:"Krishnagiri",status:"to-review",score:0,acres:1.8,owners:1,landType:"Dry Land",glv:"6L/acre",lastSale:2022,courtCases:false,
+   docs:[{name:"Sale Deed",src:"tnreginet",year:2022,status:"verified",icon:"📄"},{name:"Patta",src:"eservices.tn",year:2023,status:"pending",icon:"📋"},{name:"FMB Sketch",src:"TNSW",year:2022,status:"pending",icon:"📐"}],
+   timeline:[{year:2022,type:"ownership",title:"Sale Deed",detail:"Recent purchase · ₹11L",status:"verified",color:"green"}],
+   consistency:[],annotations:[],
+   checklist:{phase1:{title:"📄 Phase 1",items:[]},phase2:{title:"🔗 Phase 2",items:[]},phase3:{title:"⚠ Phase 3",items:[]},phase4:{title:"📝 Phase 4",items:[]}},
+   opinion:{sections:[],signed:false},coords:[12.7360,77.8260]}
+];
+
+var AUDIT_LOG = [
+  {action:"Verified document",user:"Legal Advisor",target:"Original Sale Deed — Survey 45/2B",time:"2 hours ago",type:"verify"},
+  {action:"Flagged risk",user:"AI Bot",target:"Active SBI mortgage detected on Survey 45/2B",time:"2 hours ago",type:"flag"},
+  {action:"Uploaded document",user:"Site Manager",target:"EC 30-Year for Survey 45/2B",time:"3 hours ago",type:"upload"},
+  {action:"Changed status",user:"Legal Advisor",target:"Survey 46/1A marked as Flagged",time:"3 hours ago",type:"status"},
+  {action:"Added annotation",user:"Legal Advisor",target:"Name variation note on Patta — Survey 45/2B",time:"5 hours ago",type:"annotate"},
+  {action:"Ran AI analysis",user:"System",target:"Batch analysis on 12 parcels completed",time:"Yesterday",type:"ai"},
+  {action:"Sent report",user:"Legal Advisor",target:"Survey 45/2B report sent to client",time:"Yesterday",type:"report"},
+  {action:"Edited opinion",user:"Legal Advisor",target:"Updated encumbrance section — Survey 45/2B",time:"2 days ago",type:"edit"},
+  {action:"Document re-uploaded",user:"Site Manager",target:"Patta v2 for Survey 47/3",time:"2 days ago",type:"version"},
+  {action:"Resolved annotation",user:"Legal Advisor",target:"Boundary note on Survey 46/1A",time:"3 days ago",type:"resolve"}
+];
+
+var NOTIFICATIONS = [
+  {id:1,type:"documents",title:"New document uploaded",desc:"EC 30-Year uploaded for Survey 45/2B by Site Manager",time:"2 hours ago",unread:true,iconBg:"var(--accent-l)",emoji:"📥"},
+  {id:2,type:"flags",title:"Risk flag raised",desc:"Active SBI mortgage detected on Survey 45/2B — NOC required",time:"2 hours ago",unread:true,iconBg:"var(--red-l)",emoji:"🚩"},
+  {id:3,type:"flags",title:"Court case detected",desc:"Boundary dispute found for Survey 46/1A via eCourts",time:"3 hours ago",unread:true,iconBg:"var(--red-l)",emoji:"⚖"},
+  {id:4,type:"documents",title:"Document verified",desc:"Patta 2023 verified for Survey 45/2B",time:"5 hours ago",unread:true,iconBg:"var(--green-l)",emoji:"✅"},
+  {id:5,type:"reports",title:"Report delivery confirmed",desc:"Survey 47/3 report viewed by client",time:"Yesterday",unread:true,iconBg:"var(--purple-l)",emoji:"📨"},
+  {id:6,type:"documents",title:"Patta re-uploaded (v2)",desc:"Updated Patta for Survey 47/3 by Site Manager",time:"2 days ago",unread:false,iconBg:"var(--amber-l)",emoji:"🔄"},
+  {id:7,type:"flags",title:"NRI owner flagged",desc:"Suresh K. (Dubai) detected as co-owner on Survey 45/2B",time:"3 days ago",unread:false,iconBg:"var(--amber-l)",emoji:"🌐"},
+  {id:8,type:"reports",title:"Batch AI analysis complete",desc:"12 parcels analyzed — 3 issues found",time:"3 days ago",unread:false,iconBg:"var(--purple-l)",emoji:"🤖"}
+];
+
+var currentParcelId = "45/2B";
+var currentTab = "docs";
+var currentNotifFilter = "all";
+var selectedAnnotationType = "risk";
+var leafletMap = null;
+var mapMarkers = {};
+
+/* ══════════ HELPERS ══════════ */
+function $(sel){ return document.querySelector(sel); }
+function $$(sel){ return document.querySelectorAll(sel); }
+function esc(s){ var d=document.createElement("div"); d.textContent=s; return d.innerHTML; }
+function getParcel(id){ return PARCELS.find(function(p){return p.id===id;}); }
+
+function showToast(type, title, msg){
+  var c = $("#toastContainer");
+  var icons = {success:"✅",warning:"⚠️",error:"❌",info:"ℹ️"};
+  var t = document.createElement("div");
+  t.className = "toast " + type;
+  t.innerHTML = '<div class="toast-icon">'+(icons[type]||"ℹ️")+'</div><div class="toast-content"><div class="toast-title">'+esc(title)+'</div><div class="toast-msg">'+esc(msg)+'</div></div><button class="toast-close" onclick="this.parentElement.remove()">✕</button>';
+  c.appendChild(t);
+  setTimeout(function(){ t.style.animation="slideOutRight .3s ease forwards"; setTimeout(function(){t.remove();},300); },4000);
+}
+
+function addAudit(action, user, target){
+  AUDIT_LOG.unshift({action:action,user:user,target:target,time:"Just now",type:"edit"});
+}
+
+function addNotif(type, title, desc){
+  NOTIFICATIONS.unshift({id:Date.now(),type:type,title:title,desc:desc,time:"Just now",unread:true,iconBg:"var(--accent-l)",emoji:"🔔"});
+  updateNotifBadge();
+}
+
+/* ══════════ INIT ══════════ */
+function init(){
+  bindEvents();
+  renderParcelList("all","");
+  loadParcel("45/2B");
+  renderNotifications();
+  showDashboardView();
+}
+
+/* ══════════ EVENT BINDING (no inline onclick) ══════════ */
+function bindEvents(){
+  // Top tabs
+  $$(".ttab, [data-view]").forEach(function(el){
+    el.addEventListener("click", function(){
+      var v = el.getAttribute("data-view");
+      if(!v) return;
+      $$(".ttab").forEach(function(t){t.classList.remove("active");});
+      $$('.ttab[data-view="'+v+'"]').forEach(function(t){t.classList.add("active");});
+      if(v==="dashboard") showDashboardView();
+      else if(v==="legal") showLegalAdvisor();
+      else if(v==="map") showMapView();
+      else if(v==="documents") showDocRepository();
+    });
+  });
+
+  // Parcel filter tabs
+  $$("#parcelFilterTabs .ftab").forEach(function(el){
+    el.addEventListener("click", function(){
+      $$("#parcelFilterTabs .ftab").forEach(function(f){f.classList.remove("active");});
+      el.classList.add("active");
+      renderParcelList(el.getAttribute("data-filter"), $("#parcelSearchInput").value);
+    });
+  });
+
+  // Parcel search
+  $("#parcelSearchInput").addEventListener("input", function(){
+    var activeF = $("#parcelFilterTabs .ftab.active");
+    renderParcelList(activeF?activeF.getAttribute("data-filter"):"all", this.value);
+  });
+
+  // Centre tabs
+  $$("#ctabsBar .ctab").forEach(function(el){
+    el.addEventListener("click", function(){
+      $$("#ctabsBar .ctab").forEach(function(t){t.classList.remove("active");});
+      el.classList.add("active");
+      currentTab = el.getAttribute("data-tab");
+      renderTab();
+    });
+  });
+
+  // Header buttons
+  $("#btnReVerify").addEventListener("click", function(){
+    showToast("info","Re-verifying","Running verification on Survey "+currentParcelId+"…");
+    addAudit("Re-verification started","Legal Advisor","Survey "+currentParcelId);
+  });
+  $("#btnExport").addEventListener("click", openReportModal);
+
+  // Modals
+  $("#closeDocModalBtn").addEventListener("click", function(){ $("#docModal").classList.remove("active"); });
+  $("#closeReportModalBtn").addEventListener("click", function(){ $("#reportModal").classList.remove("active"); });
+  $("#closeReportBtn2").addEventListener("click", function(){ $("#reportModal").classList.remove("active"); });
+  $("#btnExportPDF").addEventListener("click", exportPrint);
+  $("#btnExportPrint").addEventListener("click", exportPrint);
+
+  // Close modals on overlay click
+  ["docModal","reportModal"].forEach(function(id){
+    $("#"+id).addEventListener("click", function(e){ if(e.target===this) this.classList.remove("active"); });
+  });
+
+  // Notifications
+  $("#notifBell").addEventListener("click", function(e){
+    e.stopPropagation();
+    $("#notifPanel").classList.toggle("active");
+  });
+  document.addEventListener("click", function(e){
+    if(!e.target.closest("#notifBell")) $("#notifPanel").classList.remove("active");
+  });
+  $("#markAllReadBtn").addEventListener("click", function(e){
+    e.stopPropagation();
+    NOTIFICATIONS.forEach(function(n){n.unread=false;});
+    renderNotifications();
+    showToast("info","Done","All notifications marked as read");
+  });
+  $$("#notifTabsBar .notif-tab").forEach(function(el){
+    el.addEventListener("click", function(e){
+      e.stopPropagation();
+      $$("#notifTabsBar .notif-tab").forEach(function(t){t.classList.remove("active");});
+      el.classList.add("active");
+      currentNotifFilter = el.getAttribute("data-ntype");
+      renderNotifications();
+    });
+  });
+
+  // Global search
+  var gsi = $("#globalSearchInput");
+  var gsr = $("#globalSearchResults");
+  gsi.addEventListener("input", function(){ handleGlobalSearch(this.value); });
+  gsi.addEventListener("focus", function(){ if(this.value.trim()) gsr.classList.add("active"); });
+  document.addEventListener("click", function(e){ if(!e.target.closest(".global-search-wrap")) gsr.classList.remove("active"); });
+
+  // Map search
+  $("#mapSearchInput").addEventListener("input", function(){ searchOnMap(this.value); });
+
+  // Map layers
+  $$(".map-layer-btn").forEach(function(el){
+    el.addEventListener("click", function(){
+      el.classList.toggle("active");
+      showToast("info","Layer",el.getAttribute("data-layer")+" "+(el.classList.contains("active")?"on":"off"));
+    });
+  });
+}
+
+/* ══════════ PARCEL LIST ══════════ */
+function renderParcelList(filter, search){
+  var list = $("#parcelList");
+  var s = (search||"").toLowerCase();
+  var count = 0;
+  var html = "";
+  PARCELS.forEach(function(p){
+    var matchF = filter==="all" || p.status===filter || (filter==="pending" && (p.status==="pending"||p.status==="to-review"));
+    var matchS = !s || p.id.toLowerCase().indexOf(s)>=0 || p.loc.toLowerCase().indexOf(s)>=0;
+    if(!matchF||!matchS) return;
+    count++;
+    var sl = {verified:"Verified",flagged:"Flagged",pending:"In Review","to-review":"To Review"}[p.status]||p.status;
+    var sc = {verified:"var(--green)",flagged:"var(--red)",pending:"var(--amber)","to-review":"var(--text3)"}[p.status];
+    var sb = {verified:"var(--green-l)",flagged:"var(--red-l)",pending:"var(--amber-l)","to-review":"var(--bg)"}[p.status];
+    var bc = {verified:"st-verified",flagged:"st-flagged",pending:"st-pending","to-review":""}[p.status]||"";
+    var dv = p.docs.filter(function(d){return d.status==="verified";}).length;
+    var pct = Math.round(dv/p.docs.length*100);
+    var active = p.id===currentParcelId?" active":"";
+    html += '<div class="parcel-item '+bc+active+'" data-pid="'+p.id+'">'
+      +'<div class="pi-top"><span class="pi-survey">Survey '+p.id+'</span><span class="pi-status" style="background:'+sb+';color:'+sc+'">'+sl+'</span></div>'
+      +'<div class="pi-loc">'+p.loc+' · '+p.taluk+'</div>'
+      +'<div class="pi-bottom"><span class="pi-docs">'+dv+'/'+p.docs.length+' docs</span><div class="pi-bar"><div class="pi-bar-fill" style="width:'+pct+'%;background:'+sc+'"></div></div><span class="pi-score" style="color:'+sc+'">'+(p.score||'—')+'</span></div>'
+      +'</div>';
+  });
+  list.innerHTML = html;
+  $("#parcelCountTitle").textContent = count+" Parcels";
+  // Bind click
+  $$("#parcelList .parcel-item").forEach(function(el){
+    el.addEventListener("click", function(){ loadParcel(el.getAttribute("data-pid")); });
+  });
+}
+
+/* ══════════ LOAD PARCEL ══════════ */
+function loadParcel(id){
+  currentParcelId = id;
+  var p = getParcel(id);
+  if(!p) return;
+  $$("#parcelList .parcel-item").forEach(function(el){el.classList.toggle("active", el.getAttribute("data-pid")===id);});
+  $("#surveyTitle").textContent = "Survey "+p.id;
+  $("#surveyMeta").textContent = p.loc+" · "+p.taluk+" · "+p.district+" District";
+  $("#chipsRow").innerHTML = '<div class="chip">📏 '+p.acres+' acres</div><div class="chip">👥 '+p.owners+' Owners</div><div class="chip">🏷 '+p.landType+'</div><div class="chip">💰 GLV ₹'+p.glv+'</div><div class="chip">📅 Last sale '+p.lastSale+'</div><div class="chip" style="background:'+(p.courtCases?'var(--red-l)':'var(--green-l)')+';border-color:'+(p.courtCases?'var(--red-b)':'var(--green-b)')+';color:'+(p.courtCases?'var(--red)':'var(--green)')+'">'+(p.courtCases?'⚠ Court cases':'✓ No court cases')+'</div>';
+  $("#docCountBadge").textContent = p.docs.length;
+  $("#annCountBadge").textContent = p.annotations.length;
+  renderTab();
+  renderRightPanel();
+}
+
+/* ══════════ TAB ROUTER ══════════ */
+function renderTab(){
+  var p = getParcel(currentParcelId);
+  if(!p) return;
+  var a = $("#contentArea");
+  switch(currentTab){
+    case "docs": a.innerHTML = renderDocsTab(p); break;
+    case "history": a.innerHTML = renderHistoryTab(p); break;
+    case "ai": a.innerHTML = renderAITab(p); bindAIChat(p); break;
+    case "consistency": a.innerHTML = renderConsistencyTab(p); bindConsistency(p); break;
+    case "annotations": a.innerHTML = renderAnnotationsTab(p); bindAnnotations(p); break;
+    case "compare": a.innerHTML = renderCompareTab(p); bindCompare(p); break;
+    case "checklist": a.innerHTML = renderChecklistTab(p); bindChecklist(p); break;
+    case "opinion": a.innerHTML = renderOpinionTab(p); bindOpinion(p); break;
+    case "audit": a.innerHTML = renderAuditTab(); break;
+    default: a.innerHTML = renderDocsTab(p);
+  }
+}
+
+/* ══════════ DOCS TAB ══════════ */
+function renderDocsTab(p){
+  var vd = p.docs.filter(function(d){return d.status==="verified";}).length;
+  var so = 163-163*p.score/100;
+  var verdict = p.score>=80?"Safe to Proceed":p.score>=60?"Proceed with Caution":p.score>0?"Do Not Proceed":"Not Scored";
+  var h = '<div class="score-card"><div class="score-ring"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="26" fill="none" stroke="rgba(255,255,255,.2)" stroke-width="6"/><circle cx="32" cy="32" r="26" fill="none" stroke="#fff" stroke-width="6" stroke-dasharray="163" stroke-dashoffset="'+so+'" stroke-linecap="round" transform="rotate(-90 32 32)"/></svg><div class="score-ring-val">'+(p.score||'—')+'</div></div><div class="score-info"><div class="score-label">Overall Parcel Score</div><div class="score-title">'+verdict+'</div><div class="score-sub">'+vd+'/'+p.docs.length+' documents verified</div></div></div>';
+  h += '<div class="section"><div class="section-title">Legal Documents</div><div class="docs-grid">';
+  p.docs.forEach(function(d){
+    var cls = d.status==="verified"?"verified-doc":d.status==="issue"?"issue-doc":"pending-doc";
+    var dc = d.status==="verified"?"var(--green)":d.status==="issue"?"var(--red)":"var(--amber)";
+    var ck = d.status==="verified"?'<div class="doc-check checked">✓</div><span class="doc-check-label" style="color:var(--green)">Verified</span>':'<div class="doc-check" data-vdoc="'+d.name+'"></div><span class="doc-check-label">Mark verified</span>';
+    h += '<div class="doc-card '+cls+'" data-docname="'+esc(d.name)+'"><div class="doc-dot" style="background:'+dc+'"></div><span style="font-size:20px;display:block;margin-bottom:6px">'+d.icon+'</span><div class="doc-name">'+d.name+'</div><div class="doc-src">'+d.src+' · '+d.year+'</div><div class="doc-check-row">'+ck+'</div></div>';
+  });
+  h += '</div></div>';
+  // Bind after render
+  setTimeout(function(){
+    $$(".doc-card[data-docname]").forEach(function(el){
+      el.addEventListener("click", function(e){
+        if(e.target.classList.contains("doc-check")) return;
+        openDocModal(el.getAttribute("data-docname"));
+      });
+    });
+    $$(".doc-check[data-vdoc]").forEach(function(el){
+      el.addEventListener("click", function(e){
+        e.stopPropagation();
+        var dn = el.getAttribute("data-vdoc");
+        var pp = getParcel(currentParcelId);
+        var dd = pp.docs.find(function(x){return x.name===dn;});
+        if(dd){dd.status="verified"; addAudit("Verified document","Legal Advisor",dn); showToast("success","Verified",dn+" marked verified"); addNotif("documents","Document verified",dn+" verified"); loadParcel(currentParcelId);}
+      });
+    });
+  },0);
+  return h;
+}
+
+/* ══════════ HISTORY TAB ══════════ */
+function renderHistoryTab(p){
+  var h = '<div class="section"><div class="section-title">Complete Property History & Encumbrances</div>';
+  h += '<div style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap"><button class="ftab active" data-tfilter="all" style="background:var(--accent);color:#fff;border-color:var(--accent)">All Events</button><button class="ftab" data-tfilter="ownership">Ownership</button><button class="ftab" data-tfilter="encumbrance">Mortgages</button></div>';
+  h += '<div class="ec-timeline">';
+  var cm = {green:"var(--green)",amber:"var(--amber)",red:"var(--red)",purple:"var(--purple)",grey:"var(--text3)"};
+  var bm = {green:"var(--green-l)",amber:"var(--amber-l)",red:"var(--red-l)",purple:"var(--purple-l)",grey:"var(--bg)"};
+  var bbm = {green:"var(--green-b)",amber:"var(--amber-b)",red:"var(--red-b)",purple:"var(--purple-b)",grey:"var(--border)"};
+  p.timeline.forEach(function(t,i){
+    var c=cm[t.color]||cm.grey, bg=bm[t.color]||bm.grey, bb=bbm[t.color]||bbm.grey;
+    var badge = t.status==="active"?'<span style="font-size:9px;padding:2px 6px;background:var(--red);color:#fff;border-radius:100px;font-weight:600">⚠ ACTIVE</span>':'<span style="font-size:9px;padding:2px 6px;background:#fff;color:'+c+';border:1px solid '+bb+';border-radius:100px;font-weight:600">'+t.status+'</span>';
+    h += '<div class="ec-item" data-ttype="'+t.type+'">'
+      +'<div class="ec-dot" style="background:'+c+'"></div>'
+      +'<div class="ec-year">'+t.year+'</div>'
+      +'<div class="ec-content" style="border-color:'+bb+';background:'+bg+'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><div class="ec-type" style="color:'+c+'">'+t.title+'</div>'+badge+'</div>'
+      +'<div class="ec-detail">'+t.detail+'</div>'
+      +'<div style="display:flex;gap:6px;margin-top:8px"><button class="btn btn-ghost" style="flex:1;font-size:9px;padding:5px 8px" data-viewdoc="'+esc(t.title)+'">📄 View</button><button class="btn btn-ghost" style="flex:1;font-size:9px;padding:5px 8px;border-color:var(--green);color:var(--green)" data-confirm-tl="'+i+'">✓ Confirm</button></div>'
+      +'</div></div>';
+  });
+  h += '</div></div>';
+  // Bind
+  setTimeout(function(){
+    $$("[data-tfilter]").forEach(function(el){
+      el.addEventListener("click", function(){
+        el.parentElement.querySelectorAll(".ftab").forEach(function(f){f.classList.remove("active");f.style.background="";f.style.color="";f.style.borderColor="";});
+        el.classList.add("active"); el.style.background="var(--accent)"; el.style.color="#fff"; el.style.borderColor="var(--accent)";
+        var ty = el.getAttribute("data-tfilter");
+        $$(".ec-item[data-ttype]").forEach(function(it){ it.style.display=(ty==="all"||it.getAttribute("data-ttype")===ty)?"flex":"none"; });
+      });
+    });
+    $$("[data-viewdoc]").forEach(function(el){ el.addEventListener("click", function(){ openDocModal(el.getAttribute("data-viewdoc")); }); });
+    $$("[data-confirm-tl]").forEach(function(el){ el.addEventListener("click", function(){ showToast("success","Confirmed","Timeline event verified"); addAudit("Confirmed timeline","Legal Advisor","Event "+el.getAttribute("data-confirm-tl")); }); });
+  },0);
+  return h;
+}
+
+/* ══════════ AI TAB ══════════ */
+function renderAITab(p){
+  var checks = [{l:"Ownership clarity",ok:true},{l:"Encumbrance check",ok:p.status!=="flagged"},{l:"Title chain verify",ok:true},{l:"Court case check",ok:!p.courtCases},{l:"Govt approvals",ok:false},{l:"Env constraints",ok:true},{l:"Land classification",ok:true},{l:"Doc authenticity",ok:true}];
+  var h = '<div class="ai-panel"><div class="ai-header"><div class="ai-icon">🤖</div><div class="ai-title">AI Legal Advisor Bot</div></div><div class="ai-check-grid">';
+  checks.forEach(function(c){ h += '<div class="ai-check"><span style="color:'+(c.ok?'var(--green)':'var(--red)')+'">'+( c.ok?'✓':'⚠')+'</span>'+c.l+'</div>'; });
+  h += '</div><button class="run-ai-btn" id="runAIBtn">🤖 Run Full AI Legal Analysis</button></div>';
+  h += '<div class="ai-chat-container"><div class="ai-chat-messages" id="aiMessages"><div class="ai-msg bot">Hello! I\'m the AI Legal Advisor for Survey '+p.id+'. I\'ve analyzed all '+p.docs.length+' documents. Ask me anything about this parcel.</div></div>';
+  h += '<div class="ai-suggestions" id="aiSuggestions"><span class="ai-suggestion">What are the main risks?</span><span class="ai-suggestion">Is the title chain clear?</span><span class="ai-suggestion">What NOC is required?</span><span class="ai-suggestion">Summarize encumbrances</span></div>';
+  h += '<div class="ai-chat-input-wrap"><input type="text" class="ai-chat-input" id="aiInput" placeholder="Ask about this parcel…"><button class="ai-chat-send" id="aiSendBtn">Send</button></div></div>';
+  return h;
+}
+function bindAIChat(p){
+  setTimeout(function(){
+    var input = $("#aiInput"), send = $("#aiSendBtn"), msgs = $("#aiMessages");
+    if(!input) return;
+    function doSend(msg){
+      if(!msg) msg = input.value.trim();
+      if(!msg) return;
+      input.value = "";
+      msgs.innerHTML += '<div class="ai-msg user">'+esc(msg)+'</div>';
+      msgs.innerHTML += '<div class="ai-msg bot" id="aiTyping"><div class="typing"><span></span><span></span><span></span></div></div>';
+      msgs.scrollTop = msgs.scrollHeight;
+      setTimeout(function(){
+        var el = $("#aiTyping");
+        if(!el) return;
+        el.id = "";
+        el.innerHTML = genAI(msg, p);
+        msgs.scrollTop = msgs.scrollHeight;
+      }, 800+Math.random()*1000);
+    }
+    send.addEventListener("click", function(){ doSend(); });
+    input.addEventListener("keydown", function(e){ if(e.key==="Enter") doSend(); });
+    $$("#aiSuggestions .ai-suggestion").forEach(function(el){ el.addEventListener("click", function(){ doSend(el.textContent); }); });
+    $("#runAIBtn").addEventListener("click", function(){
+      showToast("info","AI Analysis","Running full analysis on Survey "+currentParcelId+"…");
+      addAudit("Ran AI analysis","System","Survey "+currentParcelId);
+      setTimeout(function(){ showToast("success","Complete","AI analysis finished"); addNotif("flags","AI analysis complete","Survey "+currentParcelId); },2500);
+    });
+  },0);
+}
+function genAI(q, p){
+  var ql = q.toLowerCase();
+  if(ql.indexOf("risk")>=0) return "Based on my analysis of Survey "+p.id+":<br><br>"+(p.status==="flagged"?"<b style='color:var(--red)'>HIGH RISK</b> — Active court cases and encumbrance issues.":"<b>Moderate risk level.</b>")+"<br><br>• "+p.docs.filter(function(d){return d.status!=="verified";}).length+" docs need verification<br>• Score: "+p.score+"/100<br>• "+(p.courtCases?"⚠ Active litigation":"✓ No court cases");
+  if(ql.indexOf("title")>=0||ql.indexOf("chain")>=0) return "Title chain for Survey "+p.id+" — "+p.timeline.length+" events traced:<br><br>"+p.timeline.map(function(t){return "<b>"+t.year+"</b>: "+t.title;}).join("<br>")+"<br><br>"+(p.status==="verified"?"All links confirmed.":"Some items need verification.");
+  if(ql.indexOf("noc")>=0) return "NOCs potentially required for Survey "+p.id+":<br><br>1. <b>Bank NOC</b> — Required if active mortgage exists<br>2. <b>Revenue NOC</b> — If land use conversion planned<br><br>Current EC status: "+(p.docs.find(function(d){return d.name.indexOf("Encumbrance")>=0;})?"Review pending":"N/A");
+  if(ql.indexOf("encumbrance")>=0||ql.indexOf("mortgage")>=0) return "Encumbrance analysis:<br><br>"+p.timeline.filter(function(t){return t.type==="encumbrance";}).map(function(t){return "<b>"+t.year+"</b>: "+t.title+" — "+t.detail;}).join("<br><br>")||"No encumbrances found.";
+  return "Survey "+p.id+": "+p.acres+" acres of "+p.landType+" in "+p.loc+". Score: "+p.score+"/100. "+p.docs.length+" documents, "+p.docs.filter(function(d){return d.status==="verified";}).length+" verified. What else would you like to know?";
+}
+
+/* ══════════ CONSISTENCY TAB ══════════ */
+function renderConsistencyTab(p){
+  var h = '<div class="section"><div class="section-title">Cross-Document Consistency Check</div><button class="btn btn-secondary" id="rerunConsBtn" style="margin-bottom:12px">🔄 Re-run Consistency Check</button>';
+  p.consistency.forEach(function(c,i){
+    var icon = c.pass?"✓":"⚠";
+    var stC = c.pass?"var(--green)":"var(--amber)";
+    var stB = c.pass?"var(--green-l)":"var(--amber-l)";
+    var stL = c.resolved?"Resolved":c.pass?"Pass":"Mismatch";
+    h += '<div class="consistency-item'+(c.resolved?' ci-resolved':'')+'" id="ci-'+i+'"><span class="ci-icon">'+icon+'</span><span class="ci-label">'+c.label+'</span><span class="ci-status" style="background:'+stB+';color:'+stC+'">'+stL+'</span>';
+    if(!c.pass&&!c.resolved) h += '<div class="ci-actions"><button class="ci-btn" data-ciact="'+i+'-accept" style="border-color:var(--green);color:var(--green)">Accept</button><button class="ci-btn" data-ciact="'+i+'-dismiss" style="border-color:var(--text3);color:var(--text3)">Dismiss</button><button class="ci-btn" data-ciact="'+i+'-note" style="border-color:var(--amber);color:var(--amber)">Note</button></div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h;
+}
+function bindConsistency(p){
+  setTimeout(function(){
+    $$("[data-ciact]").forEach(function(el){
+      el.addEventListener("click", function(){
+        var parts = el.getAttribute("data-ciact").split("-");
+        var idx = parseInt(parts[0]);
+        p.consistency[idx].resolved = true;
+        addAudit("Resolved consistency","Legal Advisor",p.consistency[idx].label);
+        showToast("success","Resolved","Consistency item resolved");
+        renderTab();
+      });
+    });
+    var rb = $("#rerunConsBtn");
+    if(rb) rb.addEventListener("click", function(){ showToast("info","Running","Consistency check in progress…"); setTimeout(function(){showToast("success","Done","Check complete");},1500); });
+  },0);
+}
+
+/* ══════════ ANNOTATIONS TAB ══════════ */
+function renderAnnotationsTab(p){
+  var colorMap = {risk:{bg:"var(--red-l)",b:"var(--red-b)",c:"var(--red)"},query:{bg:"var(--amber-l)",b:"var(--amber-b)",c:"var(--amber)"},verified:{bg:"var(--green-l)",b:"var(--green-b)",c:"var(--green)"},condition:{bg:"var(--purple-l)",b:"var(--purple-b)",c:"var(--purple)"}};
+  var h = '<div class="section"><div class="section-title">Annotations and Flags</div><div id="annList">';
+  p.annotations.forEach(function(a,i){
+    var cm = colorMap[a.type]||colorMap.risk;
+    h += '<div style="padding:10px 12px;border-radius:9px;background:'+cm.bg+';border:1.5px solid '+cm.b+';margin-bottom:8px;'+(a.status==="resolved"?"opacity:.5;":"")+'">'
+      +'<div style="font-size:11px;font-weight:700;color:'+cm.c+';margin-bottom:3px">'+a.title+'</div>'
+      +'<div style="font-size:11px;color:var(--text2)">'+esc(a.text)+'</div>'
+      +'<div style="font-family:var(--fm);font-size:9px;color:var(--text3);margin-top:5px">Added by '+a.by+' · '+a.time+(a.status==="resolved"?" · RESOLVED":"")+'</div>';
+    if(a.status!=="resolved") h += '<div style="display:flex;gap:4px;margin-top:6px"><button class="btn btn-ghost" style="font-size:9px;padding:4px 8px" data-ann-resolve="'+i+'">✓ Resolve</button><button class="btn btn-ghost" style="font-size:9px;padding:4px 8px" data-ann-reply="'+i+'">↩ Reply</button></div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  h += '<div style="margin-top:12px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px">'
+    +'<div style="font-size:10px;font-weight:700;color:var(--text2);margin-bottom:8px">ADD ANNOTATION</div>'
+    +'<div style="display:flex;gap:4px;margin-bottom:8px">'
+    +'<button class="ann-color risk active" data-aclr="risk" title="Risk"></button>'
+    +'<button class="ann-color query" data-aclr="query" title="Query"></button>'
+    +'<button class="ann-color verified-clr" data-aclr="verified" title="Verified"></button>'
+    +'<button class="ann-color condition" data-aclr="condition" title="Condition"></button>'
+    +'</div>'
+    +'<input type="text" id="newAnnText" placeholder="Add note…" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:11px;margin-bottom:8px">'
+    +'<button class="btn btn-primary" id="addAnnBtn" style="width:100%;justify-content:center">+ Add Annotation</button>'
+    +'</div></div>';
+  return h;
+}
+function bindAnnotations(p){
+  setTimeout(function(){
+    $$("[data-aclr]").forEach(function(el){
+      el.addEventListener("click", function(){
+        $$("[data-aclr]").forEach(function(c){c.classList.remove("active");});
+        el.classList.add("active");
+        selectedAnnotationType = el.getAttribute("data-aclr");
+      });
+    });
+    var addBtn = $("#addAnnBtn");
+    if(addBtn) addBtn.addEventListener("click", function(){
+      var txt = $("#newAnnText").value.trim();
+      if(!txt) return;
+      p.annotations.push({id:Date.now(),type:selectedAnnotationType,title:selectedAnnotationType.charAt(0).toUpperCase()+selectedAnnotationType.slice(1)+" Note",text:txt,by:"Legal Advisor",time:"Just now",status:"open"});
+      $("#annCountBadge").textContent = p.annotations.length;
+      addAudit("Added annotation","Legal Advisor",txt.substring(0,50));
+      showToast("success","Added","New annotation saved");
+      addNotif("flags","New annotation","Annotation on Survey "+currentParcelId);
+      renderTab();
+    });
+    $$("[data-ann-resolve]").forEach(function(el){
+      el.addEventListener("click", function(){
+        var i = parseInt(el.getAttribute("data-ann-resolve"));
+        p.annotations[i].status = "resolved";
+        addAudit("Resolved annotation","Legal Advisor",p.annotations[i].title);
+        showToast("success","Resolved","Annotation resolved");
+        renderTab();
+      });
+    });
+    $$("[data-ann-reply]").forEach(function(el){
+      el.addEventListener("click", function(){
+        var i = parseInt(el.getAttribute("data-ann-reply"));
+        var reply = prompt("Enter your reply:");
+        if(reply){ p.annotations[i].text += "\n\nReply (Legal Advisor): "+reply; addAudit("Replied to annotation","Legal Advisor",p.annotations[i].title); renderTab(); }
+      });
+    });
+  },0);
+}
+
+/* ══════════ COMPARE TAB ══════════ */
+function renderCompareTab(p){
+  var opts = p.docs.map(function(d){return '<option value="'+esc(d.name)+'">'+d.name+' ('+d.year+')</option>';}).join("");
+  var opts2 = p.docs.length>1?p.docs.slice(1).concat(p.docs.slice(0,1)).map(function(d){return '<option value="'+esc(d.name)+'">'+d.name+' ('+d.year+')</option>';}).join(""):opts;
+  return '<div class="section"><div class="section-title">Cross-Document Comparator</div>'
+    +'<p style="font-size:11px;color:var(--text2);margin-bottom:12px">Select 2 documents to compare side-by-side.</p>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">'
+    +'<div><label style="display:block;font-size:10px;font-weight:700;margin-bottom:4px;color:var(--text2)">Document A</label><select id="cmpA" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:11px">'+opts+'</select></div>'
+    +'<div><label style="display:block;font-size:10px;font-weight:700;margin-bottom:4px;color:var(--text2)">Document B</label><select id="cmpB" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;font-size:11px">'+opts2+'</select></div></div>'
+    +'<button class="btn btn-primary" id="cmpBtn" style="width:100%;justify-content:center">🔀 Compare Documents</button></div>'
+    +'<div id="cmpResults"></div>';
+}
+function bindCompare(p){
+  setTimeout(function(){
+    var btn = $("#cmpBtn");
+    if(!btn) return;
+    btn.addEventListener("click", function(){
+      var a = $("#cmpA").value, b = $("#cmpB").value;
+      var fields = [
+        {n:"Survey Number",va:p.id,vb:p.id,m:"good"},
+        {n:"Location",va:p.loc,vb:p.loc,m:"good"},
+        {n:"Extent",va:p.acres+" acres",vb:(p.acres+0.07).toFixed(2)+" acres",m:b.indexOf("Patta")>=0?"warn":"good"},
+        {n:"Owner",va:"Current owner(s)",vb:"Current owner(s)",m:"good"},
+      ];
+      var mc = {good:{bg:"var(--green-l)",c:"var(--green)",l:"✓ Matches"},bad:{bg:"var(--red-l)",c:"var(--red)",l:"✗ Mismatch"},warn:{bg:"var(--amber-l)",c:"var(--amber)",l:"⚠ Differs"}};
+      var h = '<div class="section"><div class="section-title">Results: '+esc(a)+' vs '+esc(b)+'</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">';
+      h += '<div><div style="font-weight:700;margin-bottom:10px;font-size:12px">'+esc(a)+'</div>';
+      fields.forEach(function(f){h += '<div style="margin-bottom:8px"><span style="font-size:10px;font-weight:600;color:var(--text2)">'+f.n+':</span> '+f.va+'</div>';});
+      h += '</div><div><div style="font-weight:700;margin-bottom:10px;font-size:12px">'+esc(b)+'</div>';
+      fields.forEach(function(f){var m=mc[f.m]; h += '<div style="margin-bottom:8px"><span style="font-size:10px;font-weight:600;color:var(--text2)">'+f.n+':</span> <span style="background:'+m.bg+';color:'+m.c+';padding:2px 6px;border-radius:3px;font-size:9px;margin-right:4px">'+m.l+'</span>'+f.vb+'</div>';});
+      h += '</div></div></div>';
+      $("#cmpResults").innerHTML = h;
+      addAudit("Ran comparison","Legal Advisor",a+" vs "+b);
+    });
+  },0);
+}
+
+/* ══════════ CHECKLIST TAB ══════════ */
+function renderChecklistTab(p){
+  var ck = p.checklist;
+  var phases = [ck.phase1,ck.phase2,ck.phase3,ck.phase4];
+  var td = 0, tt = 0;
+  phases.forEach(function(ph){ph.items.forEach(function(it){tt++;if(it.done)td++;});});
+  var p3done = ck.phase3.items.length===0 || ck.phase3.items.every(function(i){return i.done;});
+  var h = '<div class="section"><div class="section-title">Structured Review Checklist</div>';
+  h += '<div style="margin-bottom:12px;padding:10px 12px;background:linear-gradient(135deg,#1A3FD4,#0F2A8F);border-radius:8px;color:#fff;font-size:11px;font-weight:600">Progress: '+td+'/'+tt+' items'+(p3done?'':" · Opinion blocked until Phase 3 done")+'</div>';
+  h += '<div class="ck-phases">';
+  phases.forEach(function(phase,pi){
+    var dn=phase.items.filter(function(i){return i.done;}).length, tl=phase.items.length;
+    var prog = tl>0?(dn===tl?dn+"/"+tl+" ✓":dn+"/"+tl):(pi===3&&!p3done?"Blocked":"—");
+    h += '<div class="ck-phase"><div class="ck-phase-header">'+phase.title+' <span class="ck-phase-progress">'+prog+'</span></div><div class="ck-phase-content">';
+    if(pi===3&&!p3done){
+      h += '<div style="font-size:11px;color:var(--text2);padding:12px;background:var(--red-l);border:1px solid var(--red-b);border-radius:7px">⛔ Opinion cannot be drafted until all Phase 3 items are resolved.</div>';
+    } else {
+      phase.items.forEach(function(item){
+        h += '<div class="ck-item"><div class="ck-checkbox'+(item.done?" checked":"")+'" data-ckid="'+item.id+'">'+(item.done?"✓":"")+'</div><div class="ck-content"><div class="ck-title">'+item.title+'</div><div class="ck-detail">'+item.detail+'</div>';
+        if(item.verdict) h += '<span class="ck-badge '+(item.verdict.indexOf("Verified")>=0||item.verdict.indexOf("Reviewed")>=0?"ck-done":item.verdict.indexOf("Queried")>=0||item.verdict.indexOf("Flagged")>=0?"ck-queried":"ck-waived")+'">'+item.verdict+'</span>';
+        if(!item.done) h += '<div class="ck-verdict-btns"><button class="ck-verdict-btn verify" data-ckv="'+item.id+'-verify">✓ Verify</button><button class="ck-verdict-btn query" data-ckv="'+item.id+'-query">? Query</button><button class="ck-verdict-btn waive" data-ckv="'+item.id+'-waive">— Waive</button></div>';
+        h += '</div></div>';
+      });
+    }
+    h += '</div></div>';
+  });
+  h += '</div></div>';
+  return h;
+}
+function bindChecklist(p){
+  setTimeout(function(){
+    $$("[data-ckid]").forEach(function(el){
+      el.addEventListener("click", function(){
+        var id = el.getAttribute("data-ckid");
+        var phases = [p.checklist.phase1,p.checklist.phase2,p.checklist.phase3,p.checklist.phase4];
+        phases.forEach(function(ph){var it=ph.items.find(function(x){return x.id===id;});if(it)it.done=!it.done;});
+        addAudit("Toggled checklist","Legal Advisor",id);
+        renderTab(); renderRightPanel();
+      });
+    });
+    $$("[data-ckv]").forEach(function(el){
+      el.addEventListener("click", function(){
+        var parts = el.getAttribute("data-ckv").split("-");
+        var id = parts.slice(0,-1).join("-"), verdict = parts[parts.length-1];
+        var phases = [p.checklist.phase1,p.checklist.phase2,p.checklist.phase3,p.checklist.phase4];
+        phases.forEach(function(ph){var it=ph.items.find(function(x){return x.id===id;});if(it){it.done=true;it.verdict=(verdict==="verify"?"Verified":verdict==="query"?"Queried":"Waived")+" by Legal Advisor · just now";}});
+        addAudit("Set verdict","Legal Advisor",id+": "+verdict);
+        showToast("success","Verdict Set","Item marked as "+verdict);
+        renderTab(); renderRightPanel();
+      });
+    });
+  },0);
+}
+
+/* ══════════ OPINION TAB ══════════ */
+function renderOpinionTab(p){
+  var op = p.opinion;
+  if(!op.sections.length) return '<div style="padding:40px;text-align:center;color:var(--text3)">No opinion sections generated yet. Run AI analysis first.</div>';
+  var h = '<div style="display:grid;grid-template-columns:1fr 280px;gap:0"><div style="padding-right:16px">';
+  h += '<div style="margin-bottom:16px"><div style="font-size:13px;font-weight:700">LEGAL OPINION</div><div style="font-size:10px;color:var(--text3);margin-top:4px">Survey '+p.id+' · '+p.loc+', '+p.taluk+' · Prepared by Legal Advisor</div></div>';
+  op.sections.forEach(function(s){
+    var acc = s.accepted;
+    h += '<div class="op-section'+(acc?" accepted":"")+'" id="op-sec-'+s.id+'"><div class="op-section-title">'+s.title;
+    if(s.ai) h += '<span class="op-badge'+(acc?" accepted-badge":"")+'">AI Generated'+(acc?" · Accepted":"")+'</span>';
+    h += '</div><div class="op-text'+(s.ai&&!acc?" ai-gen":"")+'" id="op-text-'+s.id+'">'+esc(s.text).replace(/\n/g,"<br>")+'</div>';
+    h += '<div class="op-actions" id="op-act-'+s.id+'">';
+    if(!acc) h += '<button class="op-btn op-btn-accept" data-op-accept="'+s.id+'">✓ Accept</button>';
+    h += '<button class="op-btn op-btn-edit" data-op-edit="'+s.id+'">✎ Edit</button></div></div>';
+  });
+  h += '<button class="op-sign-btn'+(op.signed?" locked":"")+'" id="signOpBtn" '+(op.signed?"disabled":"")+'>🔐 '+(op.signed?"Opinion Signed & Locked":"Sign & Finalize Opinion")+'</button>';
+  if(op.signed) h += '<div style="background:var(--green-l);border:1px solid var(--green-b);border-radius:8px;padding:12px;margin-top:12px;text-align:center;font-size:11px;color:var(--green);font-weight:600">✓ Opinion digitally signed and locked.</div>';
+  h += '</div><div style="border-left:1px solid var(--border);padding-left:16px"><div style="font-size:11px;font-weight:700;margin-bottom:12px">Source Documents</div>';
+  p.docs.forEach(function(d){h += '<div style="padding:8px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;font-size:10px;font-weight:600;cursor:pointer" data-opdoc="'+esc(d.name)+'">'+d.icon+' '+d.name+'</div>';});
+  h += '</div></div>';
+  return h;
+}
+function bindOpinion(p){
+  setTimeout(function(){
+    $$("[data-op-accept]").forEach(function(el){
+      el.addEventListener("click", function(){
+        var id = el.getAttribute("data-op-accept");
+        var sec = p.opinion.sections.find(function(s){return s.id===id;});
+        if(sec){sec.accepted=true; addAudit("Accepted opinion section","Legal Advisor",sec.title); showToast("success","Accepted",sec.title); renderTab();}
+      });
+    });
+    $$("[data-op-edit]").forEach(function(el){
+      el.addEventListener("click", function(){
+        if(p.opinion.signed) return;
+        var id = el.getAttribute("data-op-edit");
+        var sec = p.opinion.sections.find(function(s){return s.id===id;});
+        if(!sec) return;
+        var textEl = $("#op-text-"+id);
+        var actEl = $("#op-act-"+id);
+        var secEl = $("#op-sec-"+id);
+        secEl.classList.add("editing");
+        textEl.outerHTML = '<div class="op-text-editable" contenteditable="true" id="op-edit-'+id+'">'+esc(sec.text).replace(/\n/g,"<br>")+'</div>';
+        actEl.innerHTML = '<button class="op-btn op-btn-accept" id="op-save-'+id+'">💾 Save</button><button class="op-btn" id="op-cancel-'+id+'">Cancel</button>';
+        $("#op-save-"+id).addEventListener("click", function(){
+          sec.text = $("#op-edit-"+id).innerText;
+          sec.accepted = false;
+          addAudit("Edited opinion","Legal Advisor",sec.title);
+          showToast("info","Updated",sec.title+" edited");
+          renderTab();
+        });
+        $("#op-cancel-"+id).addEventListener("click", function(){ renderTab(); });
+      });
+    });
+    var signBtn = $("#signOpBtn");
+    if(signBtn && !p.opinion.signed){
+      signBtn.addEventListener("click", function(){
+        var un = p.opinion.sections.filter(function(s){return !s.accepted;});
+        if(un.length>0){ showToast("warning","Cannot Sign","Accept all "+un.length+" remaining sections first."); return; }
+        p.opinion.signed = true;
+        addAudit("Signed opinion","Legal Advisor","Survey "+p.id);
+        addNotif("reports","Opinion signed","Legal opinion for Survey "+p.id+" signed");
+        showToast("success","Signed","Opinion digitally signed and locked");
+        renderTab();
+      });
+    }
+    $$("[data-opdoc]").forEach(function(el){ el.addEventListener("click", function(){ openDocModal(el.getAttribute("data-opdoc")); }); });
+  },0);
+}
+
+/* ══════════ AUDIT TRAIL TAB ══════════ */
+function renderAuditTab(){
+  var iconMap = {verify:"✅",flag:"🚩",upload:"📥",status:"🔄",annotate:"📌",ai:"🤖",report:"📨",edit:"✏️",version:"🔄",resolve:"✓"};
+  var bgMap = {verify:"var(--green-l)",flag:"var(--red-l)",upload:"var(--accent-l)",status:"var(--amber-l)",annotate:"var(--purple-l)",ai:"var(--purple-l)",report:"var(--green-l)",edit:"var(--accent-l)",version:"var(--amber-l)",resolve:"var(--green-l)"};
+  var h = '<div class="section"><div class="section-title">Audit Trail & Version History</div><p style="font-size:11px;color:var(--text2);margin-bottom:16px">Complete log of all actions, document changes, and opinion edits.</p>';
+  AUDIT_LOG.forEach(function(a){
+    h += '<div class="audit-item"><div class="audit-icon" style="background:'+(bgMap[a.type]||"var(--bg)")+'">'+( iconMap[a.type]||"📋")+'</div><div style="flex:1"><div><span class="audit-action">'+a.action+'</span> by <span class="audit-user">'+a.user+'</span></div><div class="audit-detail">'+a.target+'</div><div class="audit-time">'+a.time+'</div></div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+/* ══════════ RIGHT PANEL ══════════ */
+function renderRightPanel(){
+  var p = getParcel(currentParcelId);
+  if(!p) return;
+  var rp = $("#rightPanel");
+  var phases = [p.checklist.phase1,p.checklist.phase2,p.checklist.phase3,p.checklist.phase4];
+  var ps = phases.map(function(ph){
+    var d=ph.items.filter(function(i){return i.done;}).length, t=ph.items.length;
+    var c = t===0?"var(--text3)":d===t?"var(--green)":"var(--amber)";
+    return '<div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600"><span>'+ph.title+'</span><span style="color:'+c+'">'+(t>0?d+'/'+t+(d===t?' ✓':''):'—')+'</span></div>';
+  }).join("");
+
+  rp.innerHTML = '<div class="rp-section"><div class="rp-title">Verification Status</div><div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">'+ps+'</div>'
+    +'<div class="progress-steps">'
+    +'<div class="ps-item"><div class="ps-circle done">✓</div><span class="ps-label done">Documents reviewed</span></div>'
+    +'<div class="ps-item"><div class="ps-circle done">✓</div><span class="ps-label done">EC timeline checked</span></div>'
+    +'<div class="ps-item"><div class="ps-circle done">✓</div><span class="ps-label done">Title chain verified</span></div>'
+    +'<div class="ps-item"><div class="ps-circle done">✓</div><span class="ps-label done">Court case check done</span></div>'
+    +'<div class="ps-item"><div class="ps-circle active">▶</div><span class="ps-label active">Consistency check</span></div>'
+    +'<div class="ps-item"><div class="ps-circle todo">○</div><span class="ps-label todo">Opinion drafted</span></div>'
+    +'<div class="ps-item"><div class="ps-circle todo">○</div><span class="ps-label todo">Report sent to client</span></div>'
+    +'</div></div>'
+    +'<div class="rp-section"><div class="rp-title">All 68 Parcels — Risk Heatmap</div><div class="heatmap" id="heatmap"></div>'
+    +'<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:2px;background:#22C55E"></div>Verified</div>'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:2px;background:#FCD34D"></div>In Review</div>'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:2px;background:#EF4444"></div>Flagged</div>'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9.5px;color:var(--text3)"><div style="width:8px;height:8px;border-radius:2px;background:#E0E6EF"></div>Pending</div>'
+    +'</div></div>'
+    +'<div class="rp-section"><div class="rp-title">Activity</div><div class="activity-feed">'
+    +AUDIT_LOG.slice(0,5).map(function(a){return '<div class="act-item"><div class="act-dot" style="background:var(--accent)"></div><div><div class="act-text">'+a.action+': '+a.target.substring(0,60)+'</div><div class="act-time">'+a.time+'</div></div></div>';}).join("")
+    +'</div></div>'
+    +'<div class="send-report"><div class="report-card"><div class="report-card-title">Send Legal Opinion Report</div><div class="report-card-sub">Select verdict and send to client dashboard</div>'
+    +'<div class="verdict-select"><div class="vs-item selected" data-verdict="safe"><div class="vs-dot" style="background:#22C55E"></div><span class="vs-label" style="color:var(--green)">🟢 Safe to Proceed</span></div>'
+    +'<div class="vs-item" data-verdict="caution"><div class="vs-dot" style="background:#FCD34D"></div><span class="vs-label" style="color:var(--amber)">🟡 Proceed with Caution</span></div>'
+    +'<div class="vs-item" data-verdict="stop"><div class="vs-dot" style="background:#EF4444"></div><span class="vs-label" style="color:var(--red)">🔴 Do Not Proceed</span></div></div>'
+    +'<button class="send-btn" id="sendReportBtn">📤 Send Report to Client</button>'
+    +'<button class="btn btn-secondary" id="sendManagerBtn" style="width:100%;justify-content:center;margin-top:6px">📨 Send to Site Manager</button>'
+    +'</div></div>';
+
+  // Heatmap
+  var hm = $("#heatmap");
+  for(var i=0;i<68;i++){
+    var st = i<4?"verified":i<8?"flagged":i<20?"pending":"to-review";
+    var cl = {verified:"#22C55E",flagged:"#EF4444",pending:"#FCD34D","to-review":"#E0E6EF"}[st];
+    var cell = document.createElement("div");
+    cell.className = "hm-cell";
+    cell.style.background = cl;
+    cell.style.color = st==="to-review"?"#9BA8B8":"rgba(0,0,0,.5)";
+    cell.innerHTML = (i+1)+'<div class="hm-tooltip">Parcel #'+(i+1)+' — '+st+'</div>';
+    (function(idx){
+      cell.addEventListener("click", function(){
+        var target = PARCELS[idx]||PARCELS[0];
+        loadParcel(target.id);
+        showToast("info","Selected","Navigated to Survey "+target.id);
+      });
+    })(i);
+    hm.appendChild(cell);
+  }
+
+  // Verdict select
+  $$("[data-verdict]").forEach(function(el){
+    el.addEventListener("click", function(){
+      $$(".vs-item").forEach(function(v){v.classList.remove("selected");});
+      el.classList.add("selected");
+    });
+  });
+  var sr = $("#sendReportBtn");
+  if(sr) sr.addEventListener("click", function(){
+    addAudit("Sent report","Legal Advisor","Survey "+currentParcelId);
+    addNotif("reports","Report sent","Report for Survey "+currentParcelId+" sent to client");
+    showToast("success","Sent","Report sent to client dashboard");
+  });
+  var sm = $("#sendManagerBtn");
+  if(sm) sm.addEventListener("click", function(){
+    addAudit("Sent to manager","Legal Advisor","Survey "+currentParcelId);
+    showToast("success","Sent","Report sent to Site Manager");
+  });
+}
+
+/* ══════════ DOC MODAL ══════════ */
+function openDocModal(docName){
+  var p = getParcel(currentParcelId);
+  $("#docModal").classList.add("active");
+  $("#modalDocTitle").textContent = "Document Reader — "+docName;
+  $("#docModalBody").innerHTML = '<div class="dr-workspace">'
+    +'<div class="dr-pdf-viewer"><div style="font-size:11px;font-weight:700;margin-bottom:12px;color:var(--text2)">ORIGINAL SCAN</div>'
+    +'<div class="dr-pdf-content"><div style="margin-bottom:12px;line-height:1.8"><strong>'+esc(docName).toUpperCase()+'</strong><br><br>'
+    +'This is the scanned content area for <span class="dr-pdf-highlight">'+esc(docName)+'</span>. In production, this renders the actual PDF/image via a viewer component.<br><br>'
+    +'Survey No. <span class="dr-pdf-highlight">'+currentParcelId+'</span>, '+(p?p.loc:"")+'.</div></div></div>'
+    +'<div class="dr-extracted"><div style="font-size:11px;font-weight:700;margin-bottom:12px;color:var(--text2)">EXTRACTED DATA</div>'
+    +'<div class="dr-toggle-row"><button class="dr-toggle-btn active">English</button><button class="dr-toggle-btn">Tamil (Transliterated)</button></div>'
+    +'<div class="dr-field"><label class="dr-label">Document Type</label><div class="dr-value"><span>'+esc(docName)+'</span><span class="dr-confidence">98%</span></div></div>'
+    +'<div class="dr-field"><label class="dr-label">Survey Number</label><div class="dr-value"><span>'+currentParcelId+'</span><span class="dr-confidence">99%</span></div></div>'
+    +'<div class="dr-field"><label class="dr-label">Location</label><div class="dr-value"><span>'+(p?p.loc:"")+'</span><span class="dr-confidence">95%</span></div></div>'
+    +'<div class="dr-field"><label class="dr-label">Extent</label><div class="dr-value"><span>'+(p?p.acres:"")+ ' acres</span><span class="dr-confidence">96%</span></div></div>'
+    +'<button class="btn btn-green" id="confirmExtBtn" style="width:100%;margin-top:16px;justify-content:center">✓ Confirm All Fields</button></div>'
+    +'<div class="dr-risks"><div style="font-size:11px;font-weight:700;margin-bottom:12px;color:var(--text2)">AUTO-DETECTED RISKS</div>'
+    +'<div class="rf-item"><div class="rf-header"><span class="rf-icon">⚠️</span><span class="rf-label">Auto-detected finding</span></div>'
+    +'<div class="rf-text">AI has analyzed this document. No critical issues. Minor formatting variations noted.</div>'
+    +'<div class="rf-actions"><button class="rf-btn" id="rfDismiss" style="border-color:var(--text3);color:var(--text3)">Dismiss</button><button class="rf-btn" id="rfAccept" style="border-color:var(--green);color:var(--green)">Accept</button></div></div></div></div>';
+
+  setTimeout(function(){
+    $$(".dr-toggle-btn").forEach(function(el){el.addEventListener("click",function(){$$(".dr-toggle-btn").forEach(function(b){b.classList.remove("active");}); el.classList.add("active");});});
+    var cb = $("#confirmExtBtn"); if(cb) cb.addEventListener("click", function(){ showToast("success","Confirmed","All extracted fields confirmed"); addAudit("Confirmed extraction","Legal Advisor",docName); });
+    var rd = $("#rfDismiss"); if(rd) rd.addEventListener("click", function(){ showToast("info","Dismissed","Risk dismissed"); });
+    var ra = $("#rfAccept"); if(ra) ra.addEventListener("click", function(){ showToast("info","Accepted","Risk accepted"); });
+  },0);
+  addAudit("Opened document","Legal Advisor",docName);
+}
+
+/* ══════════ REPORT MODAL ══════════ */
+function openReportModal(){
+  var p = getParcel(currentParcelId);
+  if(!p) return;
+  $("#reportModal").classList.add("active");
+  var vd = p.docs.filter(function(d){return d.status==="verified";}).length;
+  var opHtml = p.opinion.sections.map(function(s){return '<h2 style="font-family:var(--f1);font-size:14px;color:var(--text2);margin:16px 0 8px">'+s.title+'</h2><p style="font-size:11px;color:var(--text2);line-height:1.7">'+esc(s.text).replace(/\n/g,"<br>")+'</p>';}).join("")||'<p style="font-size:11px;color:var(--text3)">Opinion not yet drafted.</p>';
+  $("#reportModalBody").innerHTML = '<div id="reportPrintArea" style="border:1px solid var(--border);border-radius:10px;padding:24px;background:#fff;max-width:800px;margin:0 auto">'
+    +'<div style="text-align:center;margin-bottom:16px"><div style="font-family:var(--f1);font-size:11px;color:var(--accent);font-weight:800;letter-spacing:.1em">LANDWISE</div>'
+    +'<h1 style="font-family:var(--f1);font-size:20px">Legal Opinion Report</h1>'
+    +'<p style="color:var(--text3);font-size:10px">Generated '+new Date().toLocaleDateString()+' by Legal Advisor</p></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px;background:var(--bg);border-radius:8px;margin:12px 0;font-size:10px">'
+    +'<div><strong>Survey:</strong> '+p.id+'</div><div><strong>Location:</strong> '+p.loc+', '+p.taluk+'</div>'
+    +'<div><strong>Extent:</strong> '+p.acres+' acres</div><div><strong>Score:</strong> '+p.score+'/100</div>'
+    +'<div><strong>Owners:</strong> '+p.owners+'</div><div><strong>Documents:</strong> '+vd+'/'+p.docs.length+' verified</div>'
+    +'<div><strong>Court Cases:</strong> '+(p.courtCases?"Yes":"None")+'</div><div><strong>Status:</strong> '+p.status+'</div></div>'
+    +'<h2 style="font-family:var(--f1);font-size:14px;color:var(--text2);margin:16px 0 8px">Document Summary</h2>'
+    +'<table style="width:100%;font-size:10px;border-collapse:collapse;margin-bottom:16px">'
+    +'<tr style="background:var(--bg)"><th style="padding:6px;text-align:left;border:1px solid var(--border)">Document</th><th style="padding:6px;text-align:left;border:1px solid var(--border)">Source</th><th style="padding:6px;text-align:left;border:1px solid var(--border)">Year</th><th style="padding:6px;text-align:left;border:1px solid var(--border)">Status</th></tr>'
+    +p.docs.map(function(d){return '<tr><td style="padding:6px;border:1px solid var(--border)">'+d.name+'</td><td style="padding:6px;border:1px solid var(--border)">'+d.src+'</td><td style="padding:6px;border:1px solid var(--border)">'+d.year+'</td><td style="padding:6px;border:1px solid var(--border)">'+d.status+'</td></tr>';}).join("")
+    +'</table>'+opHtml+'</div>';
+}
+function exportPrint(){
+  var content = $("#reportPrintArea").innerHTML;
+  var w = window.open("","_blank");
+  w.document.write('<html><head><title>Legal Opinion — Survey '+currentParcelId+'</title><style>body{font-family:sans-serif;padding:40px;font-size:12px;color:#333}h1{font-size:20px}h2{font-size:14px;color:#555;margin-top:20px}p{line-height:1.7}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ddd;padding:6px;text-align:left}th{background:#f5f5f5}</style></head><body>'+content+'</body></html>');
+  w.document.close();
+  w.print();
+  addAudit("Exported report","Legal Advisor","Survey "+currentParcelId);
+  showToast("success","Exported","Report sent to print");
+}
+
+/* ══════════ GLOBAL SEARCH ══════════ */
+function handleGlobalSearch(query){
+  var gsr = $("#globalSearchResults");
+  if(!query.trim()){gsr.classList.remove("active");return;}
+  gsr.classList.add("active");
+  var q = query.toLowerCase(), h = "";
+  // Parcels
+  var mp = PARCELS.filter(function(p){return p.id.toLowerCase().indexOf(q)>=0||p.loc.toLowerCase().indexOf(q)>=0||p.landType.toLowerCase().indexOf(q)>=0;});
+  if(mp.length){
+    h += '<div class="gsr-cat">Parcels</div>';
+    mp.forEach(function(p){
+      var sc={verified:"var(--green)",flagged:"var(--red)",pending:"var(--amber)","to-review":"var(--text3)"}[p.status];
+      var sb={verified:"var(--green-l)",flagged:"var(--red-l)",pending:"var(--amber-l)","to-review":"var(--bg)"}[p.status];
+      h += '<div class="gsr-item" data-gsr-parcel="'+p.id+'"><div class="gsr-item-icon">📋</div><div class="gsr-item-text"><div class="gsr-item-title">Survey '+p.id+'</div><div class="gsr-item-sub">'+p.loc+' · '+p.taluk+'</div></div><span class="gsr-item-badge" style="background:'+sb+';color:'+sc+'">'+p.status+'</span></div>';
+    });
+  }
+  // Documents
+  var md = [];
+  PARCELS.forEach(function(p){p.docs.forEach(function(d){if(d.name.toLowerCase().indexOf(q)>=0||d.src.toLowerCase().indexOf(q)>=0) md.push({name:d.name,src:d.src,pid:p.id});});});
+  if(md.length){
+    h += '<div class="gsr-cat">Documents</div>';
+    md.slice(0,5).forEach(function(d){ h += '<div class="gsr-item" data-gsr-doc="'+esc(d.name)+'" data-gsr-pid="'+d.pid+'"><div class="gsr-item-icon">📄</div><div class="gsr-item-text"><div class="gsr-item-title">'+d.name+'</div><div class="gsr-item-sub">'+d.src+' · Survey '+d.pid+'</div></div></div>'; });
+  }
+  // Annotations
+  var ma = [];
+  PARCELS.forEach(function(p){p.annotations.forEach(function(a){if(a.text.toLowerCase().indexOf(q)>=0||a.title.toLowerCase().indexOf(q)>=0) ma.push({title:a.title,text:a.text,pid:p.id});});});
+  if(ma.length){
+    h += '<div class="gsr-cat">Annotations</div>';
+    ma.slice(0,3).forEach(function(a){ h += '<div class="gsr-item" data-gsr-ann="'+a.pid+'"><div class="gsr-item-icon">📌</div><div class="gsr-item-text"><div class="gsr-item-title">'+esc(a.title)+'</div><div class="gsr-item-sub">'+esc(a.text).substring(0,80)+'…</div></div></div>'; });
+  }
+  // Opinions
+  var hasOp = false;
+  PARCELS.forEach(function(p){p.opinion.sections.forEach(function(s){
+    if(s.text.toLowerCase().indexOf(q)>=0||s.title.toLowerCase().indexOf(q)>=0){
+      if(!hasOp){h += '<div class="gsr-cat">Opinions</div>'; hasOp=true;}
+      h += '<div class="gsr-item" data-gsr-opinion="'+p.id+'"><div class="gsr-item-icon">📝</div><div class="gsr-item-text"><div class="gsr-item-title">'+s.title+' — Survey '+p.id+'</div><div class="gsr-item-sub">'+esc(s.text).substring(0,80)+'…</div></div></div>';
+    }
+  });});
+  if(!h) h = '<div style="padding:20px;text-align:center;font-size:11px;color:var(--text3)">No results for "'+esc(query)+'"</div>';
+  gsr.innerHTML = h;
+  // Bind clicks
+  $$("[data-gsr-parcel]").forEach(function(el){el.addEventListener("click",function(){loadParcel(el.getAttribute("data-gsr-parcel"));gsr.classList.remove("active");$("#globalSearchInput").value="";});});
+  $$("[data-gsr-doc]").forEach(function(el){el.addEventListener("click",function(){loadParcel(el.getAttribute("data-gsr-pid"));openDocModal(el.getAttribute("data-gsr-doc"));gsr.classList.remove("active");$("#globalSearchInput").value="";});});
+  $$("[data-gsr-ann]").forEach(function(el){el.addEventListener("click",function(){loadParcel(el.getAttribute("data-gsr-ann"));currentTab="annotations";$$(".ctab").forEach(function(t){t.classList.remove("active");}); $$('.ctab[data-tab="annotations"]').forEach(function(t){t.classList.add("active");}); renderTab();gsr.classList.remove("active");$("#globalSearchInput").value="";});});
+  $$("[data-gsr-opinion]").forEach(function(el){el.addEventListener("click",function(){loadParcel(el.getAttribute("data-gsr-opinion"));currentTab="opinion";$$(".ctab").forEach(function(t){t.classList.remove("active");}); $$('.ctab[data-tab="opinion"]').forEach(function(t){t.classList.add("active");}); renderTab();gsr.classList.remove("active");$("#globalSearchInput").value="";});});
+}
+
+/* ══════════ NOTIFICATIONS ══════════ */
+function renderNotifications(){
+  var list = $("#notifList");
+  var filtered = currentNotifFilter==="all"?NOTIFICATIONS:NOTIFICATIONS.filter(function(n){return n.type===currentNotifFilter;});
+  list.innerHTML = filtered.map(function(n){
+    return '<div class="notif-item'+(n.unread?" unread":"")+'" data-nid="'+n.id+'"><div class="notif-item-icon" style="background:'+n.iconBg+'">'+n.emoji+'</div><div class="notif-item-content"><div class="notif-item-title">'+n.title+'</div><div class="notif-item-desc">'+n.desc+'</div><div class="notif-item-time">'+n.time+'</div></div></div>';
+  }).join("");
+  updateNotifBadge();
+  $$("[data-nid]").forEach(function(el){
+    el.addEventListener("click", function(e){
+      e.stopPropagation();
+      var n = NOTIFICATIONS.find(function(x){return x.id===parseInt(el.getAttribute("data-nid"));});
+      if(n) n.unread = false;
+      renderNotifications();
+    });
+  });
+}
+function updateNotifBadge(){
+  var c = NOTIFICATIONS.filter(function(n){return n.unread;}).length;
+  var b = $("#notifBadge");
+  b.textContent = c;
+  b.style.display = c>0?"flex":"none";
+}
+
+/* ══════════ MAP VIEW ══════════ */
+function showMapView(){
+  $("#mainLayout").style.display = "none";
+  $("#docRepoContainer").style.display = "none";
+  $("#dashboardContainer").classList.remove("active");
+  var mc = $("#mapViewContainer");
+  mc.classList.add("active");
+  mc.style.display = "flex";
+  renderMapList();
+  if(!leafletMap){
+    setTimeout(function(){
+      leafletMap = L.map("mainMap").setView([12.7400,77.8300],14);
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"OpenStreetMap",maxZoom:19}).addTo(leafletMap);
+      PARCELS.forEach(function(p){
+        var color = {verified:"#22C55E",flagged:"#EF4444",pending:"#FCD34D","to-review":"#8A9BB8"}[p.status]||"#8A9BB8";
+        var marker = L.circleMarker(p.coords,{radius:12,fillColor:color,color:"#fff",weight:2,opacity:1,fillOpacity:.9}).addTo(leafletMap);
+        var docsHtml = p.docs.map(function(d){
+          var si = d.status==="verified"?"✓":d.status==="issue"?"⚠":"…";
+          return '<div class="map-doc-item" onclick="openDocModal(\''+d.name.replace(/'/g,"\\'")+ '\')"><span>'+d.icon+'</span><span>'+d.name+'</span><span style="margin-left:auto">'+si+'</span></div>';
+        }).join("");
+        var sl = {verified:"Verified",flagged:"Flagged",pending:"In Review","to-review":"To Review"}[p.status];
+        var sc = {verified:"var(--green)",flagged:"var(--red)",pending:"var(--amber)","to-review":"var(--text3)"}[p.status];
+        var sb = {verified:"var(--green-l)",flagged:"var(--red-l)",pending:"var(--amber-l)","to-review":"var(--bg)"}[p.status];
+        var popup = '<div class="map-doc-card">'
+          +'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--border)">'
+          +'<div style="flex:1"><div class="map-doc-card-title">Survey '+p.id+'</div><div style="font-size:9px;color:var(--text3)">'+p.loc+' · '+p.acres+' acres</div></div>'
+          +'<span style="font-size:8px;font-weight:600;padding:2px 6px;border-radius:100px;background:'+sb+';color:'+sc+'">'+sl+'</span></div>'
+          +'<div style="font-size:9px;font-weight:700;color:var(--text2);margin-bottom:6px">DOCUMENTS ('+p.docs.length+')</div>'
+          +docsHtml
+          +'<div style="margin-top:8px"><button class="btn btn-primary" style="width:100%;justify-content:center;font-size:10px;padding:6px" onclick="showLegalAdvisor();loadParcel(\''+p.id+'\')">⚖ Open in Legal Advisor</button></div></div>';
+        marker.bindPopup(popup,{maxWidth:300});
+        marker.bindTooltip("Survey "+p.id,{permanent:false,direction:"top"});
+        mapMarkers[p.id] = marker;
+        // Polygon boundary
+        var lat=p.coords[0],lng=p.coords[1],off=.002;
+        L.polygon([[lat-off,lng-off],[lat-off,lng+off],[lat+off,lng+off],[lat+off,lng-off]],{color:color,weight:2,fillOpacity:.15}).addTo(leafletMap);
+      });
+    },100);
+  } else {
+    setTimeout(function(){leafletMap.invalidateSize();},100);
+  }
+}
+function renderMapList(){
+  var list = $("#mapParcelList");
+  list.innerHTML = PARCELS.map(function(p){
+    var c = {verified:"#22C55E",flagged:"#EF4444",pending:"#FCD34D","to-review":"#8A9BB8"}[p.status];
+    return '<div class="map-parcel-item" data-mpid="'+p.id+'"><div class="map-parcel-dot" style="background:'+c+'"></div><div class="map-parcel-info"><div class="map-parcel-name">Survey '+p.id+'</div><div class="map-parcel-loc">'+p.loc+' · '+p.acres+' acres</div></div></div>';
+  }).join("");
+  $$("[data-mpid]").forEach(function(el){
+    el.addEventListener("click", function(){
+      var id = el.getAttribute("data-mpid");
+      focusMapParcel(id);
+      $$(".map-parcel-item").forEach(function(e){e.classList.remove("active");});
+      el.classList.add("active");
+    });
+  });
+}
+function focusMapParcel(id){
+  var p = getParcel(id);
+  if(p&&leafletMap&&mapMarkers[id]){leafletMap.setView(p.coords,16);mapMarkers[id].openPopup();}
+}
+function searchOnMap(query){
+  var q = query.toLowerCase().trim();
+  if(!q){renderMapList();return;}
+  var matched = PARCELS.filter(function(p){return p.id.toLowerCase().indexOf(q)>=0||p.loc.toLowerCase().indexOf(q)>=0;});
+  var list = $("#mapParcelList");
+  list.innerHTML = matched.map(function(p){
+    var c = {verified:"#22C55E",flagged:"#EF4444",pending:"#FCD34D","to-review":"#8A9BB8"}[p.status];
+    return '<div class="map-parcel-item" data-mpid="'+p.id+'"><div class="map-parcel-dot" style="background:'+c+'"></div><div class="map-parcel-info"><div class="map-parcel-name">Survey '+p.id+'</div><div class="map-parcel-loc">'+p.loc+' · '+p.acres+' acres</div></div></div>';
+  }).join("");
+  $$("[data-mpid]").forEach(function(el){
+    el.addEventListener("click", function(){
+      var id = el.getAttribute("data-mpid");
+      focusMapParcel(id);
+      $$(".map-parcel-item").forEach(function(e){e.classList.remove("active");});
+      el.classList.add("active");
+    });
+  });
+  if(matched.length===1) focusMapParcel(matched[0].id);
+}
+
+/* ══════════ DASHBOARD OVERVIEW ══════════ */
+function showDashboardView(){
+  $("#mainLayout").style.display = "none";
+  $("#docRepoContainer").style.display = "none";
+  $("#mapViewContainer").style.display = "none";
+  var dc = $("#dashboardContainer");
+  dc.classList.add("active");
+  $$(".ttab").forEach(function(t){t.classList.remove("active");});
+  $$('.ttab[data-view="dashboard"]').forEach(function(t){t.classList.add("active");});
+
+  var total = PARCELS.length + 64;
+  var verified = PARCELS.filter(function(p){return p.status==="verified";}).length + 4;
+  var flagged = PARCELS.filter(function(p){return p.status==="flagged";}).length + 4;
+  var pending = PARCELS.filter(function(p){return p.status==="pending"||p.status==="to-review";}).length + 56;
+  var avgScore = Math.round(PARCELS.reduce(function(s,p){return s+(p.score||0);},0)/PARCELS.filter(function(p){return p.score>0;}).length);
+  var totalDocs = PARCELS.reduce(function(s,p){return s+p.docs.length;},0);
+  var verifiedDocs = PARCELS.reduce(function(s,p){return s+p.docs.filter(function(d){return d.status==="verified";}).length;},0);
+
+  var flaggedParcels = PARCELS.filter(function(p){return p.status==="flagged";});
+
+  var alertsHtml = flaggedParcels.map(function(p){
+    return '<div class="db-alert red"><div style="font-size:16px">🚩</div><div class="db-alert-text"><strong>Survey '+p.id+'</strong> — '+p.loc+'<br><span style="font-size:9.5px;color:var(--text2)">'+(p.courtCases?"Active court case · ":"")+'Score: '+p.score+'/100</span></div><span class="db-alert-tag" style="background:var(--red-l);color:var(--red)">FLAGGED</span></div>';
+  }).join("") + PARCELS.filter(function(p){return p.status==="pending";}).map(function(p){
+    return '<div class="db-alert amber"><div style="font-size:16px">⏳</div><div class="db-alert-text"><strong>Survey '+p.id+'</strong> — '+p.loc+'<br><span style="font-size:9.5px;color:var(--text2)">'+p.docs.filter(function(d){return d.status!=="verified";}).length+' docs pending · Score: '+p.score+'/100</span></div><span class="db-alert-tag" style="background:var(--amber-l);color:var(--amber)">PENDING</span></div>';
+  }).join("");
+
+  var parcelRowsHtml = PARCELS.map(function(p){
+    var sc = {verified:"var(--green)",flagged:"var(--red)",pending:"var(--amber)","to-review":"var(--text3)"}[p.status];
+    var sb = {verified:"var(--green-l)",flagged:"var(--red-l)",pending:"var(--amber-l)","to-review":"var(--bg)"}[p.status];
+    var sl = {verified:"Verified",flagged:"Flagged",pending:"In Review","to-review":"To Review"}[p.status];
+    var vd = p.docs.filter(function(d){return d.status==="verified";}).length;
+    return '<div class="db-parcel-row" data-db-pid="'+p.id+'">'
+      +'<div style="width:8px;height:8px;border-radius:50%;background:'+sc+';flex-shrink:0"></div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:11px;font-weight:600">Survey '+p.id+'</div><div style="font-size:9px;color:var(--text3)">'+p.loc+'</div></div>'
+      +'<div class="db-score-mini" style="width:100px"><div class="db-score-bar"><div class="db-score-fill" style="width:'+(p.score||0)+'%;background:'+sc+'"></div></div><span style="font-family:var(--fm);font-size:9px;color:'+sc+';">'+(p.score||'—')+'</span></div>'
+      +'<span style="font-size:8px;font-weight:600;padding:2px 7px;border-radius:100px;background:'+sb+';color:'+sc+'">'+sl+'</span></div>';
+  }).join("");
+
+  var actHtml = AUDIT_LOG.slice(0,6).map(function(a){
+    var dotC = {verify:"var(--green)",flag:"var(--red)",upload:"var(--accent)",status:"var(--amber)",ai:"var(--purple)",report:"var(--green)"}[a.type]||"var(--text3)";
+    return '<div class="db-act-item"><div class="db-act-dot" style="background:'+dotC+'"></div><div><div class="db-act-text">'+a.action+' — '+a.target.substring(0,55)+(a.target.length>55?"…":"")+'</div><div class="db-act-time">'+a.time+' · '+a.user+'</div></div></div>';
+  }).join("");
+
+  $("#dashboardContent").innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'
+    +'<div><div style="font-family:var(--f1);font-size:22px;font-weight:800">Project Overview</div><div style="font-size:11px;color:var(--text3);margin-top:3px">Real Estate Project · Hosur Taluk, Krishnagiri District</div></div>'
+    +'<div style="display:flex;gap:8px">'
+    +'<button class="btn btn-secondary" id="dbGoLegal">⚖ Open Legal Advisor</button>'
+    +'<button class="btn btn-primary" id="dbGoMap">🗺 View on Map</button>'
+    +'</div></div>'
+
+    +'<div class="db-kpi-row">'
+    +'<div class="db-kpi kpi-blue"><div class="db-kpi-icon">📋</div><div class="db-kpi-val">'+total+'</div><div class="db-kpi-label">Total Parcels</div><div class="db-kpi-sub">Real Estate Portfolio</div></div>'
+    +'<div class="db-kpi kpi-green"><div class="db-kpi-icon">✅</div><div class="db-kpi-val">'+verified+'</div><div class="db-kpi-label">Verified</div><div class="db-kpi-sub">'+Math.round(verified/total*100)+'% of portfolio</div></div>'
+    +'<div class="db-kpi kpi-red"><div class="db-kpi-icon">🚩</div><div class="db-kpi-val">'+flagged+'</div><div class="db-kpi-label">Flagged</div><div class="db-kpi-sub">Needs attention</div></div>'
+    +'<div class="db-kpi kpi-amber"><div class="db-kpi-icon">⏳</div><div class="db-kpi-val">'+pending+'</div><div class="db-kpi-label">In Review</div><div class="db-kpi-sub">'+totalDocs+' total docs / '+verifiedDocs+' verified</div></div>'
+    +'<div class="db-kpi kpi-purple"><div class="db-kpi-icon">📊</div><div class="db-kpi-val">'+avgScore+'</div><div class="db-kpi-label">Avg Score</div><div class="db-kpi-sub">Out of 100</div></div>'
+    +'</div>'
+
+    +'<div class="db-2col">'
+    +'<div>'
+    +'<div class="db-card" style="margin-bottom:16px"><div class="db-card-title">Parcels Requiring Attention <span style="font-size:10px;color:var(--text3);font-weight:400;text-transform:none">Critical & pending</span></div>'+alertsHtml+'</div>'
+    +'<div class="db-card"><div class="db-card-title">All Parcels — Score Overview</div>'+parcelRowsHtml+'</div>'
+    +'</div>'
+    +'<div>'
+    +'<div class="db-card" style="margin-bottom:16px"><div class="db-card-title">Portfolio Breakdown</div>'
+    +'<div class="db-bar-row"><div class="db-bar-label">Verified</div><div class="db-bar-track"><div class="db-bar-fill" style="width:'+Math.round(verified/total*100)+'%;background:#22C55E"></div></div><div class="db-bar-count">'+verified+'</div></div>'
+    +'<div class="db-bar-row"><div class="db-bar-label">Flagged</div><div class="db-bar-track"><div class="db-bar-fill" style="width:'+Math.round(flagged/total*100)+'%;background:#EF4444"></div></div><div class="db-bar-count">'+flagged+'</div></div>'
+    +'<div class="db-bar-row"><div class="db-bar-label">In Review</div><div class="db-bar-track"><div class="db-bar-fill" style="width:'+Math.round(pending/total*100)+'%;background:#F59E0B"></div></div><div class="db-bar-count">'+pending+'</div></div>'
+    +'<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">'
+    +'<div style="font-size:10px;color:var(--text3);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">Documents</div>'
+    +'<div class="db-bar-row"><div class="db-bar-label">Verified</div><div class="db-bar-track"><div class="db-bar-fill" style="width:'+Math.round(verifiedDocs/totalDocs*100)+'%;background:#22C55E"></div></div><div class="db-bar-count">'+verifiedDocs+'</div></div>'
+    +'<div class="db-bar-row"><div class="db-bar-label">Pending</div><div class="db-bar-track"><div class="db-bar-fill" style="width:'+Math.round((totalDocs-verifiedDocs)/totalDocs*100)+'%;background:#FCD34D"></div></div><div class="db-bar-count">'+(totalDocs-verifiedDocs)+'</div></div>'
+    +'</div></div>'
+    +'<div class="db-card"><div class="db-card-title">Recent Activity</div>'+actHtml+'</div>'
+    +'</div>'
+    +'</div>';
+
+  setTimeout(function(){
+    var gl = $("#dbGoLegal"); if(gl) gl.addEventListener("click", showLegalAdvisor);
+    var gm = $("#dbGoMap"); if(gm) gm.addEventListener("click", showMapView);
+    $$("[data-db-pid]").forEach(function(el){
+      el.addEventListener("click", function(){
+        showLegalAdvisor();
+        loadParcel(el.getAttribute("data-db-pid"));
+      });
+    });
+  },0);
+}
+
+/* ══════════ SHOW VIEWS ══════════ */
+function showLegalAdvisor(){
+  $("#mainLayout").style.display = "grid";
+  $("#docRepoContainer").style.display = "none";
+  $("#mapViewContainer").style.display = "none";
+  $("#dashboardContainer").classList.remove("active");
+  $$(".ttab").forEach(function(t){t.classList.remove("active");});
+  $$('.ttab[data-view="legal"]').forEach(function(t){t.classList.add("active");});
+}
+
+function showDocRepository(){
+  $("#mainLayout").style.display = "none";
+  $("#mapViewContainer").style.display = "none";
+  $("#dashboardContainer").classList.remove("active");
+  var repo = $("#docRepoContainer");
+  repo.style.display = "grid";
+  repo.classList.add("active");
+  initRepo();
+}
+
+function initRepo(){
+  // Folder tree
+  var ft = $("#folderTree");
+  var treeHtml = '<div class="folder-item open"><button class="folder-toggle active">📁 Real Estate Project</button><div class="folder-children" style="display:block">';
+  PARCELS.forEach(function(p){
+    treeHtml += '<div class="folder-item"><button class="folder-toggle" data-ftoggle>📋 Survey '+p.id+'</button><div class="folder-children">';
+    p.docs.forEach(function(d){ treeHtml += '<button class="doc-item-tree" data-repodoc="'+esc(d.name)+'">'+d.icon+' '+d.name+'</button>'; });
+    treeHtml += '</div></div>';
+  });
+  treeHtml += '</div></div>';
+  ft.innerHTML = treeHtml;
+  // Bind toggles
+  $$("[data-ftoggle]").forEach(function(el){
+    el.addEventListener("click", function(){
+      el.parentElement.classList.toggle("open");
+      el.classList.toggle("active");
+    });
+  });
+  $$("[data-repodoc]").forEach(function(el){
+    el.addEventListener("click", function(){ openDocModal(el.getAttribute("data-repodoc")); });
+  });
+
+  // Content
+  var allDocs = [];
+  PARCELS.forEach(function(p){p.docs.forEach(function(d){allDocs.push({name:d.name,src:d.src,year:d.year,status:d.status,icon:d.icon,pid:p.id});});});
+  var rc = $("#repoContent");
+  rc.innerHTML = '<div class="breadcrumb">📁 Projects / Real Estate Project</div>'
+    +'<div class="repo-stats">'
+    +'<div class="stat-card"><div class="stat-number">'+PARCELS.length+'</div><div class="stat-label">Total Parcels</div></div>'
+    +'<div class="stat-card"><div class="stat-number">'+allDocs.length+'</div><div class="stat-label">Total Documents</div></div>'
+    +'<div class="stat-card"><div class="stat-number">'+Math.round(allDocs.filter(function(d){return d.status==="verified";}).length/allDocs.length*100)+'%</div><div class="stat-label">Verified</div></div>'
+    +'<div class="stat-card"><div class="stat-number">'+allDocs.filter(function(d){return d.status==="pending";}).length+'</div><div class="stat-label">Pending</div></div></div>'
+    +'<div class="section"><div class="section-title">Recent Documents</div>'
+    +allDocs.slice(0,8).map(function(d){
+      return '<div class="repo-file-item"><div class="repo-file-icon">'+d.icon+'</div><div class="repo-file-info"><div class="repo-file-name">'+d.name+' (Survey '+d.pid+')</div><div class="repo-file-meta">'+d.src+' · '+d.year+' · Status: '+d.status+'</div></div><div style="display:flex;gap:6px"><button class="repo-file-btn" data-rvdoc="'+esc(d.name)+'">View</button><button class="repo-file-btn" data-rfdl="'+esc(d.name)+'">⬇</button></div></div>';
+    }).join("")+'</div>';
+  $$("[data-rvdoc]").forEach(function(el){el.addEventListener("click",function(){openDocModal(el.getAttribute("data-rvdoc"));});});
+  $$("[data-rfdl]").forEach(function(el){el.addEventListener("click",function(){showToast("info","Downloaded",el.getAttribute("data-rfdl")+" downloaded");});});
+
+  // Right panel
+  var rrp = $("#repoRightPanel");
+  rrp.innerHTML = '<div class="rp-section"><div class="rp-title">Quick Actions</div>'
+    +'<button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px" id="repoUploadBtn">📥 Upload Document</button>'
+    +'<button class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:8px" id="repoGenReport">📋 Generate Report</button>'
+    +'<button class="btn btn-secondary" style="width:100%;justify-content:center">🔗 Share Folder</button></div>'
+    +'<div class="rp-section"><div class="rp-title">Recent Activity</div>'
+    +AUDIT_LOG.filter(function(a){return a.type==="upload"||a.type==="version"||a.type==="verify";}).slice(0,5).map(function(a){return '<div style="font-size:9px;color:var(--text2);margin-bottom:8px"><strong>'+a.action+'</strong><br>'+a.target+'<br><span style="color:var(--text3)">'+a.time+'</span></div>';}).join("")+'</div>';
+  var ub = $("#repoUploadBtn"); if(ub) ub.addEventListener("click",function(){showToast("info","Upload","Document upload dialog would open here");});
+  var gr = $("#repoGenReport"); if(gr) gr.addEventListener("click",openReportModal);
+}
+
+/* ══════════ BOOT ══════════ */
+init();
+</script>
+</body>
+</html>

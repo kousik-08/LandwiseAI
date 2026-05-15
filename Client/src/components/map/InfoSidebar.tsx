@@ -176,6 +176,21 @@ const InfoSidebar = ({
 
   if (!isOpen) return null;
 
+  const getDisplaySurveyNumber = (data: LandData | null): string => {
+    if (!data) return "N/A";
+
+    // If KIDE is present (typically "13/3"), that is the most precise representation.
+    if (data.kide) return data.kide;
+
+    const base = data.survey_number;
+    const sub = data.sub_division;
+    if (!base) return "N/A";
+
+    const baseStr = String(base);
+    if (baseStr.includes("/") || !sub) return baseStr;
+    return `${baseStr}/${sub}`;
+  };
+
   return (
     <div className="fixed left-0 top-16 h-[calc(100vh-4rem)] w-96 bg-card shadow-xl z-[1000] overflow-y-auto animate-in slide-in-from-left duration-300">
       <div className="sticky top-0 bg-card z-10 border-b border-border">
@@ -296,7 +311,7 @@ const InfoSidebar = ({
                   <div className="space-y-3">
                     <InfoRow
                       label="Survey Number"
-                      value={landData.survey_number}
+                      value={getDisplaySurveyNumber(landData)}
                     />
                     <InfoRow
                       label="Sub Division"

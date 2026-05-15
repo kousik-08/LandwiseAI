@@ -110,9 +110,9 @@ class DocumentMatcher:
                 file_map[norm_f] = f
 
         # 3. Determine actual limit
+        # 0 or None means process ALL documents (unlimited)
         if limit is None or limit < 0:
-            # If limit is None or negative, treat as 'all' (0)
-            effective_limit = int(os.getenv("MATCH_LIMIT", 0))
+            effective_limit = 0  # 0 = unlimited, process all documents
         else:
             effective_limit = limit
         

@@ -16,11 +16,12 @@ interface Message {
 interface DocChatProps {
     docNo: string;
     requestId?: string;
+    parcelId?: string;
     onClose?: () => void;
     onPageClick?: (page: number) => void;
 }
 
-const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClick }) => {
+const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, parcelId, onClose, onPageClick }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
@@ -69,6 +70,7 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClic
             const formData = new FormData();
             formData.append("doc_no", docNo);
             if (requestId) formData.append("request_id", requestId);
+            if (parcelId) formData.append("parcel_id", parcelId);
             formData.append("message", input);
             formData.append("history", JSON.stringify(messages.slice(-6))); // Send last 3 rounds
 
@@ -105,56 +107,62 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClic
     return (
         <Card className={cn(
             "border-primary/20 shadow-xl overflow-hidden flex flex-col transition-all duration-500 ease-in-out glass-ui",
-            isExpanded ? "fixed bottom-4 right-4 w-[450px] h-[600px] z-[60]" : "h-full w-full border-none shadow-none"
+            isExpanded
+                // z-[200] sits above PdfAnnotator's TEXT/DRAW toggle (z-100) and the
+                // Single-PDF-Matching button (z-30) so the floating chatbot doesn't
+                // get pierced by PDF chrome from the panel underneath.
+                ? "fixed bottom-4 right-4 w-[min(620px,calc(100vw-2rem))] h-[min(780px,calc(100vh-2rem))] z-[200]"
+                : "h-full w-full border-none shadow-none"
         )}>
-            <CardHeader className="bg-primary/95 backdrop-blur-sm py-2 px-4 flex flex-row items-center justify-between space-y-0">
-                <div className="flex items-center gap-2">
-                    <div className="p-1 bg-white/20 rounded shadow-inner">
-                        <MessageSquare className="w-3.5 h-3.5 text-white" />
+            <CardHeader className="bg-primary/95 backdrop-blur-sm py-3 px-5 flex flex-row items-center justify-between space-y-0">
+                <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-white/20 rounded shadow-inner">
+                        <MessageSquare className="w-4 h-4 text-white" />
                     </div>
                     <div className="flex flex-col">
                         <span className="text-[10px] text-white/70 font-bold uppercase tracking-widest">Legal AI Assistant</span>
-                        <span className="text-xs font-bold text-white">Chatting about #{docNo}</span>
+                        <span className="text-sm font-bold text-white">Chatting about #{docNo}</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-0.5">
                     <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7 text-white hover:bg-white/10 rounded-full"
+                        className="h-8 w-8 text-white hover:bg-white/10 rounded-full"
                         onClick={() => setIsExpanded(!isExpanded)}
+                        title={isExpanded ? "Collapse chat" : "Pop out larger chat"}
                     >
-                        {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                        {isExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
                     </Button>
                     {onClose && (
                         <Button
                             size="icon"
                             variant="ghost"
-                            className="h-7 w-7 text-white hover:bg-white/10 rounded-full"
+                            className="h-8 w-8 text-white hover:bg-white/10 rounded-full"
                             onClick={onClose}
                         >
-                            <X className="w-3.5 h-3.5" />
+                            <X className="w-4 h-4" />
                         </Button>
                     )}
                 </div>
             </CardHeader>
 
-            <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 chat-scrollbar bg-white/40" ref={scrollRef}>
+            <CardContent className="flex-1 overflow-y-auto p-5 space-y-5 chat-scrollbar bg-white/40" ref={scrollRef}>
                 {messages.length === 0 && (
-                    <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-50 grayscale">
-                        <div className="p-4 bg-primary/5 rounded-full">
-                            <Bot className="w-8 h-8 text-primary" />
+                    <div className="h-full flex flex-col items-center justify-center text-center space-y-3 opacity-60">
+                        <div className="p-5 bg-primary/5 rounded-full">
+                            <Bot className="w-10 h-10 text-primary" />
                         </div>
                         <div className="space-y-1">
-                            <p className="text-sm font-bold text-slate-700">How can I help you with this deed?</p>
-                            <p className="text-[10px] text-slate-500 max-w-[200px]">Ask about boundary details, area calculations, executant hierarchy or date specifics.</p>
+                            <p className="text-base font-bold text-slate-700">How can I help you with this deed?</p>
+                            <p className="text-xs text-slate-500 max-w-[260px]">Ask about boundary details, area calculations, executant hierarchy or date specifics.</p>
                         </div>
                         <div className="flex flex-wrap justify-center gap-1.5 pt-2">
                             {["Summary", "Executants", "Area Details"].map(btn => (
                                 <Button
                                     key={btn}
                                     variant="outline"
-                                    className="text-[9px] h-6 px-2 py-0 border-primary/20 text-primary hover:bg-primary/5"
+                                    className="text-[10px] h-7 px-2.5 py-0 border-primary/20 text-primary hover:bg-primary/5"
                                     onClick={() => { setInput(`Give me a ${btn.toLowerCase()} of this document.`); }}
                                 >
                                     {btn}
@@ -164,62 +172,92 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClic
                     </div>
                 )}
 
-                {messages.map((msg, i) => (
+                {messages.map((msg, i) => {
+                    const isUser = msg.role === "user";
+                    return (
                     <div
                         key={i}
                         className={cn(
                             "flex flex-col max-w-[85%] animate-in fade-in slide-in-from-bottom-2 duration-300",
-                            msg.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
+                            isUser ? "ml-auto items-end" : "mr-auto items-start"
                         )}
                     >
                         <div className={cn(
-                            "p-3 rounded-2xl text-xs leading-relaxed shadow-sm",
-                            msg.role === "user"
+                            "p-3.5 rounded-2xl text-sm leading-relaxed shadow-sm",
+                            isUser
                                 ? "bg-primary text-primary-foreground rounded-tr-none"
-                                : "bg-slate-100 text-slate-800 rounded-tl-none border border-slate-200"
+                                : "bg-white text-slate-800 rounded-tl-none border border-slate-200"
                         )}>
-                            <div className="prose prose-sm dark:prose-invert max-w-none">
-                                <ReactMarkdown
-                                    components={{
-                                        // Custom component for links to handle page citations
-                                        a: ({ node, ...props }) => {
-                                            if (props.href?.startsWith("#page-")) {
-                                                const page = parseInt(props.href.replace("#page-", ""));
-                                                return (
-                                                    <button
-                                                        onClick={() => onPageClick?.(page)}
-                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 text-primary font-bold rounded hover:bg-primary/20 transition-colors mx-0.5"
-                                                    >
-                                                        <Maximize2 className="w-3 h-3" />
-                                                        {props.children}
-                                                    </button>
-                                                );
-                                            }
-                                            return <a {...props} />;
+                            <ReactMarkdown
+                                components={{
+                                    // Page citations render as in-bubble jump buttons
+                                    a: ({ node, ...props }) => {
+                                        if (props.href?.startsWith("#page-")) {
+                                            const page = parseInt(props.href.replace("#page-", ""));
+                                            return (
+                                                <button
+                                                    onClick={() => onPageClick?.(page)}
+                                                    className={cn(
+                                                        "inline-flex items-center gap-1 px-1.5 py-0.5 font-bold rounded hover:bg-primary/30 transition-colors mx-0.5",
+                                                        isUser
+                                                            ? "bg-white/20 text-white hover:bg-white/30"
+                                                            : "bg-primary/10 text-primary"
+                                                    )}
+                                                >
+                                                    <Maximize2 className="w-3 h-3" />
+                                                    {props.children}
+                                                </button>
+                                            );
                                         }
-                                    }}
-                                >
-                                    {msg.content.replace(/\[\[Page:(\d+)\]\]/g, "[Page $1](#page-$1)")}
-                                </ReactMarkdown>
-                            </div>
+                                        return <a {...props} />;
+                                    },
+                                    p: ({ node, ...props }) => (
+                                        <p {...props} className="m-0 mb-2 last:mb-0" />
+                                    ),
+                                    ul: ({ node, ...props }) => (
+                                        <ul {...props} className="list-disc pl-5 my-2 space-y-1" />
+                                    ),
+                                    ol: ({ node, ...props }) => (
+                                        <ol {...props} className="list-decimal pl-5 my-2 space-y-1" />
+                                    ),
+                                    li: ({ node, ...props }) => (
+                                        <li {...props} className="leading-relaxed" />
+                                    ),
+                                    code: ({ node, ...props }) => (
+                                        <code
+                                            {...props}
+                                            className={cn(
+                                                "px-1 py-0.5 rounded text-[12px] font-mono",
+                                                isUser ? "bg-white/20 text-white" : "bg-slate-100 text-slate-800",
+                                            )}
+                                        />
+                                    ),
+                                    strong: ({ node, ...props }) => (
+                                        <strong {...props} className="font-bold" />
+                                    ),
+                                }}
+                            >
+                                {msg.content.replace(/\[\[Page:(\d+)\]\]/g, "[Page $1](#page-$1)")}
+                            </ReactMarkdown>
                         </div>
-                        <span className="text-[8px] text-slate-400 mt-1 uppercase font-bold tracking-widest">
-                            {msg.role === "user" ? "You" : "AI Assistant"}
+                        <span className="text-[9px] text-slate-400 mt-1 uppercase font-bold tracking-widest">
+                            {isUser ? "You" : "AI Assistant"}
                         </span>
                     </div>
-                ))}
+                    );
+                })}
 
                 {isLoading && (
                     <div className="flex flex-col items-start mr-auto max-w-[80%] animate-pulse">
-                        <div className="bg-slate-100 p-3 rounded-2xl rounded-tl-none border border-slate-200 flex items-center gap-2">
-                            <Loader2 className="w-3 h-3 animate-spin text-primary" />
-                            <span className="text-[10px] text-slate-500 font-medium italic">Analyzing deed...</span>
+                        <div className="bg-slate-100 p-3.5 rounded-2xl rounded-tl-none border border-slate-200 flex items-center gap-2">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                            <span className="text-xs text-slate-500 font-medium italic">Analyzing deed...</span>
                         </div>
                     </div>
                 )}
             </CardContent>
 
-            <CardFooter className="p-3 border-t bg-slate-50/50">
+            <CardFooter className="p-3.5 border-t bg-slate-50/50">
                 <form
                     className="flex w-full items-center gap-2"
                     onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}
@@ -228,18 +266,19 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClic
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 text-slate-400 hover:text-red-500 shrink-0"
+                        className="h-9 w-9 text-slate-400 hover:text-red-500 shrink-0"
                         onClick={clearChat}
                         disabled={messages.length === 0}
+                        title="Clear conversation"
                     >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <Trash2 className="w-4 h-4" />
                     </Button>
 
                     {onClose && (
                         <Button
                             type="button"
                             variant="secondary"
-                            className="h-8 px-3 text-[10px] font-bold shrink-0 hover:bg-slate-200"
+                            className="h-9 px-3 text-[11px] font-bold shrink-0 hover:bg-slate-200"
                             onClick={onClose}
                         >
                             Cancel
@@ -249,13 +288,13 @@ const DocChat: React.FC<DocChatProps> = ({ docNo, requestId, onClose, onPageClic
                         value={input}
                         onChange={(e) => setInput(e.target.value)}
                         placeholder="Ask about this document..."
-                        className="h-9 text-xs flex-1 bg-white border-primary/10 transition-all focus:ring-1 focus:ring-primary/30"
+                        className="h-10 text-sm flex-1 bg-white border-primary/10 transition-all focus:ring-1 focus:ring-primary/30"
                         disabled={isLoading}
                     />
                     <Button
                         disabled={!input.trim() || isLoading}
                         size="icon"
-                        className="h-9 w-9 shrink-0 transition-transform active:scale-95 bg-primary hover:bg-primary/90"
+                        className="h-10 w-10 shrink-0 transition-transform active:scale-95 bg-primary hover:bg-primary/90"
                     >
                         <Send className="w-4 h-4" />
                     </Button>

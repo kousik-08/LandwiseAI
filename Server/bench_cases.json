@@ -1,0 +1,86 @@
+[
+  {
+    "doc_no": "254_2011",
+    "field": "Document Number",
+    "value": "234/2011",
+    "page": 2,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_254_2011_p2.png"
+  },
+  {
+    "doc_no": "254_2011",
+    "field": "Survey Number",
+    "value": "48/2",
+    "page": 5,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_254_2011_p5.png"
+  },
+  {
+    "doc_no": "254_2011",
+    "field": "Market Value & Consideration",
+    "value": "Market Value / Consideration: ரூபாய் 30,000/- (INR 30,000)",
+    "page": 1,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_254_2011_p1.png"
+  },
+  {
+    "doc_no": "2874_2019",
+    "field": "Square Feet / Extent",
+    "value": "1200 + 1200 = 2400 சதுரடி",
+    "page": 5,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_2874_2019_p5.png"
+  },
+  {
+    "doc_no": "3031_2011",
+    "field": "Date of Registration",
+    "value": "20-06-2011",
+    "page": 2,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_3031_2011_p2.png"
+  },
+  {
+    "doc_no": "3523_2009",
+    "field": "Survey Number",
+    "value": "46/10",
+    "page": 3,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_3523_2009_p3.png"
+  },
+  {
+    "doc_no": "3904_2009",
+    "field": "Survey Number",
+    "value": "45/5 & 46/1D",
+    "page": 3,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_3904_2009_p3.png"
+  },
+  {
+    "doc_no": "3904_2009",
+    "field": "Square Feet / Extent",
+    "value": "1200 சதுரடி",
+    "page": 7,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_3904_2009_p7.png"
+  },
+  {
+    "doc_no": "3904_2009",
+    "field": "Market Value & Consideration",
+    "value": "ரூ.26,400/- (Consideration)",
+    "page": 7,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_3904_2009_p7.png"
+  },
+  {
+    "doc_no": "4722_2009",
+    "field": "Date of Registration",
+    "value": "2009, 2ம் நாள்",
+    "page": 4,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_4722_2009_p4.png"
+  },
+  {
+    "doc_no": "4723_2009",
+    "field": "Date of Registration",
+    "value": "June 20, 2009",
+    "page": 1,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_4723_2009_p1.png"
+  },
+  {
+    "doc_no": "9268_2014",
+    "field": "Date of Registration",
+    "value": "28/11/2014",
+    "page": 3,
+    "png": "outputs/validate/69a95897-ac3f-4859-bd87-bbec66a1320d\\temp_debug\\raw_9268_2014_p3.png"
+  }
+]

@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
-import { RotateCw } from "lucide-react";
-import { Accordion } from "@/components/ui/accordion";
+import { RotateCw, Search as SearchIcon, X, Filter } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   ResizablePanelGroup,
@@ -11,10 +11,12 @@ import { ValidationResultItem } from "@/features/analysis/components/AnalysisRes
 import { SurveyTimeline } from "@/features/timeline/components/SurveyTimeline";
 import { ReactFlowHierarchy } from "@/features/hierarchy/components/ReactFlowHierarchy";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, ExternalLink, Loader2, FileText, Calendar, User, ShieldCheck, TrendingUp } from "lucide-react";
+import { MapPin, ExternalLink, Loader2, FileText, Calendar, User, Users, ShieldCheck, TrendingUp } from "lucide-react";
 import { ECHistoricalValues } from "@/features/analysis/components/ECHistoricalValues";
 import { ValueComparisonAudit } from "@/features/analysis/components/ValueComparisonAudit";
-import { useEffect } from "react";
+import { SurveyOwnershipTable } from "@/components/SurveyOwnershipTable";
+import { RiskScoreCard } from "@/features/analysis/components/RiskScoreCard";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import { Copy, Download, Printer, Sparkles } from "lucide-react";
 import { toast } from "sonner";
@@ -56,12 +58,13 @@ interface ValidationResultsProps {
   red_flags?: any[];
   hierarchyPath?: string | null;
   requestId?: string;
+  onOpenInMap?: (docNo: string) => void;
 }
 
-export function ValidationResults({ results, red_flags = [], hierarchyPath, requestId }: ValidationResultsProps) {
+export function ValidationResults({ results, red_flags = [], hierarchyPath, requestId, onOpenInMap }: ValidationResultsProps) {
   console.log("ValidationResults data:", results);
 
-  const [activeTab, setActiveTab] = useState<"analysis" | "hierarchy" | "timeline" | "report" | "valuation">("analysis");
+  const [activeTab, setActiveTab] = useState<"analysis" | "hierarchy" | "timeline" | "report" | "valuation" | "ownership" | "risk">("risk");
   const [selectedDocument, setSelectedDocument] = useState<string | null>(
     results.length > 0 ? results[0].document_number : null,
   );
@@ -69,6 +72,21 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
     results.length > 0 ? results[0].document_number : undefined,
   );
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filtered Results based on search
+  const filteredResults = useMemo(() => {
+    if (!searchQuery.trim()) return results;
+    const query = searchQuery.toLowerCase();
+    return results.filter(r => {
+      const docNoMatch = r.document_number.toLowerCase().includes(query);
+      const surveyMatch = r.validation_result?.comparisons?.some(c => 
+        c.field.toLowerCase().includes("survey") && 
+        (c.ec_value?.toLowerCase().includes(query) || c.metadata_value?.toLowerCase().includes(query))
+      );
+      return docNoMatch || surveyMatch;
+    });
+  }, [results, searchQuery]);
 
   // Report State
   const [report, setReport] = useState<{ report_md: string; report_url: string } | null>(null);
@@ -274,6 +292,29 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
               Audit & Value
             </button>
           )}
+          {requestId && (
+            <button
+              onClick={() => setActiveTab("ownership")}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 ${activeTab === "ownership"
+                ? "bg-amber-600 text-white shadow-lg scale-105"
+                : "hover:bg-muted text-muted-foreground"
+                }`}
+            >
+              <Users className="w-4 h-4" />
+              Ownership Audit
+            </button>
+          )}
+          {requestId && (
+            <button
+              onClick={() => setActiveTab("risk")}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all duration-300 flex items-center gap-2 ${activeTab === "risk"
+                ? "bg-gradient-to-r from-rose-600 to-orange-500 text-white shadow-lg scale-105"
+                : "hover:bg-muted text-muted-foreground"
+                }`}
+            >
+              🛡️ Risk Score
+            </button>
+          )}
         </div>
         <div className="text-xs text-muted-foreground font-mono">
           {results.length} Documents Processed
@@ -310,6 +351,7 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
                           setSelectedDocument(result.document_number);
                           setSelectedPage(page);
                         }}
+                        onOpenInMap={onOpenInMap}
                       />
                     ))}
                   </Accordion>
@@ -530,7 +572,7 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
                   <div className="flex items-center justify-between mb-8">
                     <div>
                       <h2 className="text-3xl font-black text-slate-900">Legal Opinion Report</h2>
-                      <p className="text-slate-500">Drafted by PattaFlow AI Assistant</p>
+                      <p className="text-slate-500">Drafted by LandwiseAI AI Assistant</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -625,6 +667,34 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
                 </div>
                 <ECHistoricalValues data={combinedTrendData} isLoading={loadingValuation} />
               </div>
+            </div>
+          </div>
+        )}
+        {/* Ownership Audit Tab Content */}
+        {activeTab === "ownership" && requestId && (
+          <div className="h-full w-full overflow-y-auto animate-in fade-in duration-700 p-8">
+            <div className="max-w-6xl mx-auto space-y-8">
+              <div className="mb-4">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">Land Parcel Ownership Audit</h2>
+                <p className="text-slate-500 font-medium">Distribution of unique owners and transaction history for every survey number and subdivision extracted from the EC.</p>
+              </div>
+
+              <SurveyOwnershipTable requestId={requestId} />
+            </div>
+          </div>
+        )}
+
+        {/* Risk Score Tab Content */}
+        {activeTab === "risk" && requestId && (
+          <div className="h-full w-full overflow-y-auto animate-in fade-in duration-700 p-8">
+            <div className="max-w-4xl mx-auto space-y-6">
+              <div>
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">AI Title Health Score</h2>
+                <p className="text-slate-500 font-medium mt-1">
+                  Automated risk assessment of the property title chain using validated EC and deed data — designed for legal professionals and banks.
+                </p>
+              </div>
+              <RiskScoreCard requestId={requestId} />
             </div>
           </div>
         )}

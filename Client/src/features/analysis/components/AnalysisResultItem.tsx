@@ -4,7 +4,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle2, XCircle, Plus, AlertCircle, ShieldCheck } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle, ShieldCheck, MapPin, ExternalLink } from "lucide-react";
 import { TrustabilityScore } from "./TrustabilityScore";
 
 interface Comparison {
@@ -37,6 +37,7 @@ interface ValidationResultItemProps {
   result: ResultItem;
   onSelect: () => void;
   onPageSelect: (page: number) => void;
+  onOpenInMap?: (docNo: string) => void;
 }
 
 const getStatusIcon = (status: string) => {
@@ -77,6 +78,7 @@ export function ValidationResultItem({
   result,
   onSelect,
   onPageSelect,
+  onOpenInMap,
 }: ValidationResultItemProps) {
   console.log("ValidationResultItem result:", result);
 
@@ -106,14 +108,28 @@ export function ValidationResultItem({
               </Badge>
             </div>
             <span className="text-sm text-muted-foreground">
-              {result.validation_result.match_count} /{" "}
-              {result.validation_result.comparisons.length} fields matched
+              {result.validation_result.match_count || 0} /{" "}
+              {result.validation_result.comparisons?.length || 0} fields matched
             </span>
             {result.validation_result.requires_extra_scrutiny && (
               <div className="flex items-center gap-1.5 mt-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded-md text-[10px] text-amber-800 font-bold uppercase tracking-wider animate-pulse">
                 <AlertCircle className="w-3 h-3" />
                 Extra Scrutiny Required
               </div>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-2 pr-4">
+            {onOpenInMap && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOpenInMap(result.document_number);
+                }}
+                className="flex items-center gap-1 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary text-[10px] font-bold rounded-lg transition-all border border-primary/20 shadow-sm"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                VIEW ON MAP
+              </button>
             )}
           </div>
         </div>
@@ -134,7 +150,7 @@ export function ValidationResultItem({
           <TrustabilityScore
             score={result.validation_result.trustability_score}
           />
-          {result.validation_result.comparisons
+          {(result.validation_result.comparisons || [])
             .map((comparison, compIndex) => {
               // Strict logic: Only "MATCHED" is green. Everything else is red/warning.
               const isMatched =
@@ -155,27 +171,30 @@ export function ValidationResultItem({
                       <span className="font-semibold text-base">
                         {comparison.field}
                       </span>
-                      {comparison.page_number && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            const match = comparison.page_number?.match(/\d+/);
-                            if (match) {
-                              const pg = parseInt(match[0]);
-                              onPageSelect(pg === 0 ? 1 : pg);
-                            }
-                          }}
-                          className="text-[10px] bg-white border border-slate-200 px-2 py-1 rounded-md hover:bg-slate-50 transition-colors flex items-center gap-1 font-bold text-slate-600 w-fit shadow-sm"
-                        >
-                          <Plus className="w-3 h-3 text-primary" />
-                          PAGE {(() => {
-                            const m = comparison.page_number.match(/\d+/);
-                            if (!m) return "?";
-                            const p = parseInt(m[0]);
-                            return p === 0 ? 1 : p;
-                          })()}
-                        </button>
-                      )}
+                      {comparison.page_number && (() => {
+                        // Surfaces the AI's source citation. Clicking jumps the
+                        // PDF iframe to this page so the lawyer sees the exact
+                        // place the value was extracted from. Styled as a
+                        // primary-coloured pill so it reads as an action, not
+                        // a passive label.
+                        const m = comparison.page_number?.match(/\d+/);
+                        const pg = m ? Math.max(1, parseInt(m[0])) : null;
+                        if (pg === null) return null;
+                        return (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPageSelect(pg);
+                            }}
+                            className="text-[10px] bg-primary/10 hover:bg-primary/20 active:bg-primary/30 text-primary border border-primary/30 px-2.5 py-1 rounded-md transition-all flex items-center gap-1.5 font-bold w-fit shadow-sm hover:shadow group"
+                            title="Open the source PDF at this page"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                            <span>Source · Page {pg}</span>
+                            <span className="opacity-0 group-hover:opacity-100 transition-opacity text-[8px] uppercase tracking-wider">jump</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                     <div className="flex items-center gap-2">
                       {isMatched ? (

@@ -1,10 +1,11 @@
 import { useState, useCallback, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
 import { FileDropZone } from "./FileDropZone";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StreamingMessages, StreamLog, StreamStep } from "./StreamingMessages";
-import { ValidationResults } from "@/components/ValidationResults";
+import { ValidationResults } from "@/features/analysis/components/AnalysisDashboard";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Upload, RotateCcw, Cloud, FolderOpen, FileUp } from "lucide-react";
+import {
+  Upload,
+  RotateCcw,
+  Cloud,
+  FolderOpen,
+  FileUp,
+  GitBranch,
+  ArrowRight,
+} from "lucide-react";
 
 type UploadState = "idle" | "uploading" | "complete" | "error";
 
@@ -33,9 +42,15 @@ const INITIAL_STEPS: StreamStep[] = [
   { id: "validation", label: "Validation", status: "pending" },
 ];
 
-type InputType = "local_path" | "files" | "cloud";
+const EC_ONLY_STEPS: StreamStep[] = [
+  { id: "ec_extraction", label: "EC Extraction", status: "pending" },
+  { id: "hierarchy", label: "Hierarchy Generation", status: "pending" },
+];
+
+type InputType = "local_path" | "files" | "cloud" | "ec_only";
 
 export function UploadForm() {
+  const navigate = useNavigate();
   const [inputType, setInputType] = useState<InputType>("local_path");
   const [visualDebug, setVisualDebug] = useState<boolean>(false);
 
@@ -86,6 +101,11 @@ export function UploadForm() {
         alert("Please upload both EC PDF file and Sale Deeds ZIP file");
         return;
       }
+    } else if (inputType === "ec_only") {
+      if (!pdfFile) {
+        alert("Please upload EC PDF file");
+        return;
+      }
     } else if (inputType === "cloud") {
       alert("Cloud storage (S3/Azure Blob) is not yet available");
       return;
@@ -94,7 +114,12 @@ export function UploadForm() {
     setUploadState("uploading");
     setLogs([]);
     setResultData("");
-    setSteps(INITIAL_STEPS.map((s) => ({ ...s, status: "pending" }))); // Reset steps
+    setSteps(
+      (inputType === "ec_only" ? EC_ONLY_STEPS : INITIAL_STEPS).map((s) => ({
+        ...s,
+        status: "pending",
+      })),
+    ); // Reset steps
 
     try {
       let response: Response;
@@ -123,13 +148,38 @@ export function UploadForm() {
         formData.append("ec_pdf_file", pdfFile);
         formData.append("sale_deeds_zip", zipFile);
         formData.append("stream", "true");
-        formData.append("visual_debug", String(visualDebug));
-        formData.append("transaction_limit", transactionLimit === "all" ? "0" : transactionLimit);
+        formData.append(
+          "visual_debug",
+          String(visualDebug),
+        );
+        formData.append(
+          "transaction_limit",
+          transactionLimit === "all" ? "0" : transactionLimit,
+        );
         const API_URL = API_BASE_URL;
         response = await fetch(`${API_URL}/api/v1/validate`, {
           method: "POST",
           body: formData,
         });
+      } else if (inputType === "ec_only") {
+        const formData = new FormData();
+        formData.append("ec_pdf_file", pdfFile);
+        formData.append(
+          "transaction_limit",
+          transactionLimit === "all" ? "0" : transactionLimit,
+        );
+        const API_URL = API_BASE_URL;
+        response = await fetch(`${API_URL}/api/v1/validate-ec-only`, {
+          method: "POST",
+          body: formData,
+        });
+
+        // EC-only flow is non-streaming: read JSON once and finish.
+        const data = await response.json();
+        setResultData(JSON.stringify(data, null, 2));
+        addLog({ type: "result", message: "EC-only hierarchy generated" });
+        setUploadState("complete");
+        return;
       } else {
         throw new Error("Invalid input type");
       }
@@ -225,6 +275,45 @@ export function UploadForm() {
     setSteps(INITIAL_STEPS);
   }, []);
 
+  const handleOpenInMap = useCallback((docNo: string) => {
+    if (!resultData) return;
+    try {
+      const data = JSON.parse(resultData);
+      const results = data.results || data.body?.response?.results || data.response?.results || [];
+      const result = results.find((r: any) => r.document_number === docNo);
+      
+      if (!result) return;
+
+      const surveys = new Set<string>();
+      result.validation_result?.comparisons?.forEach((comp: any) => {
+        if (comp.field.toLowerCase().includes("survey")) {
+          const val = comp.metadata_value || comp.ec_value;
+          if (val && typeof val === 'string') {
+            val.split(',').forEach((s: string) => {
+              const trimmed = s.trim();
+              if (trimmed) surveys.add(trimmed);
+            });
+          }
+        }
+      });
+
+      const sn = Array.from(surveys).join(', ');
+      if (!sn) return;
+
+      const meta = {
+        surveyNumber: sn,
+        docNo: result.document_number,
+        // Limited metadata here compared to HierarchyPage as we don't have full tx data easily accessible
+      };
+
+      sessionStorage.setItem(`map_meta_${sn}`, JSON.stringify(meta));
+      const url = `/map?surveyNumber=${encodeURIComponent(String(sn))}`;
+      window.open(url, "_blank");
+    } catch (e) {
+      console.error("Error opening in map:", e);
+    }
+  }, [resultData]);
+
   // Parse results from resultData
   const parsedResults = useMemo(() => {
     if (!resultData) return null;
@@ -279,16 +368,20 @@ export function UploadForm() {
     }
   }, [resultData]);
 
+  // Derived flags
+  const hasValidationResults = parsedResults && parsedResults.length > 0;
+  const hasHierarchyContext = !!(hierarchyPath && requestId);
+
   // Allow submit always for this test mode
   const canSubmit = uploadState === "idle";
   const isProcessing = uploadState === "uploading";
   const isComplete = uploadState === "complete" || uploadState === "error";
 
-  const hasResults = parsedResults && parsedResults.length > 0;
+  const hasResultsOrHierarchy = hasValidationResults || hasHierarchyContext;
 
   return (
     <div
-      className={`w-full ${hasResults ? "" : "max-w-4xl"} mx-auto space-y-8`}
+      className={`w-full ${hasResultsOrHierarchy ? "" : "max-w-4xl"} mx-auto space-y-8`}
     >
       {/* Input Type Selection */}
       <div className="space-y-2">
@@ -314,6 +407,12 @@ export function UploadForm() {
               <div className="flex items-center gap-2">
                 <FileUp className="w-4 h-4" />
                 <span>File Upload</span>
+              </div>
+            </SelectItem>
+            <SelectItem value="ec_only">
+              <div className="flex items-center gap-2">
+                <FileUp className="w-4 h-4" />
+                <span>EC Only (Hierarchy)</span>
               </div>
             </SelectItem>
             <SelectItem value="cloud" disabled>
@@ -370,6 +469,20 @@ export function UploadForm() {
             onFileChange={setZipFile}
             disabled={isProcessing || isComplete}
           />
+        </div>
+      )}
+
+      {inputType === "ec_only" && (
+        <div className="space-y-4">
+          <FileDropZone
+            accept="pdf"
+            file={pdfFile}
+            onFileChange={setPdfFile}
+            disabled={isProcessing || isComplete}
+          />
+          <p className="text-sm text-muted-foreground">
+            This mode will only generate hierarchy from the EC PDF. Sale deed ZIP upload is not required.
+          </p>
         </div>
       )}
 
@@ -464,15 +577,16 @@ export function UploadForm() {
             isComplete={isComplete && resultData !== ""}
           />
 
-          {/* Validation Results */}
-          {parsedResults && parsedResults.length > 0 && (
+          {/* Validation / Hierarchy Results */}
+          {(hasValidationResults || hasHierarchyContext) && (
             <div className="w-full">
               <ErrorBoundary>
                 <ValidationResults
-                  results={parsedResults}
+                  results={parsedResults || []}
                   red_flags={redFlags}
                   hierarchyPath={hierarchyPath}
                   requestId={requestId || undefined}
+                  onOpenInMap={handleOpenInMap}
                 />
               </ErrorBoundary>
             </div>
@@ -490,17 +604,30 @@ export function UploadForm() {
             </div>
           )}
 
-          {/* Reset Button */}
+          {/* Next-step actions */}
           {isComplete && (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-3">
+              {requestId && (
+                <Button
+                  size="lg"
+                  onClick={() =>
+                    navigate(`/hierarchy?requestId=${encodeURIComponent(requestId)}`)
+                  }
+                  className="min-w-[260px] gap-2 bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:opacity-95 shadow-lg shadow-indigo-500/30"
+                >
+                  <GitBranch className="w-5 h-5" />
+                  View Title Hierarchy &amp; Audit
+                  <ArrowRight className="w-4 h-4" />
+                </Button>
+              )}
               <Button
                 variant="outline"
-                size="lg"
+                size="sm"
                 onClick={handleReset}
-                className="gap-2"
+                className="gap-2 text-slate-500"
               >
-                <RotateCcw className="w-5 h-5" />
-                Start Over
+                <RotateCcw className="w-4 h-4" />
+                Start Over with New Files
               </Button>
             </div>
           )}

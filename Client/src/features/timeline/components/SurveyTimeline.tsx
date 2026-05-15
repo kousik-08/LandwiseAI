@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Calendar, MapPin, ArrowRight, Filter, X, FileText, Maximize2, Minimize2, User, Maximize, ShieldCheck, AlertCircle, MessageSquare, Plus, StickyNote, ExternalLink, Loader2 } from "lucide-react";
+import { Search, Calendar, MapPin, ArrowRight, Filter, X, FileText, Maximize2, Minimize2, User, Maximize, ShieldCheck, AlertCircle, MessageSquare, Plus, StickyNote, ExternalLink, Loader2, Sparkles, Network } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -17,6 +18,8 @@ import DocChat from "@/features/analysis/components/DocChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
+import { landwiseApi } from "@/lib/landwise-api";
+import { toast } from "sonner";
 import { useDebouncedNoteSaver } from "@/hooks/useDebouncedNoteSaver";
 
 interface Transaction {
@@ -29,6 +32,7 @@ interface Transaction {
     document_number: string;
     nature_of_land: string;
     square_feet?: string;
+    sq_feet?: string;
     supporting_documents?: string;
     executant_docs?: string;
     claimant_docs?: string;
@@ -55,19 +59,22 @@ interface TimelineResult {
 interface SurveyTimelineProps {
     requestId: string;
     results?: any[];
+    parcelId?: string;
 }
 
-export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
+export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineProps) {
     const getPdfUrl = (relPath: string | undefined) => {
         if (!relPath) return undefined;
         // If it starts with http, it's already an absolute URL
         if (relPath.startsWith('http')) return relPath;
 
         const BASE_API = API_BASE_URL;
-        // Clean any leading slashes or relative markers and ensure a single leading slash
-        const cleaned = relPath.replace(/\\/g, "/").replace(/^(\.\.\/)+/, "").replace(/^\/+/, "");
-
-        return `${BASE_API}/${cleaned}`;
+        // Clean any backslashes and normalize path
+        let cleaned = relPath.replace(/\\/g, "/").replace(/^(\.\.\/)+/, "").replace(/^\/+/, "");
+        
+        // Use download-by-path endpoint for reliable file serving
+        // This endpoint handles both inputs/ and outputs/ paths correctly
+        return `${BASE_API}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(cleaned)}`;
     };
 
     const [surveyNumber, setSurveyNumber] = useState("");
@@ -90,6 +97,64 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
     const [validatingSingle, setValidatingSingle] = useState(false);
     const [validationCache, setValidationCache] = useState<Record<string, any>>({});
     const [scrollToPage, setScrollToPage] = useState<{ page: number, timestamp: number } | undefined>(undefined);
+    // Triggers a precise scroll-to-highlight + amber flash in PdfAnnotator
+    // when a PAGE button is clicked from the annotations panel.
+    const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; timestamp: number } | undefined>(undefined);
+
+    // Click handler for the per-document "PAGE N" buttons in the notes panel.
+    // We only fire focusHighlightId — NOT scrollToPage — because the latter
+    // builds a stub Highlight with placeholder coords and react-pdf-highlighter
+    // renders a temporary yellow indicator at those wrong coords. The
+    // focusHighlightId path scrolls AND highlights using the note's real
+    // boundingRect, which is what we want.
+    const handleFocusLocalNote = useCallback((anno: any) => {
+        const page = anno?.position?.pageNumber;
+        if (!anno?.id) return;
+        setFocusHighlightId({ id: anno.id, timestamp: Date.now() });
+        toast.info(`Jumping to page ${page ?? "?"}`, {
+            description: anno.comment?.text || anno.content?.text || "",
+            duration: 1800,
+        });
+    }, []);
+
+    // PDF Vault docs: used as a fallback when the timeline data doesn't
+    // include a direct PDF URL for a clicked node. We match by document
+    // number embedded in the original filename.
+    const [vaultDocs, setVaultDocs] = useState<Array<{ id: string; original_filename: string }>>([]);
+
+    useEffect(() => {
+        let cancelled = false;
+        if (!parcelId) {
+            setVaultDocs([]);
+            return;
+        }
+        (async () => {
+            try {
+                const resp = await landwiseApi.listDocuments(parcelId);
+                if (cancelled) return;
+                setVaultDocs(resp?.data || []);
+            } catch (e) {
+                console.error("Failed to load vault docs for fallback preview:", e);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [parcelId]);
+
+    // Helper: look up a matching vault PDF by document number. Tries an
+    // exact filename match first, then a normalized substring match
+    // (e.g. "1508/2008" matches "1508_2008.pdf" or "doc-1508-2008.pdf").
+    const findVaultPdfUrl = useCallback((docNo: string): string | undefined => {
+        if (!docNo || vaultDocs.length === 0) return undefined;
+        const normalize = (s: string) => (s || "").replace(/[\s\-_/\\]/g, "").toLowerCase();
+        const target = normalize(docNo);
+        if (!target) return undefined;
+        const match = vaultDocs.find((d) => {
+            const fn = normalize(d.original_filename);
+            return fn.includes(target);
+        });
+        if (!match) return undefined;
+        return `${API_BASE_URL}/api/v1/landwise/documents/download/${match.id}`;
+    }, [vaultDocs]);
 
     const debouncedSaveNote = useDebouncedNoteSaver();
 
@@ -149,13 +214,17 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                     const notesResp = await fetch(`${API_URL}/api/v1/get-node-notes`);
                     if (notesResp.ok) {
                         const notes = await notesResp.json();
-                        timelineData.react_flow_data.nodes = timelineData.react_flow_data.nodes.map((node: any) => ({
-                            ...node,
-                            data: {
-                                ...node.data,
-                                notes: notes[node.data.document_number] || ""
-                            }
-                        }));
+                        const rfData = timelineData.react_flow_data;
+                        const nodes = Array.isArray(rfData?.nodes) ? rfData.nodes : [];
+                        if (rfData) {
+                            rfData.nodes = nodes.map((node: any) => ({
+                                ...node,
+                                data: {
+                                    ...node.data,
+                                    notes: notes[node.data?.document_number] || ""
+                                }
+                            }));
+                        }
                     }
                 } catch (e) {
                     console.error("Failed to load notes:", e);
@@ -241,9 +310,9 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
             const updatedData = {
                 ...timeline,
                 react_flow_data: {
-                    ...timeline.react_flow_data,
-                    nodes: timeline.react_flow_data.nodes.map((node) =>
-                        node.data.document_number === docNo
+                    ...(timeline?.react_flow_data ?? {}),
+                    nodes: (timeline?.react_flow_data?.nodes ?? []).map((node: any) =>
+                        node.data?.document_number === docNo
                             ? { ...node, data: { ...node.data, notes } }
                             : node,
                     ),
@@ -256,7 +325,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
         [timeline, debouncedSaveNote],
     );
 
-    const handleNodeClick = useCallback((docNo: string, txData?: Transaction) => {
+    const handleNodeClick = useCallback((docNo: string, txData?: Transaction | any) => {
         console.log("Handling click for doc:", docNo);
         setVerificationResult(null);
         setUploadFile(null);
@@ -277,10 +346,10 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
             ...(masterTimeline?.all_transactions || [])
         ];
 
-        // Find transaction data if not provided (e.g. from React Flow)
+        // Find transaction data if not provided (e.g. from table row)
         let activeTx = txData || allPossibleTxs.find(t => normalize(t.document_number) === normDocNo);
-
-        // If still not found, check the node's data (it might be a parent node)
+        
+        // Also locate the corresponding node (to pick display survey/sub-division if richer)
         const allNodes = [
             ...(timeline?.react_flow_data?.nodes || []),
             ...(masterTimeline?.react_flow_data?.nodes || [])
@@ -314,17 +383,159 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
             pdfUrl = getPdfUrl(resultItem.file_path);
         }
 
+        // Last-resort fallback: search the PDF Vault for a document whose
+        // filename contains this document number. This kicks in when the
+        // timeline pipeline didn't carry a direct file path forward but
+        // the user still uploaded the deed via the PDF Vault.
+        if (!pdfUrl) {
+            const vaultUrl = findVaultPdfUrl(docNo);
+            if (vaultUrl) {
+                pdfUrl = vaultUrl;
+            }
+        }
 
         console.log(`[Preview Search] docNo=${docNo} norm=${normDocNo} pdfUrl=`, pdfUrl);
+
+        // Prefer the clicked node's survey number (which may include subdivision like 13/3) and area.
+        // If txData came from ReactFlowHierarchy, it is exactly the clicked node's data.
+        let nodeForDoc = txData
+            ? { data: txData }
+            : allNodes.find(n => n.data?.document_number && normalize(n.data.document_number) === normDocNo);
+
+        const nodeSurvey =
+            nodeForDoc?.data?.survey_number ||
+            nodeForDoc?.data?.KIDE ||
+            nodeForDoc?.data?.kide;
+
+        const nodeArea =
+            nodeForDoc?.data?.sq_feet ||
+            nodeForDoc?.data?.square_feet;
+
+        const enrichedData = activeTx
+            ? {
+                ...activeTx,
+                survey_number: nodeSurvey || activeTx.survey_number,
+                square_feet: nodeArea || activeTx.square_feet,
+            }
+            : activeTx;
 
         setPreviewDoc({
             docNo: docNo,
             url: pdfUrl || undefined,
-            data: activeTx,
+            data: enrichedData,
             validation
         });
         setPanelOpen(true);
-    }, [timeline, results, validationCache]);
+    }, [timeline, results, validationCache, masterTimeline, findVaultPdfUrl]);
+
+    const getFullSurveyNumber = (data: any): string | undefined => {
+        if (!data) return undefined;
+
+        // Prefer KIDE (map key, usually includes subdivision like 13/3) when available
+        const kide =
+            data.kide ||
+            data.KIDE;
+
+        const base =
+            kide ||
+            data.survey_number ||
+            data.survey_no ||
+            data.Survey_No ||
+            data.SURVEY_NO;
+
+        const sub =
+            data.sub_division ||
+            data.subdivision ||
+            data.sub_div ||
+            data.sub_div_no ||
+            data.subDivision;
+
+        if (!base) return undefined;
+        const baseStr = String(base);
+
+        if (baseStr.includes("/") || !sub) return baseStr;
+        return `${baseStr}/${sub}`;
+    };
+
+    const handleOpenInMap = useCallback(() => {
+        if (!previewDoc?.docNo) return;
+
+        const normDoc = (s: string) => s ? s.replace(/\s+/g, '').replace(/[-\/]/g, '').toLowerCase() : '';
+        const currentDocNoNorm = normDoc(previewDoc.docNo);
+
+        // Find ALL survey numbers associated with this document across all registries
+        const surveysForThisDoc = new Set<string>();
+
+        // 1. Scan search results timeline
+        if (timeline?.all_transactions) {
+            timeline.all_transactions.forEach((tx: any) => {
+                if (normDoc(tx.document_number) === currentDocNoNorm) {
+                    const sn = getFullSurveyNumber(tx);
+                    if (sn) {
+                        sn.split(',').forEach((s: string) => {
+                            const trimmed = s.trim();
+                            if (trimmed) surveysForThisDoc.add(trimmed);
+                        });
+                    }
+                }
+            });
+        }
+
+        // 2. Scan master map records for this document
+        if (masterTimeline?.all_transactions) {
+            masterTimeline.all_transactions.forEach((tx: any) => {
+                if (normDoc(tx.document_number) === currentDocNoNorm) {
+                    const sn = getFullSurveyNumber(tx);
+                    if (sn) {
+                        sn.split(',').forEach((s: string) => {
+                            const trimmed = s.trim();
+                            if (trimmed) surveysForThisDoc.add(trimmed);
+                        });
+                    }
+                }
+            });
+        }
+
+        // 3. Scan validation results comparisons
+        const resultItem = results?.find(r => normDoc(r.document_number) === currentDocNoNorm);
+        if (resultItem?.validation_result?.comparisons) {
+            resultItem.validation_result.comparisons.forEach((comp: any) => {
+                if (comp.field.toLowerCase().includes("survey")) {
+                    const val = comp.metadata_value || comp.ec_value;
+                    if (val && typeof val === 'string') {
+                        val.split(',').forEach((s: string) => {
+                            const trimmed = s.trim();
+                            if (trimmed) surveysForThisDoc.add(trimmed);
+                        });
+                    }
+                }
+            });
+        }
+
+        // Combine into comma-separated list for MapView multi-highlight
+        const allSurveys = Array.from(surveysForThisDoc).join(', ');
+        const sn = allSurveys || getFullSurveyNumber(previewDoc.data);
+
+        if (!sn || !previewDoc?.data) return;
+
+        const meta = {
+            surveyNumber: sn,
+            executant: previewDoc.data.executant,
+            claimant: previewDoc.data.claimant,
+            nature: previewDoc.data.nature,
+            landType: previewDoc.data.nature_of_land,
+            area: previewDoc.data.square_feet || previewDoc.data.sq_feet || "N/A",
+            docNo: previewDoc.data.document_number,
+            date: previewDoc.data.date
+        };
+
+        // Save metadata to sessionStorage to avoid passing it in the URL
+        if (typeof window !== "undefined") {
+            sessionStorage.setItem(`map_meta_${sn}`, JSON.stringify(meta));
+            const url = `/map?surveyNumber=${encodeURIComponent(String(sn))}`;
+            window.open(url, "_blank");
+        }
+    }, [previewDoc, timeline, masterTimeline, results]);
 
     const handleVerifySupportingDoc = async () => {
         if (!uploadFile || !previewDoc?.data) return;
@@ -409,24 +620,48 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
 
     return (
         <div className="w-full space-y-6">
-            <Card className="border-2 border-primary/20 bg-gradient-to-br from-background to-primary/5">
-                <CardHeader>
-                    <CardTitle className="flex items-center gap-2 text-2xl">
-                        <Search className="w-6 h-6 text-primary" />
-                        Smart Lineage Explorer
-                    </CardTitle>
-                    <CardDescription>
-                        Trace ownership history through interactive diagrams and instant document previews
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
+            <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                className="relative bg-white border border-indigo-200 rounded-2xl sm:rounded-3xl shadow-sm shadow-indigo-100/40 overflow-hidden"
+            >
+                {/* Top accent strip */}
+                <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-indigo-500 via-blue-500 to-violet-500" />
+                {/* Animated background blobs */}
+                <div className="pointer-events-none absolute inset-0 opacity-50">
+                    <div className="absolute -top-32 -right-32 w-80 h-80 rounded-full bg-gradient-to-br from-blue-200/30 to-indigo-200/30 blur-3xl animate-blob-slow" />
+                    <div className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-gradient-to-br from-violet-200/20 to-blue-200/20 blur-3xl animate-blob" />
+                </div>
+
+                <div className="relative p-5 sm:p-7 lg:p-8">
+                    {/* Header */}
+                    <div className="flex items-start gap-3 mb-6">
+                        <div className="relative shrink-0">
+                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl blur-lg opacity-40 -z-10 animate-pulse-glow" />
+                            <div className="w-11 h-11 bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 ring-1 ring-white/30">
+                                <Search className="w-5 h-5 text-white" strokeWidth={2.5} />
+                            </div>
+                        </div>
+                        <div className="min-w-0">
+                            <h3 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                                Smart <span className="text-gradient-primary">Lineage Explorer</span>
+                                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse-subtle" />
+                            </h3>
+                            <p className="text-xs sm:text-sm text-slate-500 mt-0.5 font-medium">
+                                Trace ownership history through interactive diagrams and instant document previews
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Form */}
                     <div className="flex flex-col md:flex-row gap-4">
-                        <div className="flex-[2]">
-                            <Label htmlFor="survey-search" className="mb-2 block text-sm font-semibold">
+                        <div className="flex-[2] min-w-0">
+                            <Label htmlFor="survey-search" className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                                 Survey Number
                             </Label>
-                            <div className="relative">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                            <div className="relative group focus-glow rounded-xl">
+                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
                                 <Input
                                     id="survey-search"
                                     placeholder="Enter Survey Number (e.g., 47, 47/1, 47/6A3)"
@@ -434,13 +669,13 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                     onChange={(e) => setSurveyNumber(e.target.value)}
                                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                                     disabled={loading}
-                                    className="pl-10 text-lg h-12 shadow-sm focus-visible:ring-primary"
+                                    className="pl-10 text-sm sm:text-base h-12 rounded-xl bg-white/80 border-slate-200 shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/40 transition-all"
                                 />
                             </div>
                         </div>
 
-                        <div className="flex-1">
-                            <Label htmlFor="tx-limit" className="mb-2 block text-sm font-semibold">
+                        <div className="flex-1 min-w-0">
+                            <Label htmlFor="tx-limit" className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                                 History Depth
                             </Label>
                             <Select
@@ -448,7 +683,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                 onValueChange={setTransactionLimit}
                                 disabled={loading}
                             >
-                                <SelectTrigger id="tx-limit" className="h-12 border-primary/10">
+                                <SelectTrigger id="tx-limit" className="h-12 rounded-xl bg-white/80 border-slate-200 hover:border-indigo-300 transition-all">
                                     <SelectValue placeholder="All Transactions" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -461,25 +696,32 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                             </Select>
                         </div>
 
-                        <div className="flex items-end gap-2">
-                            <Button
-                                onClick={handleSearch}
-                                disabled={loading}
-                                size="lg"
-                                className="h-12 px-8 w-full md:w-auto font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95"
-                            >
-                                {loading ? (
-                                    <span className="flex items-center gap-2">
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        Analyzing...
-                                    </span>
-                                ) : "Explore Lineage"}
-                            </Button>
+                        <div className="flex items-end gap-2 flex-wrap">
+                            <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                                <Button
+                                    onClick={handleSearch}
+                                    disabled={loading}
+                                    size="lg"
+                                    className="h-12 px-6 sm:px-8 font-bold rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 hover:from-indigo-700 hover:via-indigo-600 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 shine-sweep transition-all"
+                                >
+                                    {loading ? (
+                                        <span className="flex items-center gap-2">
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            Analyzing...
+                                        </span>
+                                    ) : (
+                                        <span className="flex items-center gap-2">
+                                            Explore Lineage
+                                            <ArrowRight className="w-4 h-4" />
+                                        </span>
+                                    )}
+                                </Button>
+                            </motion.div>
                             {!loading && (
                                 <Button
                                     variant="outline"
                                     size="lg"
-                                    className="h-12 border-primary/20 text-primary font-bold hover:bg-primary/5"
+                                    className="h-12 px-5 rounded-xl border-indigo-200 bg-white/80 text-indigo-700 hover:text-indigo-700 font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all"
                                     onClick={() => setExplorationMode(prev => prev === "search" ? "global" : "search")}
                                 >
                                     {explorationMode === "search" ? "View Master Map" : "Back to Search"}
@@ -487,33 +729,54 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                             )}
                         </div>
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </motion.div>
 
-            <div className="flex items-center gap-4 mb-6 sticky top-0 z-40 bg-background/80 backdrop-blur-md p-1 rounded-2xl border border-primary/10 shadow-sm">
-                <Button
-                    variant={explorationMode === "search" ? "default" : "ghost"}
-                    className={cn(
-                        "flex-1 font-bold text-xs h-11 transition-all rounded-xl",
-                        explorationMode === "search" ? "shadow-lg shadow-primary/20 scale-[1.02]" : "text-muted-foreground hover:bg-primary/5"
-                    )}
+            <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+                className="flex items-center gap-2 mb-6 sticky top-0 z-40 bg-white/80 backdrop-blur-xl p-1.5 rounded-2xl border border-slate-200 shadow-sm"
+            >
+                <button
                     onClick={() => setExplorationMode("search")}
-                >
-                    <Search className="w-4 h-4 mr-2" />
-                    Property Lineage Search
-                </Button>
-                <Button
-                    variant={explorationMode === "global" ? "default" : "ghost"}
                     className={cn(
-                        "flex-1 font-bold text-xs h-11 transition-all rounded-xl",
-                        explorationMode === "global" ? "shadow-lg shadow-primary/20 scale-[1.02]" : "text-muted-foreground hover:bg-primary/5"
+                        "relative flex-1 flex items-center justify-center gap-2 font-bold text-xs sm:text-sm h-11 transition-colors rounded-xl",
+                        explorationMode === "search" ? "text-white" : "text-slate-500 hover:text-indigo-600"
                     )}
-                    onClick={() => setExplorationMode("global")}
                 >
-                    <Maximize className="w-4 h-4 mr-2" />
-                    Master Network Overview
-                </Button>
-            </div>
+                    {explorationMode === "search" && (
+                        <motion.span
+                            layoutId="lineage-active-mode"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                            className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 shadow-lg shadow-indigo-500/30"
+                        />
+                    )}
+                    <span className="relative z-10 flex items-center gap-2">
+                        <Search className="w-4 h-4" />
+                        Property Lineage Search
+                    </span>
+                </button>
+                <button
+                    onClick={() => setExplorationMode("global")}
+                    className={cn(
+                        "relative flex-1 flex items-center justify-center gap-2 font-bold text-xs sm:text-sm h-11 transition-colors rounded-xl",
+                        explorationMode === "global" ? "text-white" : "text-slate-500 hover:text-indigo-600"
+                    )}
+                >
+                    {explorationMode === "global" && (
+                        <motion.span
+                            layoutId="lineage-active-mode"
+                            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                            className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 shadow-lg shadow-indigo-500/30"
+                        />
+                    )}
+                    <span className="relative z-10 flex items-center gap-2">
+                        <Network className="w-4 h-4" />
+                        Master Network Overview
+                    </span>
+                </button>
+            </motion.div>
 
 
             {
@@ -545,39 +808,69 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                 explorationMode === "search" && timeline && (
                     <>
 
-                        <div className="flex flex-col md:flex-row gap-4 mb-4">
-                            <Card className="flex-1 border-amber-200 bg-amber-50/30">
-                                <CardHeader className="py-3 px-4 flex flex-row items-center gap-2 space-y-0">
-                                    <StickyNote className="w-4 h-4 text-amber-500" />
-                                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-amber-700">Overall Request Notes</CardTitle>
+                        <motion.div
+                            initial="hidden"
+                            animate="visible"
+                            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } } }}
+                            className="flex flex-col md:flex-row gap-4 mb-4"
+                        >
+                            <motion.div
+                                variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
+                                className="flex-1"
+                            >
+                            <Card className="relative h-full border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50/40 to-amber-50/30 overflow-hidden">
+                                <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400" />
+                                <CardHeader className="py-3 px-4 flex flex-row items-center gap-2.5 space-y-0">
+                                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-500/30">
+                                        <StickyNote className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                                    </div>
+                                    <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-800">Overall Request Notes</CardTitle>
                                 </CardHeader>
                                 <CardContent className="px-4 pb-3">
                                     <textarea
-                                        className="w-full bg-white/50 border border-amber-100 rounded-lg p-3 text-xs min-h-[60px] resize-none focus:ring-1 focus:ring-amber-300 outline-none"
+                                        className="w-full bg-white/70 backdrop-blur-sm border border-amber-200/80 rounded-xl p-3 text-xs min-h-[64px] resize-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400/40 outline-none transition-all placeholder:text-amber-700/40"
                                         placeholder="Add general observations about this property or lineage..."
                                         defaultValue={""}
                                     />
                                 </CardContent>
                             </Card>
+                            </motion.div>
 
-                            <Card className="flex-1 border-primary/20 bg-primary/5">
-                                <CardHeader className="py-3 px-4 flex flex-row items-center gap-2 space-y-0">
-                                    <ShieldCheck className="w-4 h-4 text-primary" />
-                                    <CardTitle className="text-xs font-bold uppercase tracking-wider text-primary/80">Government Proof Center</CardTitle>
+                            <motion.div
+                                variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
+                                className="flex-1"
+                            >
+                            <Card className="relative h-full border-indigo-200 bg-gradient-to-br from-indigo-50 via-blue-50/40 to-indigo-50/30 overflow-hidden">
+                                <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500" />
+                                <CardHeader className="py-3 px-4 flex flex-row items-center gap-2.5 space-y-0">
+                                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-500 flex items-center justify-center shadow-sm shadow-indigo-500/30">
+                                        <ShieldCheck className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                                    </div>
+                                    <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-800">Government Proof Center</CardTitle>
                                 </CardHeader>
                                 <CardContent className="px-4 pb-3 flex flex-wrap gap-2">
-                                    <Badge variant="outline" className="bg-white/80 gap-1.5 py-1 px-3">
-                                        <User className="w-3 h-3 text-blue-500" /> Aadhar: <span className="text-blue-700">Audit Ready</span>
+                                    <Badge variant="outline" className="bg-white/80 backdrop-blur-sm border-blue-200 gap-1.5 py-1 px-3 inline-flex items-center text-[10px] font-bold">
+                                        <User className="w-3 h-3 text-blue-500" /> Aadhar:
+                                        <span className="text-blue-700 inline-flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-glow" />
+                                            Audit Ready
+                                        </span>
                                     </Badge>
-                                    <Badge variant="outline" className="bg-white/80 gap-1.5 py-1 px-3">
-                                        <Calendar className="w-3 h-3 text-red-500" /> Death Cert: <span className="text-red-700">Pending Verify</span>
+                                    <Badge variant="outline" className="bg-white/80 backdrop-blur-sm border-rose-200 gap-1.5 py-1 px-3 inline-flex items-center text-[10px] font-bold">
+                                        <Calendar className="w-3 h-3 text-rose-500" /> Death Cert:
+                                        <span className="text-rose-700 inline-flex items-center gap-1">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse-glow" />
+                                            Pending Verify
+                                        </span>
                                     </Badge>
-                                    <Badge variant="outline" className="bg-white/80 gap-1.5 py-1 px-3 text-[10px] italic">
-                                        + Verification Summary Active
+                                    <Badge variant="outline" className="bg-white/80 backdrop-blur-sm border-slate-200 gap-1.5 py-1 px-3 text-[10px] italic font-medium text-slate-600">
+                                        <Sparkles className="w-3 h-3 text-amber-400" />
+                                        Verification Summary Active
                                     </Badge>
                                 </CardContent>
                             </Card>
-                        </div>
+                            </motion.div>
+                        </motion.div>
 
 
                         <div className={cn(
@@ -614,29 +907,58 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                     </div>
                                 )}
 
-                                {timeline.react_flow_data && (
-                                    <Card className="border-primary/10 shadow-2xl shadow-primary/5 overflow-hidden group/flow rounded-3xl">
-                                        <CardHeader className="bg-slate-900 border-b py-4 px-8 flex flex-row items-center justify-between space-y-0 text-white">
-                                            <CardTitle className="text-lg font-bold flex items-center gap-3">
-                                                <MapPin className="w-6 h-6 text-primary animate-pulse" />
-                                                Interactive Ownership Flow
-                                                <Badge className="ml-2 bg-primary/20 text-primary border-primary/10">
-                                                    {timeline.react_flow_data.nodes?.length || 0} NODES FOUND
+                                {timeline?.react_flow_data && (
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 16 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                                    >
+                                    <Card className="relative border-indigo-100 shadow-2xl shadow-indigo-500/10 overflow-hidden group/flow rounded-2xl sm:rounded-3xl">
+                                        {/* Top accent strip */}
+                                        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-20" />
+                                        <CardHeader className="relative bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 border-b border-indigo-500/20 py-4 px-5 sm:px-7 flex flex-row items-center justify-between gap-4 flex-wrap space-y-0 text-white overflow-hidden">
+                                            {/* Background flourish */}
+                                            <div className="pointer-events-none absolute inset-0 opacity-50">
+                                                <div className="absolute -top-32 right-10 w-72 h-72 rounded-full bg-gradient-to-br from-indigo-500/20 to-violet-500/20 blur-3xl animate-blob-slow" />
+                                                <div className="absolute -bottom-32 -left-10 w-72 h-72 rounded-full bg-gradient-to-br from-blue-500/15 to-indigo-500/15 blur-3xl animate-blob" />
+                                            </div>
+                                            <CardTitle className="relative text-base sm:text-lg font-display font-extrabold flex items-center gap-3 min-w-0 tracking-tight">
+                                                <div className="relative shrink-0">
+                                                    <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl blur-md opacity-50 -z-10 animate-pulse-glow" />
+                                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 ring-1 ring-white/20">
+                                                        <MapPin className="w-5 h-5 text-white" strokeWidth={2.5} />
+                                                    </div>
+                                                </div>
+                                                <span className="truncate">Interactive Ownership Flow</span>
+                                                <Badge className="ml-1 bg-indigo-500/25 text-indigo-200 border-indigo-400/30 hover:bg-indigo-500/30 text-[10px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 inline-flex items-center gap-1.5 shrink-0">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-pulse-glow" />
+                                                    {timeline.react_flow_data.nodes?.length || 0} Nodes Found
                                                 </Badge>
                                             </CardTitle>
-                                            <div className="flex items-center gap-2">
-                                                <div className="flex gap-2 mr-4">
-                                                    <Badge variant="outline" className="border-green-500/50 text-green-400 text-[10px]">SALE</Badge>
-                                                    <Badge variant="outline" className="border-red-500/50 text-red-400 text-[10px]">MORTGAGE</Badge>
+                                            <div className="relative flex items-center gap-2 shrink-0">
+                                                <div className="flex gap-1.5 mr-2">
+                                                    <Badge variant="outline" className="border-emerald-500/50 text-emerald-300 bg-emerald-500/10 text-[10px] font-bold uppercase tracking-[0.16em] inline-flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Sale
+                                                    </Badge>
+                                                    <Badge variant="outline" className="border-rose-500/50 text-rose-300 bg-rose-500/10 text-[10px] font-bold uppercase tracking-[0.16em] inline-flex items-center gap-1.5">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" /> Mortgage
+                                                    </Badge>
                                                 </div>
                                                 <Button
                                                     variant="ghost"
                                                     size="icon"
-                                                    className="h-8 w-8 text-slate-400 hover:text-white hover:bg-white/10"
+                                                    className="h-9 w-9 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-all hover:scale-105"
                                                     title="Open in Full View"
                                                     onClick={() => {
-                                                        const url = `/hierarchy?requestId=${requestId}&surveyNumber=${surveyNumber}&limit=${transactionLimit}`;
-                                                        window.open(url, '_blank');
+                                                        // Pass parcelId so the HierarchyPage's Notes Cockpit
+                                                        // can fetch parcel-wide annotations.
+                                                        const params = new URLSearchParams({
+                                                            requestId: requestId || '',
+                                                            surveyNumber: surveyNumber || '',
+                                                            limit: String(transactionLimit ?? ''),
+                                                        });
+                                                        if (parcelId) params.set('parcelId', parcelId);
+                                                        window.open(`/hierarchy?${params.toString()}`, '_blank');
                                                     }}
                                                 >
                                                     <ExternalLink className="w-4 h-4" />
@@ -651,6 +973,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                             />
                                         </CardContent>
                                     </Card>
+                                    </motion.div>
                                 )}
 
                                 {/* Transaction List */}
@@ -675,7 +998,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-border">
-                                                    {timeline.all_transactions.map((tx, idx) => (
+                                                    {(timeline?.all_transactions ?? []).map((tx, idx) => (
                                                         <tr
                                                             key={idx}
                                                             className={cn(
@@ -730,7 +1053,7 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                     ))}
                                                 </tbody>
                                             </table>
-                                            {timeline.all_transactions.length === 0 && (
+                                            {(timeline?.all_transactions?.length ?? 0) === 0 && (
                                                 <div className="py-12 text-center text-muted-foreground italic">
                                                     No detailed records found
                                                 </div>
@@ -829,18 +1152,22 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
 
                                         <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/20 overflow-hidden mt-2">
                                             {activeTab === "chat" && previewDoc && (
-                                                <div className="absolute inset-x-0 top-0 bottom-[300px] z-20 animate-in slide-in-from-right duration-300">
-                                                    <DocChat 
-                                                        docNo={previewDoc.docNo} 
-                                                        requestId={requestId} 
-                                                        onClose={() => setActiveTab("summary")} 
+                                                // z-[150] sits above PdfAnnotator's TEXT/DRAW toggle (z-100) and the
+                                                // Single-PDF-Matching button (z-30) so the chat overlay isn't
+                                                // pierced by PDF chrome. Buttons stay in the DOM and reappear
+                                                // when the chat tab closes.
+                                                <div className="absolute inset-x-0 top-0 bottom-[300px] z-[150] animate-in slide-in-from-right duration-300">
+                                                    <DocChat
+                                                        docNo={previewDoc.docNo}
+                                                        requestId={requestId}
+                                                        onClose={() => setActiveTab("summary")}
                                                         onPageClick={(page) => setScrollToPage({ page, timestamp: Date.now() })}
                                                     />
                                                 </div>
                                             )}
 
                                             {activeTab === "annotations" && previewDoc && (
-                                                <div className="absolute inset-x-0 top-0 bottom-[300px] z-20 animate-in slide-in-from-right duration-300 bg-white flex flex-col p-4 border-b">
+                                                <div className="absolute inset-x-0 top-0 bottom-[300px] z-[150] animate-in slide-in-from-right duration-300 bg-white flex flex-col p-4 border-b">
                                                     <div className="flex items-center justify-between mb-3">
                                                         <h3 className="text-[10px] font-extra-bold uppercase tracking-wider text-slate-400">PDF Annotations</h3>
                                                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setActiveTab("summary")}><X className="w-3 h-3" /></Button>
@@ -852,18 +1179,50 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                                 <p className="text-[9px] font-bold">Highlight text to add notes</p>
                                                             </div>
                                                         ) : (
-                                                            pdfAnnotations.map((anno: any) => (
-                                                                <Card key={anno.id} className="p-2 border-primary/5 bg-slate-50/50">
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <Badge className="w-fit text-[7px] h-3.5 bg-primary/10 text-primary border-0">PAGE {anno.position.pageNumber}</Badge>
-                                                                        <p className="text-[10px] font-bold text-slate-800 line-clamp-2">"{anno.content.text || 'Area selection'}"</p>
-                                                                        <div className="flex items-start gap-1.5 mt-1 p-1.5 bg-white rounded border border-slate-100">
-                                                                            <MessageSquare className="w-2.5 h-2.5 text-primary shrink-0 mt-0.5" />
-                                                                            <p className="text-[9px] text-slate-600 italic leading-snug">{anno.comment.text}</p>
+                                                            pdfAnnotations.map((anno: any) => {
+                                                                const pageNum = anno.position?.pageNumber;
+                                                                return (
+                                                                    <Card
+                                                                        key={anno.id}
+                                                                        className="p-2 border-primary/5 bg-slate-50/50 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer group"
+                                                                        onClick={() => handleFocusLocalNote(anno)}
+                                                                        role="button"
+                                                                        tabIndex={0}
+                                                                        onKeyDown={(e) => {
+                                                                            if (e.key === "Enter" || e.key === " ") {
+                                                                                e.preventDefault();
+                                                                                handleFocusLocalNote(anno);
+                                                                            }
+                                                                        }}
+                                                                        title={`Open page ${pageNum ?? "?"} in the PDF`}
+                                                                    >
+                                                                        <div className="flex flex-col gap-1">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleFocusLocalNote(anno);
+                                                                                    }}
+                                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-extra-bold uppercase tracking-wider bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-sm hover:shadow hover:scale-[1.03] active:scale-[0.97] transition-all"
+                                                                                    title={`Open page ${pageNum ?? "?"} in the PDF`}
+                                                                                >
+                                                                                    <ArrowRight className="w-2.5 h-2.5" />
+                                                                                    PAGE {pageNum ?? "?"}
+                                                                                </button>
+                                                                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                    Click to jump
+                                                                                </span>
+                                                                            </div>
+                                                                            <p className="text-[10px] font-bold text-slate-800 line-clamp-2 mt-1">"{anno.content?.text || 'Area selection'}"</p>
+                                                                            <div className="flex items-start gap-1.5 mt-1 p-1.5 bg-white rounded border border-slate-100">
+                                                                                <MessageSquare className="w-2.5 h-2.5 text-primary shrink-0 mt-0.5" />
+                                                                                <p className="text-[9px] text-slate-600 italic leading-snug">{anno.comment?.text}</p>
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                </Card>
-                                                            ))
+                                                                    </Card>
+                                                                );
+                                                            })
                                                         )}
                                                     </div>
                                                 </div>
@@ -927,14 +1286,31 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                             </div>
                                                         </div>
 
-                                                        <div className="flex items-center gap-4 pt-2 border-t border-slate-50">
+                                                        <div className="flex items-center justify-between gap-4 pt-2 border-t border-slate-50">
                                                             <div className="flex items-center gap-1.5 text-xs">
                                                                 <Maximize className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                                                                <span className="font-bold text-slate-700">Area: {previewDoc.data.square_feet && previewDoc.data.square_feet !== 'N/A' ? previewDoc.data.square_feet : 'N/A (check deed)'}</span>
+                                                                <span className="font-bold text-slate-700">
+                                                                    Area: {previewDoc.data.square_feet && previewDoc.data.square_feet !== 'N/A' ? previewDoc.data.square_feet : 'N/A (check deed)'}
+                                                                </span>
                                                             </div>
-                                                            <div className="flex items-center gap-1.5 text-xs">
-                                                                <MapPin className="w-3.5 h-3.5 text-primary/70 shrink-0" />
-                                                                <span className="font-bold text-slate-700">S.No: {previewDoc.data.survey_number}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="flex items-center gap-1.5 text-xs">
+                                                                    <MapPin className="w-3.5 h-3.5 text-primary/70 shrink-0" />
+                                                                    <span className="font-bold text-slate-700">
+                                                                        S.No: {getFullSurveyNumber(previewDoc.data)}
+                                                                    </span>
+                                                                </div>
+                                                                {getFullSurveyNumber(previewDoc.data) && (
+                                                                    <Button
+                                                                        variant="outline"
+                                                                        size="sm"
+                                                                        className="h-7 px-2 text-[10px] font-bold flex items-center gap-1"
+                                                                        onClick={handleOpenInMap}
+                                                                    >
+                                                                        <MapPin className="w-3 h-3" />
+                                                                        View on Map
+                                                                    </Button>
+                                                                )}
                                                             </div>
                                                         </div>
 
@@ -1230,8 +1606,10 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                         <PdfAnnotator
                                                             url={previewDoc.url}
                                                             docId={previewDoc.docNo}
+                                                            parcelId={parcelId}
                                                             onAnnotationChange={(h) => setPdfAnnotations(h)}
                                                             scrollToPage={scrollToPage}
+                                                            focusHighlightId={focusHighlightId}
                                                         />
                                                         <div className="absolute top-4 right-4 z-30 flex gap-2">
                                                             <Button
@@ -1245,10 +1623,47 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                                                         </div>
                                                     </>
                                                 ) : (
-                                                    <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground p-8 text-center italic">
-                                                        <FileText className="w-12 h-12 opacity-10 mb-4" />
-                                                        No preview document found
-                                                    </div>
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: 8 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                                                        className="relative w-full h-full flex flex-col items-center justify-center p-8 text-center overflow-hidden"
+                                                    >
+                                                        <div className="pointer-events-none absolute inset-0 opacity-50">
+                                                            <div className="absolute -top-32 -left-20 w-72 h-72 rounded-full bg-gradient-to-br from-indigo-200/30 to-blue-200/30 blur-3xl animate-blob-slow" />
+                                                            <div className="absolute -bottom-32 -right-20 w-72 h-72 rounded-full bg-gradient-to-br from-violet-200/25 to-indigo-200/25 blur-3xl animate-blob" />
+                                                        </div>
+                                                        <motion.div
+                                                            initial={{ scale: 0.7, opacity: 0 }}
+                                                            animate={{ scale: 1, opacity: 1 }}
+                                                            transition={{ delay: 0.05, duration: 0.55, ease: [0.34, 1.56, 0.64, 1] }}
+                                                            className="relative w-20 h-20 mb-5"
+                                                        >
+                                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-blue-500 rounded-3xl blur-2xl opacity-30 animate-pulse-glow" />
+                                                            <div className="relative w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-xl border border-slate-100 ring-4 ring-white animate-float">
+                                                                <FileText className="w-9 h-9 text-indigo-300" strokeWidth={1.4} />
+                                                            </div>
+                                                            <motion.div
+                                                                initial={{ scale: 0 }}
+                                                                animate={{ scale: 1 }}
+                                                                transition={{ delay: 0.4, duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
+                                                                className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md ring-2 ring-white"
+                                                            >
+                                                                <AlertCircle className="w-3.5 h-3.5 text-white" />
+                                                            </motion.div>
+                                                        </motion.div>
+                                                        <h3 className="relative text-base font-display font-extrabold text-slate-700 tracking-tight">
+                                                            <span className="text-gradient-primary">No preview</span>
+                                                            <span className="text-slate-700"> available</span>
+                                                        </h3>
+                                                        <p className="relative text-xs text-slate-500 font-medium mt-2 max-w-xs leading-relaxed">
+                                                            We couldn&apos;t locate the source PDF for this deed. It may not have been uploaded to the vault, or the file path is unresolved.
+                                                        </p>
+                                                        <div className="relative mt-4 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                                                            <Sparkles className="w-3 h-3 text-amber-400" />
+                                                            Upload to PDF Vault to enable preview
+                                                        </div>
+                                                    </motion.div>
                                                 )}
                                             </div>
                                         </CardContent>
@@ -1270,28 +1685,46 @@ export function SurveyTimeline({ requestId, results }: SurveyTimelineProps) {
                         "space-y-6 transition-all duration-500",
                         panelOpen ? "lg:col-span-12" : "w-full"
                     )}>
-                        <Card className="border-primary/10 shadow-2xl shadow-primary/5 overflow-hidden group/flow rounded-3xl">
-                            <CardHeader className="bg-slate-900 border-b py-4 px-8 flex flex-row items-center justify-between space-y-0 text-white">
-                                <CardTitle className="text-lg font-bold flex items-center gap-3">
-                                    <Maximize className="w-6 h-6 text-primary animate-pulse" />
-                                    Master Network Map
-                                    <Badge className="ml-2 bg-primary/20 text-primary border-primary/10">
-                                        GLOBAL VIEW
+                        <motion.div
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+                        >
+                        <Card className="relative border-indigo-100 shadow-2xl shadow-indigo-500/10 overflow-hidden group/flow rounded-2xl sm:rounded-3xl">
+                            {/* Top accent strip */}
+                            <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-20" />
+                            <CardHeader className="relative bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 border-b border-indigo-500/20 py-4 px-5 sm:px-7 flex flex-row items-center justify-between gap-4 flex-wrap space-y-0 text-white overflow-hidden">
+                                <div className="pointer-events-none absolute inset-0 opacity-50">
+                                    <div className="absolute -top-32 right-10 w-72 h-72 rounded-full bg-gradient-to-br from-violet-500/20 to-indigo-500/20 blur-3xl animate-blob-slow" />
+                                    <div className="absolute -bottom-32 -left-10 w-72 h-72 rounded-full bg-gradient-to-br from-blue-500/15 to-violet-500/15 blur-3xl animate-blob" />
+                                </div>
+                                <CardTitle className="relative text-base sm:text-lg font-display font-extrabold flex items-center gap-3 min-w-0 tracking-tight">
+                                    <div className="relative shrink-0">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl blur-md opacity-50 -z-10 animate-pulse-glow" />
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-500 flex items-center justify-center shadow-lg shadow-indigo-500/40 ring-1 ring-white/20">
+                                            <Network className="w-5 h-5 text-white" strokeWidth={2.5} />
+                                        </div>
+                                    </div>
+                                    <span className="truncate">Master Network Map</span>
+                                    <Badge className="ml-1 bg-indigo-500/25 text-indigo-200 border-indigo-400/30 hover:bg-indigo-500/30 text-[10px] font-bold uppercase tracking-[0.18em] px-2.5 py-1 inline-flex items-center gap-1.5 shrink-0">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-pulse-glow" />
+                                        Global View
                                     </Badge>
                                 </CardTitle>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-medium text-slate-400 font-mono italic">
-                                        {masterTimeline.react_flow_data.nodes.length} nodes extracted across the entire project
+                                <div className="relative flex items-center gap-2 shrink-0">
+                                    <span className="text-[10px] sm:text-xs font-mono font-bold text-indigo-200/80 tracking-tight tabular-nums">
+                                        {masterTimeline.react_flow_data.nodes.length} nodes · entire project
                                     </span>
                                 </div>
                             </CardHeader>
-                            <div className="h-[750px] relative">
+                            <div className="h-[750px] relative bg-gradient-to-br from-slate-50 via-white to-indigo-50/30">
                                 <ReactFlowHierarchy
                                     data={masterTimeline.react_flow_data}
                                     onNodeClick={handleNodeClick}
                                 />
                             </div>
                         </Card>
+                        </motion.div>
                     </div>
                 </div>
             )}
