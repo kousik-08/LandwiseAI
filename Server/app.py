@@ -144,30 +144,68 @@ def _cors_redirect_headers(request: Request) -> dict:
     return {}
 
 
+def _content_type_for(key: str) -> str:
+    k = key.lower()
+    if k.endswith(".pdf"):
+        return "application/pdf"
+    if k.endswith(".png"):
+        return "image/png"
+    if k.endswith(".jpg") or k.endswith(".jpeg"):
+        return "image/jpeg"
+    if k.endswith(".json"):
+        return "application/json"
+    if k.endswith(".html") or k.endswith(".htm"):
+        return "text/html"
+    return "application/octet-stream"
+
+
+def _stream_s3_object(full_key: str, request: Request) -> StreamingResponse:
+    """
+    Stream an S3 object through the backend so the browser never sees a
+    cross-origin redirect. Cheaper than fixing CORS-on-redirect quirks and
+    avoids the browser's tendency to send Origin: null on followed
+    redirects (which S3 then refuses to attach CORS headers to).
+    """
+    storage = get_storage()
+    if not storage.exists(full_key):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    body = storage.open_stream(full_key)
+
+    def _iter():
+        try:
+            while True:
+                chunk = body.read(64 * 1024)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            try:
+                body.close()
+            except Exception:
+                pass
+
+    headers = {
+        "Content-Disposition": f'inline; filename="{os.path.basename(full_key)}"',
+        "Cache-Control": "private, max-age=300",
+    }
+    # FastAPI's CORSMiddleware will add Access-Control-Allow-Origin on this
+    # final, same-origin response. No redirect → no missing CORS issue.
+    return StreamingResponse(
+        _iter(),
+        media_type=_content_type_for(full_key),
+        headers=headers,
+    )
+
+
 if _storage_backend == "s3":
     @app.get("/files/{key:path}")
     async def serve_output_file(key: str, request: Request):
-        storage = get_storage()
-        full_key = f"outputs/{key}"
-        if not storage.exists(full_key):
-            raise HTTPException(status_code=404, detail="Not found")
-        return RedirectResponse(
-            url=storage.presigned_url(full_key),
-            status_code=302,
-            headers=_cors_redirect_headers(request),
-        )
+        return _stream_s3_object(f"outputs/{key}", request)
 
     @app.get("/input-files/{key:path}")
     async def serve_input_file(key: str, request: Request):
-        storage = get_storage()
-        full_key = f"inputs/{key}"
-        if not storage.exists(full_key):
-            raise HTTPException(status_code=404, detail="Not found")
-        return RedirectResponse(
-            url=storage.presigned_url(full_key),
-            status_code=302,
-            headers=_cors_redirect_headers(request),
-        )
+        return _stream_s3_object(f"inputs/{key}", request)
 else:
     app.mount("/files", StaticFiles(directory="outputs"), name="files")
     app.mount("/input-files", StaticFiles(directory="inputs"), name="input-files")
