@@ -541,39 +541,64 @@ def list_documents(
 
 @router.get("/documents/download/{document_id}")
 def download_document(document_id: str, db: Session = Depends(get_db)):
-    """EP #09.5: Get document file content. Tries storage backend first
-    (S3 presigned redirect), then DB file_content, then local disk."""
+    """EP #09.5: Get document file content.
+
+    Streams from S3 through the backend (avoids cross-origin redirect that
+    pdfjs can't follow due to Origin: null on the redirected request).
+    Falls back to DB `file_content` then local disk for legacy rows.
+    """
     doc = db.query(LandwiseDocument).filter(LandwiseDocument.id == document_id).first()
     if not doc:
         raise HTTPException(404, "Document not found in database")
 
-    from fastapi.responses import FileResponse, Response, RedirectResponse
+    from fastapi.responses import FileResponse, Response, StreamingResponse
     from common.storage import get_storage
 
     storage = get_storage()
 
-    # 1. Storage backend (S3) — preferred, returns a presigned URL the
-    #    browser can stream directly.
+    # 1. Stream from storage backend (S3) — same-origin response, CORS-safe.
     if doc.storage_key:
         try:
             if storage.exists(doc.storage_key):
-                return RedirectResponse(url=storage.presigned_url(doc.storage_key), status_code=302)
-        except Exception as e:
-            print(f"[!] storage.presigned_url failed for {doc.storage_key}: {e}")
+                body = storage.open_stream(doc.storage_key)
 
-    # 2. DB file_content fallback.
+                def _iter():
+                    try:
+                        while True:
+                            chunk = body.read(64 * 1024)
+                            if not chunk:
+                                break
+                            yield chunk
+                    finally:
+                        try:
+                            body.close()
+                        except Exception:
+                            pass
+
+                return StreamingResponse(
+                    _iter(),
+                    media_type=doc.mime_type or "application/pdf",
+                    headers={
+                        "Content-Disposition": f'inline; filename="{doc.original_filename or "document.pdf"}"',
+                        "Cache-Control": "private, max-age=300",
+                    },
+                )
+        except Exception as e:
+            print(f"[!] storage stream failed for {doc.storage_key}: {e}")
+
+    # 2. DB file_content fallback (legacy rows).
     if doc.file_content:
         return Response(
             content=doc.file_content,
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"inline; filename={doc.original_filename}"}
+            media_type=doc.mime_type or "application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
         )
 
-    # 3. Last-resort local disk (legacy rows whose storage_key is an absolute path).
+    # 3. Last-resort local disk (legacy absolute paths).
     if doc.storage_key and os.path.isabs(doc.storage_key) and os.path.exists(doc.storage_key):
         return FileResponse(
             path=doc.storage_key,
-            media_type="application/pdf",
+            media_type=doc.mime_type or "application/pdf",
             filename=doc.original_filename,
             content_disposition_type="inline",
         )
@@ -583,16 +608,17 @@ def download_document(document_id: str, db: Session = Depends(get_db)):
 
 @router.get("/documents/download-by-path")
 def download_document_by_path(file_path: str, db: Session = Depends(get_db)):
-    """EP #09.6: Resolve a path string to an S3 presigned URL.
+    """EP #09.6: Stream a PDF identified by storage path.
 
-    The path may arrive in any of these forms:
-      - "outputs/validate/<id>/matched_docs/<file>.pdf"  (canonical S3 key)
-      - "validate/<id>/matched_docs/<file>.pdf"          (missing outputs/ prefix)
+    Streams from S3 through the backend (same-origin, CORS-safe).
+    Accepts any of:
+      - "outputs/validate/<id>/matched_docs/<file>.pdf"
+      - "validate/<id>/matched_docs/<file>.pdf"
       - "inputs/validate/<id>/sale_deeds/<file>.pdf"
-      - "<file>.pdf"                                      (vault-style)
+      - "<file>.pdf"  (vault-style)
     """
     import re
-    from fastapi.responses import Response, RedirectResponse
+    from fastapi.responses import Response, StreamingResponse
     from common.storage import get_storage
 
     if ".." in file_path or file_path.startswith("/"):
@@ -602,8 +628,6 @@ def download_document_by_path(file_path: str, db: Session = Depends(get_db)):
     norm = file_path.replace("\\", "/").lstrip("./").lstrip("/")
     base = os.path.basename(norm)
 
-    # Build candidate S3 keys covering the various ways the frontend
-    # might reference the same file.
     candidates: list[str] = [norm]
     if not (norm.startswith("outputs/") or norm.startswith("inputs/")):
         candidates += [
@@ -612,15 +636,39 @@ def download_document_by_path(file_path: str, db: Session = Depends(get_db)):
             f"outputs/storage/vault/{base}",
         ]
 
+    def _stream(key: str, filename: str):
+        body = storage.open_stream(key)
+
+        def _iter():
+            try:
+                while True:
+                    chunk = body.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                try:
+                    body.close()
+                except Exception:
+                    pass
+
+        return StreamingResponse(
+            _iter(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "private, max-age=300",
+            },
+        )
+
     for key in candidates:
         try:
             if storage.exists(key):
-                return RedirectResponse(url=storage.presigned_url(key), status_code=302)
+                return _stream(key, os.path.basename(key))
         except Exception as e:
             print(f"[!] storage probe failed for {key}: {e}")
 
-    # Fallback: scan lw_documents by fuzzy filename match (handles vault-only
-    # docs whose key uses a different naming scheme).
+    # Fallback: scan lw_documents by fuzzy filename match (vault-only docs).
     try:
         target = re.sub(r'[\s\-_/\\]', '', base).lower()
         target = re.sub(r'\.pdf$', '', target)
@@ -633,7 +681,7 @@ def download_document_by_path(file_path: str, db: Session = Depends(get_db)):
                     if d.storage_key:
                         try:
                             if storage.exists(d.storage_key):
-                                return RedirectResponse(url=storage.presigned_url(d.storage_key), status_code=302)
+                                return _stream(d.storage_key, d.original_filename or base)
                         except Exception:
                             pass
                     if d.file_content:
