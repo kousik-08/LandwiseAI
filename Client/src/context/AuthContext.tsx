@@ -23,7 +23,8 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Set default axios config for credentials
 axios.defaults.withCredentials = true;
 
-const API_BASE_URL = "http://localhost:8000/api/v1";
+import { API_BASE_URL as ROOT } from "@/lib/api";
+const API_BASE_URL = `${ROOT}/api/v1`;
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);

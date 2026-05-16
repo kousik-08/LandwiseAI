@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { landwiseApi } from "@/lib/landwise-api";
+import { API_BASE_URL } from "@/lib/api";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
 
 export interface NoteRow {
@@ -413,7 +414,7 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
         //    annotation row carries the real LandwiseDocument UUID; the
         //    backend resolves it to a presigned S3 URL via 302 redirect.
         if (previewNote.documentId) {
-            return `http://127.0.0.1:8000/api/v1/landwise/documents/download/${previewNote.documentId}`;
+            return `${API_BASE_URL}/api/v1/landwise/documents/download/${previewNote.documentId}`;
         }
         return null;
     }, [previewNote, pdfUrlResolver]);

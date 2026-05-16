@@ -251,7 +251,7 @@ export default function LegalDashboard() {
   const { data: parcelStatsData } = useQuery({
     queryKey: ['parcel-stats', selectedParcelId],
     queryFn: async () => {
-      const res = await fetch(`http://localhost:8000/api/v1/landwise/parcels/${selectedParcelId}/stats`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/landwise/parcels/${selectedParcelId}/stats`);
       if (!res.ok) throw new Error('Failed to fetch parcel stats');
       return res.json();
     },
@@ -268,7 +268,7 @@ export default function LegalDashboard() {
   const { data: riskScoreData } = useQuery({
     queryKey: ['risk-score', riskScoreRequestId],
     queryFn: async () => {
-      const res = await fetch(`http://localhost:8000/api/v1/get-risk-score/${riskScoreRequestId}`);
+      const res = await fetch(`${API_BASE_URL}/api/v1/get-risk-score/${riskScoreRequestId}`);
       if (!res.ok) throw new Error('Failed to fetch risk score');
       return res.json();
     },
@@ -1635,7 +1635,7 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button variant="outline" size="sm" asChild className="h-8 border-indigo-200 text-indigo-700 hover:text-indigo-700 hover:bg-indigo-50 font-bold text-[10px] uppercase rounded-lg transition-all hover:scale-105">
-                    <a href={`http://localhost:8000/api/v1/landwise/documents/download/${selectedDoc.id}`} target="_blank" rel="noopener noreferrer">
+                    <a href={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}`} target="_blank" rel="noopener noreferrer">
                       <Download className="w-3 h-3 mr-1.5" /> Download
                     </a>
                   </Button>
@@ -1644,7 +1644,7 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
               <div className="flex-1 flex items-center justify-center overflow-hidden p-3 sm:p-4">
                 {selectedDoc.original_filename.toLowerCase().endsWith('.pdf') ? (
                   <iframe
-                    src={`http://localhost:8000/api/v1/landwise/documents/download/${selectedDoc.id}#toolbar=0`}
+                    src={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}#toolbar=0`}
                     className="w-full h-full rounded-2xl border border-slate-200 shadow-2xl bg-white"
                     title="PDF Preview"
                   />
@@ -1665,7 +1665,7 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
                       <h3 className="text-lg font-display font-extrabold text-slate-900">Archive File</h3>
                       <p className="text-sm text-slate-500 max-w-xs mx-auto mt-1">ZIP archives cannot be previewed. Download to view contents.</p>
                       <Button asChild className="mt-4 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white font-bold rounded-xl shine-sweep shadow-lg shadow-indigo-500/30">
-                        <a href={`http://localhost:8000/api/v1/landwise/documents/download/${selectedDoc.id}`} download>
+                        <a href={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}`} download>
                           <Download className="w-4 h-4 mr-2" /> Download ZIP
                         </a>
                       </Button>
@@ -3427,7 +3427,7 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
   useEffect(() => {
     if (!parcelId || !data || data.status === "not_started") return;
     if (reportSections.length > 0) return;
-    fetch(`http://127.0.0.1:8000/api/v1/landwise/parcels/${parcelId}/report-sections`)
+    fetch(`${API_BASE_URL}/api/v1/landwise/parcels/${parcelId}/report-sections`)
       .then(r => (r.ok ? r.json() : null))
       .then(resp => {
         if (resp && resp.status === "success" && Array.isArray(resp.sections)) {
@@ -3460,7 +3460,7 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
   const addAdvisorNote = useMutation({
     mutationFn: async ({ sectionId, note }: { sectionId: string, note: string }) => {
       const resp = await fetch(
-        `http://127.0.0.1:8000/api/v1/landwise/parcels/${parcelId}/opinion/legal-advisor-note`,
+        `${API_BASE_URL}/api/v1/landwise/parcels/${parcelId}/opinion/legal-advisor-note`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3487,7 +3487,7 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
         });
         // Auto-open PDF preview if report_url is in response
         if (resp.report_url) {
-          const url = `http://127.0.0.1:8000/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(resp.report_url)}`;
+          const url = `${API_BASE_URL}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(resp.report_url)}`;
           setReportUrl(url);
         }
         // Store parsed sections
@@ -3539,7 +3539,7 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
 
   const handleViewReport = () => {
     if (data.report_storage_key) {
-      const url = `http://127.0.0.1:8000/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(data.report_storage_key)}`;
+      const url = `${API_BASE_URL}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(data.report_storage_key)}`;
       setReportUrl(url);
     } else {
       generateReport.mutate();
@@ -3622,7 +3622,7 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
                variant="ghost" 
                size="sm" 
                className="text-slate-400 hover:text-indigo-600"
-               onClick={() => setReportUrl(data.report_storage_key ? `http://127.0.0.1:8000/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(data.report_storage_key)}` : null)}
+               onClick={() => setReportUrl(data.report_storage_key ? `${API_BASE_URL}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(data.report_storage_key)}` : null)}
              >
                <Download className="w-4 h-4 mr-1" />
                PDF
@@ -3904,7 +3904,7 @@ function HierarchyTab({ parcelId, auditResults, isAuditLoading, hierarchyPreview
   const fetchGlobalHierarchy = async () => {
     setLoadingGlobal(true);
     try {
-      const resp = await fetch(`http://127.0.0.1:8000/api/v1/get-global-hierarchy/${requestId}`);
+      const resp = await fetch(`${API_BASE_URL}/api/v1/get-global-hierarchy/${requestId}`);
       if (resp.ok) {
         const data = await resp.json();
         setGlobalHierarchy(data.react_flow_data);
