@@ -121,22 +121,53 @@ app.add_middleware(
 
 _storage_backend = (os.environ.get("STORAGE_BACKEND") or "local").strip().lower()
 
+# Origins allowed to read presigned-redirect responses. FastAPI's
+# CORSMiddleware does not always attach CORS headers to 3xx responses,
+# so we add them manually below.
+_ALLOWED_ORIGINS = {
+    "https://staging.d1sd2m4ye8eyia.amplifyapp.com",
+    "http://localhost:8080",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:8080",
+}
+
+
+def _cors_redirect_headers(request: Request) -> dict:
+    origin = request.headers.get("origin", "")
+    if origin in _ALLOWED_ORIGINS:
+        return {
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Credentials": "true",
+            "Vary": "Origin",
+        }
+    return {}
+
+
 if _storage_backend == "s3":
     @app.get("/files/{key:path}")
-    async def serve_output_file(key: str):
+    async def serve_output_file(key: str, request: Request):
         storage = get_storage()
         full_key = f"outputs/{key}"
         if not storage.exists(full_key):
             raise HTTPException(status_code=404, detail="Not found")
-        return RedirectResponse(url=storage.presigned_url(full_key), status_code=302)
+        return RedirectResponse(
+            url=storage.presigned_url(full_key),
+            status_code=302,
+            headers=_cors_redirect_headers(request),
+        )
 
     @app.get("/input-files/{key:path}")
-    async def serve_input_file(key: str):
+    async def serve_input_file(key: str, request: Request):
         storage = get_storage()
         full_key = f"inputs/{key}"
         if not storage.exists(full_key):
             raise HTTPException(status_code=404, detail="Not found")
-        return RedirectResponse(url=storage.presigned_url(full_key), status_code=302)
+        return RedirectResponse(
+            url=storage.presigned_url(full_key),
+            status_code=302,
+            headers=_cors_redirect_headers(request),
+        )
 else:
     app.mount("/files", StaticFiles(directory="outputs"), name="files")
     app.mount("/input-files", StaticFiles(directory="inputs"), name="input-files")
