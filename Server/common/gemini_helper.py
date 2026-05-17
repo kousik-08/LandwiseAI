@@ -1,3 +1,4 @@
+import json
 import os
 import time
 from google import genai
@@ -70,10 +71,10 @@ class GeminiHelper:
         The schema follows google-genai's JSON schema dialect -- pass a dict like
         {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {...}}}.
         """
-        import json
-
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File not found: {file_path}")
+
+        print(f"[*] Uploading {file_path}...")
 
         f = self.client.files.upload(
             file=file_path, config=types.UploadFileConfig(display_name=display_name)
@@ -83,6 +84,8 @@ class GeminiHelper:
             f = self.client.files.get(name=f.name)
         if f.state.name == "FAILED":
             raise ValueError(f"File processing failed for {file_path}")
+
+        print(f"[*] File {display_name} processed. Analyzing...")
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -102,7 +105,7 @@ class GeminiHelper:
                 error_lower = str(e).lower()
                 is_transient = any(p in error_lower for p in [
                     "503", "502", "504", "overloaded", "unavailable",
-                    "peer closed", "incomplete chunked", "connection", "timeout", "reset",
+                    "peer closed connection", "incomplete chunked", "connection", "timeout", "reset",
                 ])
                 if is_transient and attempt < max_retries - 1:
                     wait = 2 ** (attempt + 1)
