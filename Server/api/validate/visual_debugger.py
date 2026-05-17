@@ -4,8 +4,6 @@ import fitz  # PyMuPDF
 from common.gemini_helper import GeminiHelper
 from common.storage_sync import sync_file as _sync_file
 import threading
-import hashlib
-import json
 import shutil
 
 
@@ -34,7 +32,6 @@ class VisualDebugger:
     #   3. Draw on the PDF     → pixel coords divided by SCALE back to PDF points
     DPI = 200                  # Render resolution shared by raster, detect, draw
     SCALE = DPI / 72.0         # ≈ 2.778 — multiplier from PDF points to pixels
-    _CACHE_VERSION = "19"      # Bumped: all-pages flow stores list[pixel_box] instead of single box
 
     # Color scheme: RED mismatch boxes
     MISMATCH_BOX_COLOR = (255, 0, 0)
@@ -48,35 +45,6 @@ class VisualDebugger:
         self.temp_dir = os.path.join(output_dir, "temp_debug")
         self.lock = threading.Lock()
         os.makedirs(self.temp_dir, exist_ok=True)
-        self._cache_path = os.path.join(output_dir, "vd_coord_cache.json")
-        self._coord_cache = self._load_cache()
-
-    # ── Cache helpers ────────────────────────────────────────────────────────
-
-    def _load_cache(self) -> dict:
-        if os.path.exists(self._cache_path):
-            try:
-                with open(self._cache_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if data.get("_v") == self._CACHE_VERSION:
-                        return data.get("coords", {})
-                    print(f"[*] VD Cache format changed (v{data.get('_v', '?')} → v{self._CACHE_VERSION}). Clearing old cache.")
-            except Exception:
-                pass
-        return {}
-
-    def _save_cache(self):
-        try:
-            payload = {"_v": self._CACHE_VERSION, "coords": self._coord_cache}
-            with open(self._cache_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False)
-        except Exception as e:
-            print(f"[!] VD cache save failed: {e}")
-
-    @staticmethod
-    def _cache_key(pdf_path: str, page_num: int, field: str, value: str) -> str:
-        raw = f"{os.path.basename(pdf_path)}|{page_num}|{field}|{value}"
-        return hashlib.md5(raw.encode()).hexdigest()
 
     # ── Page extraction ──────────────────────────────────────────────────────
 
@@ -305,14 +273,13 @@ class VisualDebugger:
 
         clean_doc_no = doc_no.replace("/", "_").replace("\\", "_")
         all_boxes: list[dict] = []
-        per_mismatch_boxes: dict[tuple, int] = {
-            (mm["field"], mm["value"]): 0 for mm in mismatches
-        }
-
+        per_mismatch_boxes: dict[tuple, int] = {}
         variants_by_mm: dict[tuple, list[str]] = {}
         for mm in mismatches:
             key = (mm["field"], mm["value"])
-            variants_by_mm[key] = build_variants(mm["value"], mm["field"])
+            if key not in per_mismatch_boxes:
+                per_mismatch_boxes[key] = 0
+                variants_by_mm[key] = build_variants(mm["value"], mm["field"])
 
         doc = fitz.open(pdf_path)
         try:
@@ -354,13 +321,11 @@ class VisualDebugger:
                 extraction = self.extract_page_as_image(pdf_path, page_num, base_img)
                 if not extraction:
                     continue
-                # Rasterize to obtain the pixel dimensions for the bbox locator.
-                with fitz.open(pdf_path) as _d:
-                    _pix = _d.load_page(page_idx).get_pixmap(
-                        matrix=fitz.Matrix(self.SCALE, self.SCALE)
-                    )
-                    page_w_px, page_h_px = _pix.width, _pix.height
-                values = [mm_value for (_, mm_value) in unresolved]
+                # Pixel dimensions are deterministic from the page rect and SCALE.
+                x0, y0, x1, y1 = pdf_rect
+                page_w_px = round((x1 - x0) * self.SCALE)
+                page_h_px = round((y1 - y0) * self.SCALE)
+                values = list(dict.fromkeys(mm_value for (_, mm_value) in unresolved))
                 hits_by_value = self.bbox_locator.locate(
                     page_image_path=base_img,
                     page_w_px=page_w_px,

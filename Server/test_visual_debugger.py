@@ -44,8 +44,6 @@ def _stub_vd():
     vd.output_dir = tempfile.mkdtemp(prefix="vd_out_")
     vd.temp_dir = os.path.join(vd.output_dir, "temp_debug")
     os.makedirs(vd.temp_dir, exist_ok=True)
-    vd._cache_path = os.path.join(vd.output_dir, "vd_coord_cache.json")
-    vd._coord_cache = {}
     vd.gemini = None
     vd.bbox_locator = None
     return vd
