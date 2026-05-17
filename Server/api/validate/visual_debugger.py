@@ -550,9 +550,6 @@ class VisualDebugger:
             try:
                 for box in boxes:
                     page_num = box["page_num"]
-                    pixel_box = box["pixel_box"]
-                    img_w = box["img_width"]
-                    img_h = box["img_height"]
                     label = box.get("label", "Mismatch")
 
                     if page_num < 1 or page_num > len(doc):
@@ -567,34 +564,37 @@ class VisualDebugger:
                         pr = page.rect
                         x0, y0, x1, y1 = pr.x0, pr.y0, pr.x1, pr.y1
 
-                    pdf_width = x1 - x0
-                    pdf_height = y1 - y0
+                    # Two box sources:
+                    #   1. `pdf_rect_box` — text-layer hit, already in PDF points.
+                    #      Use it directly; no scale conversion needed.
+                    #   2. `pixel_box` + img_w/img_h — Gemini hit on the rasterized
+                    #      page; convert pixel coords to PDF points.
+                    if "pdf_rect_box" in box and box["pdf_rect_box"] is not None:
+                        src = box["pdf_rect_box"]
+                        rect = fitz.Rect(src.x0, src.y0, src.x1, src.y1)
+                        print(
+                            f"[VD] Box '{label}' page {page_num} (text-layer): "
+                            f"rect=({rect.x0:.2f},{rect.y0:.2f},{rect.x1:.2f},{rect.y1:.2f})"
+                        )
+                    else:
+                        pixel_box = box["pixel_box"]
+                        img_w = box["img_width"]
+                        img_h = box["img_height"]
+                        xmin, ymin, xmax, ymax = pixel_box
+                        scale_x = (x1 - x0) / img_w
+                        scale_y = (y1 - y0) / img_h
+                        rect = fitz.Rect(
+                            x0 + xmin * scale_x,
+                            y0 + ymin * scale_y,
+                            x0 + xmax * scale_x,
+                            y0 + ymax * scale_y,
+                        )
+                        print(
+                            f"[VD] Box '{label}' page {page_num} (gemini): "
+                            f"px=[{xmin},{ymin},{xmax},{ymax}] img={img_w}x{img_h} "
+                            f"rect=({rect.x0:.2f},{rect.y0:.2f},{rect.x1:.2f},{rect.y1:.2f})"
+                        )
 
-                    xmin, ymin, xmax, ymax = pixel_box
-                    scale_x = pdf_width / img_w
-                    scale_y = pdf_height / img_h
-
-                    print(
-                        f"[VD] Box '{label}' page {page_num}: "
-                        f"px=[{xmin},{ymin},{xmax},{ymax}] img={img_w}x{img_h} "
-                        f"pdf_rect=({x0:.2f},{y0:.2f},{x1:.2f},{y1:.2f}) "
-                        f"scale=({scale_x:.4f},{scale_y:.4f})"
-                    )
-
-                    # Symmetric outward expansion: grow the rectangle on every
-                    # side so the box visibly surrounds the value rather than
-                    # sitting flush against (or inside) the ink. Expansion is
-                    # specified in pixels and converted to PDF points via the
-                    # page-specific scale factor.
-                    pad_x_pts = self.BOX_DRAW_EXTRA_PX_X * scale_x
-                    pad_y_pts = self.BOX_DRAW_EXTRA_PX_Y * scale_y
-                    rect = fitz.Rect(
-                        x0 + xmin * scale_x - pad_x_pts,
-                        y0 + ymin * scale_y - pad_y_pts,
-                        x0 + xmax * scale_x + pad_x_pts,
-                        y0 + ymax * scale_y + pad_y_pts,
-                    )
-                    # Clamp to page bounds so the rectangle is fully visible
                     rect &= page.rect
 
                     red = (1, 0, 0)

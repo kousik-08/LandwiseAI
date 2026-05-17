@@ -109,6 +109,49 @@ def test_has_useful_text_layer_false_for_blank_pdf():
         os.remove(pdf)
 
 
+def test_mark_pdf_handles_pdf_rect_box_branch():
+    """A box with `pdf_rect_box` (text-layer hit) is drawn without pixel-scale math."""
+    import fitz
+    import threading
+    from api.validate.visual_debugger import VisualDebugger
+
+    pdf = _make_typed_pdf([(50, 100, "TARGET")])
+    out_pdf = pdf.replace(".pdf", "_marked.pdf")
+    try:
+        # Build a fake VD without a real Gemini client by stubbing __init__.
+        vd = VisualDebugger.__new__(VisualDebugger)
+        vd.lock = threading.Lock()
+        vd.temp_dir = tempfile.mkdtemp(prefix="vd_test_")
+
+        # Locate "TARGET" via text layer and pass the rect through.
+        doc = fitz.open(pdf)
+        rect = doc.load_page(0).search_for("TARGET")[0]
+        page_rect = doc.load_page(0).rect
+        doc.close()
+
+        vd.mark_pdf_with_boxes(
+            pdf,
+            [{
+                "page_num": 1,
+                "pdf_rect_box": rect,
+                "pdf_rect": (page_rect.x0, page_rect.y0, page_rect.x1, page_rect.y1),
+                "label": "TARGET field",
+            }],
+            out_pdf,
+        )
+        assert os.path.exists(out_pdf) and os.path.getsize(out_pdf) > 0
+        result = fitz.open(out_pdf)
+        try:
+            page = result.load_page(0)
+            assert len(page.get_contents()) >= 1
+        finally:
+            result.close()
+    finally:
+        for p in (pdf, out_pdf):
+            if os.path.exists(p):
+                os.remove(p)
+
+
 if __name__ == "__main__":
     test_search_finds_single_occurrence()
     test_search_finds_multiple_occurrences()
@@ -116,4 +159,5 @@ if __name__ == "__main__":
     test_search_returns_empty_for_missing_value()
     test_has_useful_text_layer_true_for_typed_pdf()
     test_has_useful_text_layer_false_for_blank_pdf()
+    test_mark_pdf_handles_pdf_rect_box_branch()
     print("OK")
