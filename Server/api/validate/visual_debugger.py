@@ -46,7 +46,7 @@ class VisualDebugger:
     BOX_DRAW_EXTRA_PX_Y = 24   # Half-height added on EACH side (top + bottom)
     GRID_ALPHA = 70            # 0–255 alpha for grid lines
     LABEL_FONT_SIZE = 14       # Ruler tick label size
-    _CACHE_VERSION = "18"      # Bumped: never skip — placeholder values fall back to field label
+    _CACHE_VERSION = "19"      # Bumped: all-pages flow stores list[pixel_box] instead of single box
 
     # ── Accuracy controls ───────────────────────────────────────────────────
     # Verification: after Gemini returns a bbox, crop it from the raw page
