@@ -54,6 +54,63 @@ class GeminiHelper:
                         continue
                 raise e
 
+    def generate_json_from_file(
+        self,
+        file_path: str,
+        prompt: str,
+        response_schema: dict,
+        display_name: str = "Uploaded File",
+        temperature: float = 0.0,
+        top_p: float = 0.1,
+    ):
+        """
+        Upload a file and ask Gemini to respond as JSON conforming to
+        `response_schema`. Returns the parsed JSON (dict or list).
+
+        The schema follows google-genai's JSON schema dialect -- pass a dict like
+        {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {...}}}.
+        """
+        import json
+
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+
+        f = self.client.files.upload(
+            file=file_path, config=types.UploadFileConfig(display_name=display_name)
+        )
+        while f.state.name == "PROCESSING":
+            time.sleep(2)
+            f = self.client.files.get(name=f.name)
+        if f.state.name == "FAILED":
+            raise ValueError(f"File processing failed for {file_path}")
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model_id,
+                    contents=[f, prompt],
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                        top_p=top_p,
+                        response_mime_type="application/json",
+                        response_schema=response_schema,
+                    ),
+                )
+                return json.loads(response.text)
+            except Exception as e:
+                error_lower = str(e).lower()
+                is_transient = any(p in error_lower for p in [
+                    "503", "502", "504", "overloaded", "unavailable",
+                    "peer closed", "incomplete chunked", "connection", "timeout", "reset",
+                ])
+                if is_transient and attempt < max_retries - 1:
+                    wait = 2 ** (attempt + 1)
+                    print(f"[!] Gemini transient error. Retrying in {wait}s... ({e})")
+                    time.sleep(wait)
+                    continue
+                raise
+
     def generate_from_file(
         self, file_path: str, prompt: str, display_name: str = "Uploaded File",
         temperature: float = 0.0, top_p: float = 0.1
