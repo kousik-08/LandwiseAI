@@ -188,13 +188,13 @@ class VisualDebugger:
         return out[:60].strip()
 
     def __init__(self, gemini_helper: GeminiHelper, output_dir: str):
+        from api.validate.gemini_bbox import GeminiBboxLocator   # local import to avoid cycles
         self.gemini = gemini_helper
+        self.bbox_locator = GeminiBboxLocator(gemini_helper)
         self.output_dir = output_dir
         self.temp_dir = os.path.join(output_dir, "temp_debug")
         self.lock = threading.Lock()
         os.makedirs(self.temp_dir, exist_ok=True)
-
-        # Coordinate cache, persisted per request
         self._cache_path = os.path.join(output_dir, "vd_coord_cache.json")
         self._coord_cache = self._load_cache()
 
@@ -855,71 +855,34 @@ class VisualDebugger:
         return None, None, scanned
 
     @staticmethod
-    def audit_coverage(doc_no, mismatches, page_groups, all_boxes, page_had_failure, skipped_no_page):
+    def audit_coverage(doc_no, mismatches, per_mismatch_boxes, total_boxes):
         """
-        Build a structured coverage report comparing every mismatch we were
-        asked to draw against the boxes we actually placed on the marked PDF.
-
-        Returns a dict the validator / handler can persist alongside the
-        validation result so the UI can show which mismatches were left
-        un-annotated and why. Also prints a human-readable summary to stderr.
-
-        Inputs:
-          doc_no             — e.g. "6571/2013"
-          mismatches         — original [{field, value, page_info}] list
-          page_groups        — {page_num: [mm, ...]} after page resolution
-          all_boxes          — list of dicts that actually got drawn
-          page_had_failure   — {page_num: True} for any page where Gemini
-                               returned a zero-area (no-box) for at least one
-                               mismatch on it
-          skipped_no_page    — count of mismatches that had no usable page_info
+        Coverage report under the all-pages model: per mismatch, count boxes
+        drawn. A mismatch with 0 boxes is a miss; ≥1 is a hit.
         """
-        # Boxes per page (what we actually drew)
-        drawn_per_page: dict[int, int] = {}
-        for b in all_boxes:
-            p = int(b.get("page_num", 0))
-            drawn_per_page[p] = drawn_per_page.get(p, 0) + 1
-
-        # Mismatches per page (what we WANTED to draw — after page resolution)
-        wanted_per_page: dict[int, int] = {p: len(items) for p, items in page_groups.items()}
-
-        # Per-page miss accounting
-        per_page = []
-        missed_fields_by_page: dict[int, list[str]] = {}
-        for p, want in wanted_per_page.items():
-            got = drawn_per_page.get(p, 0)
-            missed = max(0, want - got)
-            per_page.append({"page": p, "wanted": want, "drawn": got, "missed": missed})
-            if missed and page_had_failure.get(p):
-                missed_fields_by_page[p] = [mm.get("field", "?") for mm in page_groups[p]]
-
-        total_wanted = sum(wanted_per_page.values())
-        total_drawn = len(all_boxes)
-        total_missed = max(0, total_wanted - total_drawn)
-
         report = {
             "doc_no": doc_no,
             "total_mismatches": len(mismatches),
-            "skipped_no_page": skipped_no_page,
-            "total_wanted_on_pages": total_wanted,
-            "total_drawn": total_drawn,
-            "total_missed_on_pages": total_missed,
-            "all_marked": total_missed == 0 and skipped_no_page == 0,
-            "per_page": sorted(per_page, key=lambda r: r["page"]),
-            "missed_fields_by_page": missed_fields_by_page,
+            "total_boxes_drawn": total_boxes,
+            "hits": sum(1 for n in per_mismatch_boxes.values() if n > 0),
+            "misses": sum(1 for n in per_mismatch_boxes.values() if n == 0),
+            "per_mismatch": [
+                {"field": f, "value": v, "boxes": n}
+                for (f, v), n in per_mismatch_boxes.items()
+            ],
+            "all_marked": all(n > 0 for n in per_mismatch_boxes.values()),
         }
-
         if report["all_marked"]:
-            print(f"[VD] Coverage OK: {total_drawn}/{len(mismatches)} mismatches marked for {doc_no}.")
+            print(f"[VD] Coverage OK: {report['hits']}/{len(mismatches)} mismatches marked for {doc_no} ({total_boxes} total boxes).")
         else:
             print(
                 f"[VD] Coverage WARNING for {doc_no}: "
-                f"{total_drawn}/{len(mismatches)} mismatches marked. "
-                f"skipped_no_page={skipped_no_page} pages_with_misses="
-                f"{[p for p in missed_fields_by_page]}"
+                f"{report['hits']}/{len(mismatches)} mismatches marked, "
+                f"{report['misses']} missed."
             )
-            for p, fields in missed_fields_by_page.items():
-                print(f"   [VD] page {p}: missed {fields}")
+            for entry in report["per_mismatch"]:
+                if entry["boxes"] == 0:
+                    print(f"   [VD] miss: field={entry['field']!r} value={entry['value']!r}")
         return report
 
     def mark_pdf_with_box(
@@ -942,10 +905,132 @@ class VisualDebugger:
 
     def debug_mismatches_batch(self, pdf_path, doc_no, mismatches):
         """
-        Process every mismatch for a single document in one pass.
+        Process every mismatch for a single document. New flow (spec §3):
 
-        ``mismatches`` is a list of ``{field, value, page_info}`` dicts.
-        Yields progress messages and writes the marked PDF in one save.
+          for page in all_pages:
+              text_hits = PdfTextLocator.search_in_page(page, variants_for_each_mismatch)
+              if no hits for a mismatch on this page AND page has no text layer:
+                  → batch into per-page Gemini call
+              draw all hits
+
+        Each mismatch can produce 0..N boxes across the document.
+        """
+        from api.validate.text_locator import PdfTextLocator
+        from api.validate.value_variants import build_variants
+
+        clean_doc_no = doc_no.replace("/", "_").replace("\\", "_")
+        all_boxes: list[dict] = []
+        per_mismatch_boxes: dict[tuple, int] = {
+            (mm["field"], mm["value"]): 0 for mm in mismatches
+        }
+
+        variants_by_mm: dict[tuple, list[str]] = {}
+        for mm in mismatches:
+            key = (mm["field"], mm["value"])
+            variants_by_mm[key] = build_variants(mm["value"], mm["field"])
+
+        doc = fitz.open(pdf_path)
+        try:
+            total_pages = doc.page_count
+            for page_idx in range(total_pages):
+                page_num = page_idx + 1
+                page = doc.load_page(page_idx)
+                pdf_rect = (page.rect.x0, page.rect.y0, page.rect.x1, page.rect.y1)
+                yield f"Scanning {doc_no} page {page_num}/{total_pages}"
+
+                unresolved: list[tuple] = []
+                for mm in mismatches:
+                    key = (mm["field"], mm["value"])
+                    variants = variants_by_mm[key]
+                    hits = PdfTextLocator.search_in_page(page, variants)
+                    if hits:
+                        for r in hits:
+                            all_boxes.append({
+                                "page_num": page_num,
+                                "pdf_rect_box": r,
+                                "pdf_rect": pdf_rect,
+                                "label": mm["field"],
+                            })
+                            per_mismatch_boxes[key] += 1
+                    else:
+                        unresolved.append(key)
+
+                if not unresolved:
+                    continue
+                if PdfTextLocator.has_useful_text_layer(page):
+                    continue
+                if self.bbox_locator is None:
+                    # No Gemini fallback configured (e.g. test harness) — skip.
+                    continue
+
+                base_img = os.path.join(
+                    self.temp_dir, f"raw_{clean_doc_no}_p{page_num}.png"
+                )
+                extraction = self.extract_page_as_image(pdf_path, page_num, base_img)
+                if not extraction:
+                    continue
+                # Rasterize to obtain the pixel dimensions for the bbox locator.
+                with fitz.open(pdf_path) as _d:
+                    _pix = _d.load_page(page_idx).get_pixmap(
+                        matrix=fitz.Matrix(self.SCALE, self.SCALE)
+                    )
+                    page_w_px, page_h_px = _pix.width, _pix.height
+                values = [mm_value for (_, mm_value) in unresolved]
+                hits_by_value = self.bbox_locator.locate(
+                    page_image_path=base_img,
+                    page_w_px=page_w_px,
+                    page_h_px=page_h_px,
+                    values=values,
+                )
+                for key in unresolved:
+                    field, value = key
+                    for pixel_box in hits_by_value.get(value, []):
+                        all_boxes.append({
+                            "page_num": page_num,
+                            "pixel_box": list(pixel_box),
+                            "img_width": page_w_px,
+                            "img_height": page_h_px,
+                            "pdf_rect": pdf_rect,
+                            "label": field,
+                        })
+                        per_mismatch_boxes[key] += 1
+        finally:
+            doc.close()
+
+        if not all_boxes:
+            yield f"No occurrences found for any mismatch in {doc_no}"
+            return None
+
+        output_name = os.path.basename(pdf_path)
+        output_path = os.path.join(self.output_dir, "matched_docs", output_name)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        active_source = output_path if os.path.exists(output_path) else pdf_path
+        self.mark_pdf_with_boxes(active_source, all_boxes, output_path, doc_no=clean_doc_no)
+
+        try:
+            rid = os.path.basename(os.path.normpath(self.output_dir))
+            kind = os.path.basename(os.path.dirname(os.path.normpath(self.output_dir))) or "validate"
+            vd_key = f"outputs/{kind}/{rid}/matched_docs/{os.path.basename(output_path)}"
+            _sync_file(output_path, content_type="application/pdf", key=vd_key)
+        except Exception as _e:
+            print(f"[VD] sync_file failed for {output_path}: {_e}")
+
+        yield f"Marked {len(all_boxes)} occurrences across {doc_no}"
+
+        self.last_coverage_report = self.audit_coverage(
+            doc_no=doc_no,
+            mismatches=mismatches,
+            per_mismatch_boxes=per_mismatch_boxes,
+            total_boxes=len(all_boxes),
+        )
+        return output_path
+
+    # ── Legacy single-pass grid+LLM flow (dead, kept for Task 10 diff review) ─
+
+    def _legacy_debug_mismatches_batch_DEAD(self, pdf_path, doc_no, mismatches):
+        """
+        DEAD: legacy single-pass grid+LLM flow kept for diff review in Task 10.
+        Not called anywhere; preserved so the deletion in Task 10 stays focused.
         """
         clean_doc_no = doc_no.replace("/", "_").replace("\\", "_")
 
@@ -1189,14 +1274,9 @@ class VisualDebugger:
         # Audit: confirm every mismatch we were given got an actual box on the
         # marked PDF. Stash the report on `self` so callers (validator) can read
         # it after the generator is drained.
-        self.last_coverage_report = self.audit_coverage(
-            doc_no=doc_no,
-            mismatches=mismatches,
-            page_groups=page_groups,
-            all_boxes=all_boxes,
-            page_had_failure=page_had_failure,
-            skipped_no_page=skipped,
-        )
+        # Dead-code path — preserved for Task 10 deletion diff; audit_coverage's
+        # new signature differs, so we no-op here rather than call it.
+        _ = (page_groups, all_boxes, page_had_failure, skipped)
 
         return output_path
 
