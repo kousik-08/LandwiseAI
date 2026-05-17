@@ -23,8 +23,7 @@ def main():
     target = {
         "doc_no": "9268_2014",
         "page": 3,
-        # Use a non-cover-page field so _is_first_page_field doesn't force p1.
-        # The actual value is still a date; we just want to test the locator.
+        # The actual value is a date; we just want to test the locator.
         "field": "Document Date",
         "value": "28/11/2014",
         "src_pdf": src_pdf_input,
