@@ -88,7 +88,7 @@ export function ValidationResults({
     undefined,
   );
   // Click on a note row → flash that highlight in the embedded PDF.
-  const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; timestamp: number } | undefined>(
+  const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; page?: number; timestamp: number } | undefined>(
     undefined,
   );
   // Highlights for the currently-selected document, surfaced from

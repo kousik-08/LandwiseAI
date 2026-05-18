@@ -80,7 +80,7 @@ export default function HierarchyPage() {
     const [scrollToPage, setScrollToPage] = useState<{ page: number, timestamp: number } | undefined>(undefined);
     // Triggers a precise scroll-to-highlight + flash animation in PdfAnnotator
     // when a note is clicked from the annotations panel or the cockpit.
-    const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; timestamp: number } | undefined>(undefined);
+    const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; page?: number; timestamp: number } | undefined>(undefined);
     const [notesSummaryOpen, setNotesSummaryOpen] = useState(false);
 
     // Auto-resolve parcelId from request_id when the URL didn't carry one.

@@ -10,6 +10,7 @@ tmp/
 Client/node_modules/
 Client/dist/
 Client/dist-ssr/
+Client/landwise-dist.zip
 Client/package-lock.json
 
 # Backend

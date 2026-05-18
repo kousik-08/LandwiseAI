@@ -313,10 +313,18 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                 };
                 try {
                     highlighterRef.current.scrollTo(tempHighlight);
+                    return;
                 } catch (e) {
-                    console.warn("scrollTo failed", e);
+                    // The ref is set but pdfjs's internal viewer hasn't
+                    // attached its `viewport` yet — typical for the first
+                    // few hundred ms after mount. Retry until it's ready.
+                    if (attempts < MAX_ATTEMPTS) {
+                        setTimeout(tryScroll, INTERVAL_MS);
+                        return;
+                    }
+                    console.warn("scrollTo gave up after retries", e);
+                    return;
                 }
-                return;
             }
             if (attempts < MAX_ATTEMPTS) {
                 setTimeout(tryScroll, INTERVAL_MS);
@@ -372,12 +380,17 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
             if (target && highlighterRef.current) {
                 try {
                     highlighterRef.current.scrollTo(target);
+                    setFlashedId(target.id);
+                    flashClear = setTimeout(() => setFlashedId(null), 1500);
+                    return;
                 } catch (e) {
-                    console.warn("focus scrollTo failed", e);
+                    if (attempts < MAX_ATTEMPTS) {
+                        setTimeout(tryFocus, INTERVAL_MS);
+                        return;
+                    }
+                    console.warn("focus scrollTo gave up after retries", e);
+                    return;
                 }
-                setFlashedId(target.id);
-                flashClear = setTimeout(() => setFlashedId(null), 1500);
-                return;
             }
             if (attempts < MAX_ATTEMPTS) {
                 setTimeout(tryFocus, INTERVAL_MS);

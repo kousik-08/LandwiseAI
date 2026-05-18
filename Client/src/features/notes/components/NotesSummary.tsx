@@ -716,15 +716,13 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
                                     <X className="w-4 h-4" />
                                 </Button>
                             </div>
-                            {/* Cockpit-only: PdfAnnotator gets scrollToPage but NOT focusHighlightId.
-                                react-pdf-highlighter's scrollTo(highlight) lands the viewport at the
-                                highlight's y-coordinate, which in the cockpit's narrow preview pane
-                                often shows half of the highlight's page + half of the next — the
-                                "stuck between pages" symptom. Page-level scroll lands cleanly at the
-                                top of the target page; the orange-bordered area highlight (see
-                                PdfAnnotator.css) is permanently visible so the user still spots the
-                                note after the scroll. Document Analysis and Hierarchy keep using
-                                focusHighlightId for precise scroll + amber flash. */}
+                            {/* Mirrors the Document Analysis pattern: pass BOTH scrollToPage and
+                                focusHighlightId so PdfAnnotator (a) lands on the right page and
+                                (b) runs its scroll-to-highlight + amber-flash effect on the actual
+                                note. Passing only scrollToPage was leaving the highlight unflashed
+                                ("not highlighting" bug). The `page` field on focusHighlightId is
+                                the page-level fallback for slow loads where the highlight id
+                                hasn't been populated yet (see PdfAnnotator.tsx:359-373). */}
                             <div className="flex-1 min-h-0 relative">
                                 {previewPdfUrl ? (
                                     <PdfAnnotator
@@ -732,6 +730,11 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
                                         docId={stripPdf(previewNote.docNo)}
                                         parcelId={parcelId}
                                         scrollToPage={{
+                                            page: previewNote.note.page_number,
+                                            timestamp: focusKey,
+                                        }}
+                                        focusHighlightId={{
+                                            id: previewNote.note.id,
                                             page: previewNote.note.page_number,
                                             timestamp: focusKey,
                                         }}
