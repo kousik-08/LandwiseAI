@@ -1,5 +1,4 @@
-import { RotateCw, Search as SearchIcon, X, Filter } from "lucide-react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { RotateCw, Search as SearchIcon, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -7,7 +6,9 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
-import { ValidationResultItem } from "@/features/analysis/components/AnalysisResultItem";
+import { DocumentRow, DocumentDetail } from "@/features/analysis/components/AnalysisResultItem";
+import { DocumentNotesPanel } from "@/features/analysis/components/DocumentNotesPanel";
+import { cn } from "@/lib/utils";
 import { SurveyTimeline } from "@/features/timeline/components/SurveyTimeline";
 import { ReactFlowHierarchy } from "@/features/hierarchy/components/ReactFlowHierarchy";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,11 +69,10 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
   const [selectedDocument, setSelectedDocument] = useState<string | null>(
     results.length > 0 ? results[0].document_number : null,
   );
-  const [openAccordion, setOpenAccordion] = useState<string | undefined>(
-    results.length > 0 ? results[0].document_number : undefined,
-  );
   const [selectedPage, setSelectedPage] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "matched" | "review">("all");
+  const [inspectorTab, setInspectorTab] = useState<"validation" | "notes">("validation");
 
   // Filtered Results based on search
   const filteredResults = useMemo(() => {
@@ -227,9 +227,33 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
     ? `${API_BASE_URL}/files/${hierarchyPath}`
     : null;
 
-  const handleAccordionChange = (value: string | undefined) => {
-    setOpenAccordion(value);
-    if (value) setSelectedDocument(value);
+  // KPI roll-ups for the analysis tab header
+  const kpis = useMemo(() => {
+    const total = results.length;
+    const matched = results.filter((r) => r.match).length;
+    const review = total - matched;
+    const trustScores = results
+      .map((r) => r.validation_result?.trustability_score)
+      .filter((s): s is number => typeof s === "number");
+    const avgTrust = trustScores.length
+      ? Math.round(trustScores.reduce((a, b) => a + b, 0) / trustScores.length)
+      : null;
+    const matchRate = total > 0 ? Math.round((matched / total) * 100) : 0;
+    return { total, matched, review, avgTrust, matchRate };
+  }, [results]);
+
+  // Document index filtered by status + search query
+  const indexResults = useMemo(() => {
+    return filteredResults.filter((r) => {
+      if (statusFilter === "matched") return r.match;
+      if (statusFilter === "review") return !r.match;
+      return true;
+    });
+  }, [filteredResults, statusFilter]);
+
+  const handleSelectDocument = (docNumber: string) => {
+    setSelectedDocument(docNumber);
+    setSelectedPage(null);
   };
 
   return (
@@ -322,90 +346,229 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
       </div>
 
       <div className="flex-1 overflow-hidden relative">
-        {/* Analysis Tab Content */}
+        {/* Analysis Tab Content — Redesigned: KPI strip + 3-panel layout */}
         {activeTab === "analysis" && (
-          <div className="h-full animate-in slide-in-from-left duration-500">
-            <ResizablePanelGroup direction="horizontal" className="w-full">
-              <ResizablePanel defaultSize={45} minSize={30}>
-                <div className="h-full overflow-y-auto p-6 scrollbar-thin">
-                  <h2 className="text-xl font-bold mb-6 flex items-center gap-2">
-                    <span className="w-2 h-6 bg-primary rounded-full" />
-                    Validation Details
-                  </h2>
-                  <Accordion
-                    type="single"
-                    collapsible
-                    className="w-full space-y-3"
-                    value={openAccordion}
-                    onValueChange={handleAccordionChange}
-                  >
-                    {results.map((result) => (
-                      <ValidationResultItem
-                        key={result.document_number}
-                        result={result}
-                        onSelect={() => {
-                          setSelectedDocument(result.document_number);
-                          setSelectedPage(null);
-                        }}
-                        onPageSelect={(page) => {
-                          setSelectedDocument(result.document_number);
-                          setSelectedPage(page);
-                        }}
-                        onOpenInMap={onOpenInMap}
+          <div className="h-full flex flex-col animate-in fade-in duration-500">
+            {/* KPI Strip */}
+            <div className="px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-brand-blue-50/40 via-white to-white shrink-0">
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex-1 min-w-[180px]">
+                  <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Match rate
+                  </p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden max-w-[260px]">
+                      <div
+                        className={cn(
+                          "h-full rounded-full transition-all",
+                          kpis.matchRate >= 95
+                            ? "bg-gradient-to-r from-emerald-500 to-green-500"
+                            : kpis.matchRate >= 80
+                              ? "bg-gradient-to-r from-amber-500 to-orange-500"
+                              : "bg-gradient-to-r from-red-500 to-rose-500",
+                        )}
+                        style={{ width: `${kpis.matchRate}%` }}
                       />
-                    ))}
-                  </Accordion>
+                    </div>
+                    <span className="text-sm font-extrabold font-mono text-slate-900">
+                      {kpis.matchRate}%
+                    </span>
+                  </div>
                 </div>
-              </ResizablePanel>
 
-              <ResizableHandle withHandle />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <KpiChip label="Total" value={kpis.total} tone="slate" />
+                  <KpiChip label="Matched" value={kpis.matched} tone="emerald" />
+                  <KpiChip label="Review" value={kpis.review} tone="amber" />
+                  <KpiChip
+                    label="Avg Trust"
+                    value={kpis.avgTrust != null ? `${kpis.avgTrust}%` : "—"}
+                    tone="navy"
+                  />
+                </div>
+              </div>
+            </div>
 
-              <ResizablePanel defaultSize={55} minSize={40}>
-                <div className="h-full flex flex-col bg-muted/20">
-                  {pdfUrl ? (
-                    <>
-                      <div className="p-4 border-b bg-card/50 backdrop-blur-md sticky top-0 z-10">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <h3 className="font-bold text-lg">{selectedResult?.document_number}</h3>
+            {/* 3-Panel Layout */}
+            <div className="flex-1 min-h-0">
+              <ResizablePanelGroup direction="horizontal" className="w-full h-full">
+                {/* LEFT — Document Index */}
+                <ResizablePanel defaultSize={28} minSize={20} maxSize={40}>
+                  <div className="h-full flex flex-col border-r border-slate-100 bg-slate-50/40">
+                    <div className="p-3 border-b border-slate-100 bg-white shrink-0 space-y-2">
+                      <div className="relative">
+                        <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                        <Input
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          placeholder="Search doc or survey…"
+                          className="h-8 pl-8 pr-7 text-xs"
+                        />
+                        {searchQuery && (
+                          <button
+                            onClick={() => setSearchQuery("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-md border border-slate-200">
+                        {(["all", "matched", "review"] as const).map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => setStatusFilter(f)}
+                            className={cn(
+                              "flex-1 px-2 py-1 rounded text-[10px] font-extrabold uppercase tracking-wider transition-colors",
+                              statusFilter === f
+                                ? "bg-white text-brand-navy shadow-sm"
+                                : "text-slate-500 hover:text-brand-navy",
+                            )}
+                          >
+                            {f}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">
+                        Showing {indexResults.length} of {results.length}
+                      </p>
+                    </div>
+
+                    <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-2 space-y-2">
+                      {indexResults.length === 0 ? (
+                        <p className="text-center text-[11px] text-slate-400 italic py-8">
+                          No documents match.
+                        </p>
+                      ) : (
+                        indexResults.map((result) => (
+                          <DocumentRow
+                            key={result.document_number}
+                            result={result}
+                            isSelected={selectedDocument === result.document_number}
+                            onSelect={() => handleSelectDocument(result.document_number)}
+                            onOpenInMap={onOpenInMap}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </ResizablePanel>
+
+                <ResizableHandle withHandle />
+
+                {/* CENTER — PDF Viewer */}
+                <ResizablePanel defaultSize={44} minSize={30}>
+                  <div className="h-full flex flex-col bg-slate-50/30">
+                    {pdfUrl && selectedResult ? (
+                      <>
+                        <div className="px-4 py-2.5 border-b border-slate-100 bg-white flex items-center justify-between gap-2 shrink-0">
+                          <div className="min-w-0">
+                            <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                              Source Deed
+                            </p>
+                            <p className="font-mono text-xs font-extrabold text-slate-900 truncate">
+                              {selectedResult.document_number}
+                              {selectedPage != null && (
+                                <span className="ml-2 text-slate-400">· page {selectedPage}</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {selectedPage != null && (
+                              <button
+                                onClick={() => setSelectedPage(null)}
+                                className="px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                                title="Show full document"
+                              >
+                                Clear page
+                              </button>
+                            )}
                             <button
                               onClick={() => setRefreshKey(Date.now())}
-                              className="p-1.5 hover:bg-muted rounded-full transition-colors text-slate-400 hover:text-primary"
-                              title="Force Refresh PDF"
+                              className="p-1.5 hover:bg-slate-100 rounded-md text-slate-400 hover:text-brand-navy transition-colors"
+                              title="Force refresh"
                             >
-                              <RotateCw className="w-4 h-4" />
+                              <RotateCw className="w-3.5 h-3.5" />
                             </button>
                           </div>
-                          <Badge
-                            className={`px-3 py-1 text-xs font-bold ${selectedResult?.match
-                              ? "bg-green-500/10 text-green-600 border-green-200"
-                              : "bg-red-500/10 text-red-600 border-red-200"
-                              }`}
-                            variant="outline"
-                          >
-                            {selectedResult?.match ? "MATCHED" : "MANUAL REVIEW"}
-                          </Badge>
                         </div>
+                        <div className="flex-1 p-3 min-h-0">
+                          <iframe
+                            key={`${pdfUrl}-${selectedPage}-${refreshKey}`}
+                            src={pdfUrl}
+                            className="w-full h-full rounded-lg border border-slate-200 shadow-sm bg-white"
+                            title={`PDF Viewer - ${selectedResult.document_number}`}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 px-6">
+                        <div className="w-14 h-14 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-3 shadow-sm">
+                          <SearchIcon className="w-5 h-5 text-slate-300" />
+                        </div>
+                        <p className="text-sm font-bold text-slate-500">
+                          Pick a deed to inspect
+                        </p>
+                        <p className="text-[11px] mt-1 max-w-[260px]">
+                          The source PDF will render here. Click any field-source pill in the inspector to jump to the cited page.
+                        </p>
                       </div>
-                      <div className="flex-1 p-4">
-                        <iframe
-                          key={`${pdfUrl}-${selectedPage}-${refreshKey}`}
-                          src={pdfUrl}
-                          className="w-full h-full border rounded-xl shadow-inner bg-white"
-                          title={`PDF Viewer - ${selectedResult?.document_number}`}
-                        />
-                      </div>
-                    </>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground animate-pulse">
-                      <div className="text-center">
-                        <p className="text-xl font-semibold">Select a document</p>
-                      </div>
+                    )}
+                  </div>
+                </ResizablePanel>
+
+                <ResizableHandle withHandle />
+
+                {/* RIGHT — Inspector (Validation Fields | Notes) */}
+                <ResizablePanel defaultSize={28} minSize={22} maxSize={40}>
+                  <div className="h-full flex flex-col bg-white border-l border-slate-100">
+                    <div className="flex items-center gap-1 p-1.5 bg-slate-50/60 border-b border-slate-100 shrink-0">
+                      <button
+                        onClick={() => setInspectorTab("validation")}
+                        className={cn(
+                          "flex-1 px-3 py-1.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all",
+                          inspectorTab === "validation"
+                            ? "bg-brand-navy text-white shadow"
+                            : "text-slate-500 hover:text-brand-navy",
+                        )}
+                      >
+                        Validation
+                      </button>
+                      <button
+                        onClick={() => setInspectorTab("notes")}
+                        className={cn(
+                          "flex-1 px-3 py-1.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider transition-all",
+                          inspectorTab === "notes"
+                            ? "bg-amber-500 text-white shadow"
+                            : "text-slate-500 hover:text-amber-600",
+                        )}
+                      >
+                        Notes
+                      </button>
                     </div>
-                  )}
-                </div>
-              </ResizablePanel>
-            </ResizablePanelGroup>
+
+                    <div className="flex-1 min-h-0">
+                      {inspectorTab === "validation" ? (
+                        <DocumentDetail
+                          result={selectedResult}
+                          onPageSelect={(page) => {
+                            setSelectedPage(page);
+                          }}
+                        />
+                      ) : (
+                        <DocumentNotesPanel
+                          docNumber={selectedResult?.document_number ?? null}
+                          requestId={requestId}
+                          onJumpToPage={(page) => {
+                            setSelectedPage(page);
+                          }}
+                        />
+                      )}
+                    </div>
+                  </div>
+                </ResizablePanel>
+              </ResizablePanelGroup>
+            </div>
           </div>
         )}
 
@@ -699,6 +862,34 @@ export function ValidationResults({ results, red_flags = [], hierarchyPath, requ
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function KpiChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string | number;
+  tone: "slate" | "emerald" | "amber" | "navy";
+}) {
+  const toneClasses = {
+    slate: "bg-slate-50 text-slate-700 border-slate-200",
+    emerald: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    amber: "bg-amber-50 text-amber-700 border-amber-200",
+    navy: "bg-brand-blue-50 text-brand-navy border-brand-navy/20",
+  } as const;
+  return (
+    <div
+      className={cn(
+        "rounded-lg border px-2.5 py-1.5 flex items-center gap-2 min-w-[88px]",
+        toneClasses[tone],
+      )}
+    >
+      <span className="text-[9px] font-extrabold uppercase tracking-widest opacity-70">{label}</span>
+      <span className="text-sm font-extrabold font-mono leading-none">{value}</span>
     </div>
   );
 }

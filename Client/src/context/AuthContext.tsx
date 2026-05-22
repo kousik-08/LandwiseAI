@@ -47,8 +47,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, null, {
-        params: { email, password },
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+        email,
+        password,
       });
       setUser(response.data.user);
       toast.success("Welcome back, " + response.data.user.full_name);
@@ -61,8 +62,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = async (fullName: string, email: string, password: string, roleName: string = "legal_advisor") => {
     try {
-      await axios.post(`${API_BASE_URL}/auth/signup`, null, {
-        params: { full_name: fullName, email, password, role_name: roleName },
+      await axios.post(`${API_BASE_URL}/auth/signup`, {
+        full_name: fullName,
+        email,
+        password,
+        role_name: roleName,
       });
       toast.success("Account created successfully. Please login.");
     } catch (error: any) {
