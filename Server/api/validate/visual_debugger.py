@@ -175,11 +175,19 @@ class SentenceContextLocator:
 
     def __init__(self, gemini_helper):
         self.gemini = gemini_helper
+        # Most recent (prompt, raw_response) — exposed so the orchestrator
+        # can dump exactly what was sent / received to llm_inputs/ for
+        # step-by-step debugging. Set by .locate() every call.
+        self.last_prompt: str | None = None
+        self.last_raw_response = None
 
     def locate(self, page_image_path, page_w_px, page_h_px, values):
         if not values:
+            self.last_prompt = None
+            self.last_raw_response = None
             return {}
         prompt = build_sentence_prompt(values)
+        self.last_prompt = prompt
         try:
             response = self.gemini.generate_json_from_file(
                 file_path=page_image_path,
@@ -187,8 +195,10 @@ class SentenceContextLocator:
                 response_schema=SENTENCE_RESPONSE_SCHEMA,
                 display_name="VD Sentence",
             )
+            self.last_raw_response = response
         except Exception as e:
             print(f"[VD] sentence-locator error: {e}")
+            self.last_raw_response = {"_error": str(e)}
             return {v: [] for v in values}
         return parse_sentence_response(response, page_w_px, page_h_px)
 
@@ -231,6 +241,10 @@ class ValuePinpointLocator:
 
     def __init__(self, gemini_helper):
         self.gemini = gemini_helper
+        # Most recent (prompt, raw_response) for step-by-step debug dumps.
+        # Set by .locate() every call.
+        self.last_prompt: str | None = None
+        self.last_raw_response = None
 
     @staticmethod
     def crop_with_padding(
@@ -281,6 +295,7 @@ class ValuePinpointLocator:
         (cx0, cy0, _cx1, _cy1), (crop_w, crop_h) = cropped
 
         prompt = build_pinpoint_prompt(value, sentence_hint)
+        self.last_prompt = prompt
         try:
             response = self.gemini.generate_json_from_file(
                 file_path=crop_out_path,
@@ -288,8 +303,10 @@ class ValuePinpointLocator:
                 response_schema=PINPOINT_RESPONSE_SCHEMA,
                 display_name="VD Pinpoint",
             )
+            self.last_raw_response = response
         except Exception as e:
             print(f"[VD] pinpoint-locator error: {e}")
+            self.last_raw_response = {"_error": str(e)}
             return None
 
         if not isinstance(response, dict) or not response.get("found"):
@@ -376,6 +393,128 @@ class VisualDebugger:
         d = os.path.join(self.debug_dir, clean_doc_no)
         os.makedirs(d, exist_ok=True)
         return d
+
+    # ── LLM-input dump (step-by-step debugging) ─────────────────────────────
+    #
+    # Every image we send to Gemini gets mirrored into
+    #   <doc_debug_dir>/llm_inputs/
+    # alongside the exact prompt and the raw response, so an operator can
+    # walk through what the model saw and said at each step.
+    #
+    # File naming uses a zero-padded step counter so a `ls -1` lists the
+    # uploads in the order they actually happened:
+    #
+    #   001_sentence_p1.png            # raw page sent to LLM call #1
+    #   001_sentence_p1.prompt.txt     # the prompt text
+    #   001_sentence_p1.response.json  # raw Gemini response (before parsing)
+    #   002_pinpoint_p1_v0.png         # crop sent to LLM call #2
+    #   002_pinpoint_p1_v0.prompt.txt
+    #   002_pinpoint_p1_v0.response.json
+    #   _manifest.json                 # ordered list of all dumps + metadata
+    #
+    # Everything is best-effort: a write failure here MUST NOT break the
+    # main VD flow.
+
+    LLM_INPUTS_DIRNAME = "llm_inputs"
+
+    def _llm_inputs_dir(self, doc_debug_dir: str) -> str:
+        d = os.path.join(doc_debug_dir, self.LLM_INPUTS_DIRNAME)
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _reset_llm_inputs_dir(self, doc_debug_dir: str) -> None:
+        """Wipe any prior dumps for this document so the manifest stays
+        accurate when a doc is re-run. Safe even if dir is missing."""
+        d = os.path.join(doc_debug_dir, self.LLM_INPUTS_DIRNAME)
+        try:
+            if os.path.isdir(d):
+                shutil.rmtree(d)
+        except Exception as e:
+            print(f"[VD] llm_inputs: reset failed for {d}: {e}")
+        os.makedirs(d, exist_ok=True)
+
+    def _dump_llm_input(
+        self,
+        doc_debug_dir: str,
+        step_num: int,
+        call_name: str,
+        suffix: str,
+        image_path: str,
+        prompt: str | None,
+        raw_response,
+        metadata: dict | None = None,
+    ) -> None:
+        """
+        Mirror one (image, prompt, response) triple into llm_inputs/.
+
+        Args:
+            doc_debug_dir: per-document debug dir (already created).
+            step_num:      monotonic counter — controls sort order in the dir.
+            call_name:     "sentence" | "pinpoint".
+            suffix:        e.g. "p1" or "p1_v0" — distinguishes pages / hits.
+            image_path:    path to the PNG actually uploaded to Gemini.
+            prompt:        prompt text sent alongside the image (or None).
+            raw_response:  whatever Gemini returned (already JSON-parsed, or
+                           a {"_error": ...} dict if the call failed).
+            metadata:      optional extra context to record in the manifest
+                           (page, value being located, sentence hint, …).
+        """
+        try:
+            target_dir = self._llm_inputs_dir(doc_debug_dir)
+            base = f"{step_num:03d}_{call_name}_{suffix}"
+            # 1. Copy the image so the operator sees exactly what Gemini
+            #    consumed, even after temp files get rotated.
+            img_dest = os.path.join(target_dir, base + ".png")
+            try:
+                shutil.copyfile(image_path, img_dest)
+            except Exception as e:
+                print(f"[VD] llm_inputs: image copy failed ({image_path} → {img_dest}): {e}")
+                img_dest = None
+
+            # 2. Prompt text
+            if prompt is not None:
+                try:
+                    with open(os.path.join(target_dir, base + ".prompt.txt"),
+                              "w", encoding="utf-8") as f:
+                        f.write(prompt)
+                except Exception as e:
+                    print(f"[VD] llm_inputs: prompt write failed for {base}: {e}")
+
+            # 3. Raw response
+            try:
+                with open(os.path.join(target_dir, base + ".response.json"),
+                          "w", encoding="utf-8") as f:
+                    json.dump(raw_response, f, ensure_ascii=False, indent=2,
+                              default=str)
+            except Exception as e:
+                print(f"[VD] llm_inputs: response write failed for {base}: {e}")
+
+            # 4. Append to manifest
+            manifest_path = os.path.join(target_dir, "_manifest.json")
+            try:
+                manifest = []
+                if os.path.exists(manifest_path):
+                    with open(manifest_path, "r", encoding="utf-8") as f:
+                        manifest = json.load(f) or []
+                manifest.append({
+                    "step": step_num,
+                    "call": call_name,
+                    "suffix": suffix,
+                    "image": os.path.basename(img_dest) if img_dest else None,
+                    "prompt": base + ".prompt.txt" if prompt is not None else None,
+                    "response": base + ".response.json",
+                    "metadata": metadata or {},
+                })
+                with open(manifest_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"[VD] llm_inputs: manifest update failed: {e}")
+
+            print(f"[VD] llm_inputs: dumped step {step_num:03d} "
+                  f"({call_name}/{suffix}) → {target_dir}")
+        except Exception as e:
+            # Belt-and-braces: never let debug dumping abort the main flow.
+            print(f"[VD] llm_inputs: dump failed for {call_name}/{suffix}: {e}")
 
     @staticmethod
     def _save_context_json(path: str, doc_no: str, page_num: int,
@@ -590,24 +729,54 @@ class VisualDebugger:
                     )
         return report
 
+    @staticmethod
+    def _parse_pages(page_info, total_pages: int) -> list[int]:
+        """Extract 1-indexed page numbers from a free-form page_info string.
+
+        "Page 2"      -> [2]
+        "Page 1 & 4"  -> [1, 4]
+        "Pages 3, 5"  -> [3, 5]
+        ""            -> []          # unscoped
+        "Page 99"     -> []          # out of range filtered out
+
+        Pages outside [1, total_pages] are dropped; the result is deduped and
+        ordered by first appearance. An empty/unparseable hint yields [], which
+        the caller treats as "unscoped" (search every page).
+        """
+        pages: list[int] = []
+        for tok in re.findall(r"\d+", str(page_info or "")):
+            n = int(tok)
+            if 1 <= n <= total_pages and n not in pages:
+                pages.append(n)
+        return pages
+
     # ── Batch entry point: the new two-call flow ────────────────────────────
 
     def debug_mismatches_batch(self, pdf_path, doc_no, mismatches):
         """
-        For every page of the PDF:
+        For every page that a mismatch is targeted to (via its page_info; see
+        _parse_pages — values without a parseable page fall back to all pages):
           1. Rasterize the page.
-          2. LLM call #1: for all mismatched values, get sentence-level
-             context boxes (one call per page).
+          2. LLM call #1: for that page's mismatched values, get sentence-level
+             context boxes (one call per scanned page).
           3. LLM call #2: for each (value, sentence-box), crop with
              CONTEXT_PADDING_PX padding and get the tight value box.
           4. Mark every located box on the PDF in one save cycle.
+
+        Miss-fallback: if a page-scoped value finds nothing on its named
+        page(s) (a likely wrong matcher page_number), the remaining pages are
+        re-scanned for just that value, stopping at the first page where it is
+        found, so the box is not silently dropped.
         """
         clean_doc_no = doc_no.replace("/", "_").replace("\\", "_")
-        values = [mm["value"] for mm in mismatches]
         field_by_value: dict[str, str] = {mm["value"]: mm["field"] for mm in mismatches}
         per_mismatch_boxes: dict[tuple, int] = {
             (mm["field"], mm["value"]): 0 for mm in mismatches
         }
+        # Boxes found per value (any field/page). Drives the miss-fallback:
+        # a page-scoped value still at 0 after its targeted page(s) likely had
+        # a wrong matcher page_number and is re-searched on the other pages.
+        boxes_by_value: dict[str, int] = {mm["value"]: 0 for mm in mismatches}
         all_boxes: list[dict] = []
 
         if not mismatches:
@@ -620,16 +789,48 @@ class VisualDebugger:
         finally:
             doc.close()
 
-        doc_debug_dir = self._doc_debug_dir(clean_doc_no)
-        print(f"[VD] Debug artefacts dir: {os.path.abspath(doc_debug_dir)}")
+        # Page-targeted search. The validator carries each mismatch's page_info
+        # (the matcher's page_number, e.g. "Page 2"). Group values by the
+        # page(s) they belong to so LLM call #1 only runs on those pages instead
+        # of every page. A mismatch whose page_info yields no parseable in-range
+        # page is "unscoped" and searched on every page — preserving the prior
+        # recall while page-scoped values save the wasted per-page calls.
+        values_by_page: dict[int, list[str]] = {}
+        named_pages_by_value: dict[str, set[int]] = {}
+        unscoped_values: list[str] = []
+        for mm in mismatches:
+            pages = self._parse_pages(mm.get("page_info", ""), total_pages)
+            if pages:
+                for p in pages:
+                    values_by_page.setdefault(p, []).append(mm["value"])
+                named_pages_by_value.setdefault(mm["value"], set()).update(pages)
+            else:
+                unscoped_values.append(mm["value"])
 
-        for page_num in range(1, total_pages + 1):
-            yield f"Scanning {doc_no} page {page_num}/{total_pages}"
+        if unscoped_values:
+            pages_to_scan = list(range(1, total_pages + 1))
+        else:
+            pages_to_scan = sorted(values_by_page.keys())
+
+        doc_debug_dir = self._doc_debug_dir(clean_doc_no)
+        # Reset the llm_inputs/ folder so this run's manifest is clean,
+        # not appended to a previous run's. Step counter is monotonic
+        # across the whole document so file listings sort by upload order.
+        self._reset_llm_inputs_dir(doc_debug_dir)
+        llm_step = 0
+        print(f"[VD] Debug artefacts dir: {os.path.abspath(doc_debug_dir)}")
+        print(f"[VD] LLM-input dumps      : {os.path.abspath(os.path.join(doc_debug_dir, self.LLM_INPUTS_DIRNAME))}")
+
+        def scan_page(page_num, page_values):
+            """Run the two-call locate→mark flow for one page over page_values.
+            Mutates the shared all_boxes / per_mismatch_boxes / boxes_by_value /
+            llm_step state. Used by both the targeted pass and the fallback."""
+            nonlocal llm_step
 
             base_img = os.path.join(doc_debug_dir, f"raw_p{page_num}.png")
             extraction = self.extract_page_as_image(pdf_path, page_num, base_img)
             if not extraction:
-                continue
+                return
             img_w = extraction["img_w"]
             img_h = extraction["img_h"]
             pdf_rect = extraction["pdf_rect"]
@@ -646,7 +847,28 @@ class VisualDebugger:
                 page_image_path=base_img,
                 page_w_px=img_w,
                 page_h_px=img_h,
-                values=values,
+                values=page_values,
+            )
+            # Dump exactly what Gemini saw / said for call #1.
+            llm_step += 1
+            self._dump_llm_input(
+                doc_debug_dir=doc_debug_dir,
+                step_num=llm_step,
+                call_name="sentence",
+                suffix=f"p{page_num}",
+                image_path=base_img,
+                prompt=self.sentence_locator.last_prompt,
+                raw_response=self.sentence_locator.last_raw_response,
+                metadata={
+                    "doc_no": doc_no,
+                    "page": page_num,
+                    "total_pages": total_pages,
+                    "image_size_px": [img_w, img_h],
+                    "values_queried": list(page_values),
+                    "parsed_hits_per_value": {
+                        v: len(hits) for v, hits in sentence_hits.items()
+                    },
+                },
             )
             # Persist the descriptive context so an operator can see what
             # Gemini reported per page (sentence + coarse box per value).
@@ -654,7 +876,7 @@ class VisualDebugger:
                 path=os.path.join(doc_debug_dir, f"context_p{page_num}.json"),
                 doc_no=doc_no,
                 page_num=page_num,
-                values=values,
+                values=page_values,
                 hits_by_value=sentence_hits,
             )
 
@@ -681,6 +903,32 @@ class VisualDebugger:
                             sentence_hint=hit.get("sentence", ""),
                             crop_out_path=crop_path,
                         )
+                        # Dump the crop + prompt + raw response for call #2.
+                        # We do this whether or not the pinpoint succeeded —
+                        # a failed/None pixel_box is itself the interesting
+                        # signal we want to inspect.
+                        llm_step += 1
+                        if os.path.exists(crop_path):
+                            self._dump_llm_input(
+                                doc_debug_dir=doc_debug_dir,
+                                step_num=llm_step,
+                                call_name="pinpoint",
+                                suffix=f"p{page_num}_v{idx}",
+                                image_path=crop_path,
+                                prompt=self.pinpoint_locator.last_prompt,
+                                raw_response=self.pinpoint_locator.last_raw_response,
+                                metadata={
+                                    "doc_no": doc_no,
+                                    "page": page_num,
+                                    "hit_index": idx,
+                                    "field": field,
+                                    "value": value,
+                                    "sentence_hint": hit.get("sentence", ""),
+                                    "context_box_px": list(hit.get("context_box_px", ())),
+                                    "result_pixel_box": list(pixel_box) if pixel_box else None,
+                                    "rejected": pixel_box is None,
+                                },
+                            )
                         self._coord_cache[ckey] = list(pixel_box) if pixel_box else None
                         self._save_cache()
                         if pixel_box is None:
@@ -694,6 +942,50 @@ class VisualDebugger:
                         "label": field or value,
                     })
                     per_mismatch_boxes[key] += 1
+                    boxes_by_value[value] = boxes_by_value.get(value, 0) + 1
+
+        # Phase 1 — targeted pass: scan only each mismatch's named page(s);
+        # unscoped values (no parseable page) ride along on every page.
+        for page_num in pages_to_scan:
+            page_values = list(dict.fromkeys(
+                values_by_page.get(page_num, []) + unscoped_values
+            ))
+            if not page_values:
+                continue
+            yield f"Scanning {doc_no} page {page_num}/{total_pages}"
+            scan_page(page_num, page_values)
+
+        # Phase 2 — miss-fallback: a page-scoped value that found nothing on its
+        # named page(s) likely had a wrong matcher page_number. Re-scan the
+        # remaining pages for just that value so the box is not silently dropped.
+        # This fires ONLY on a miss, so the correct-page case keeps the
+        # single-call savings; the worst case degrades to the old all-pages cost
+        # for that one value (bounded, never worse than before page-targeting).
+        missed_scoped = [
+            v for v in named_pages_by_value if boxes_by_value.get(v, 0) == 0
+        ]
+        if missed_scoped:
+            # Sweep the remaining pages in order, but stop searching a value the
+            # moment it is found+marked — the matcher merely pointed at the wrong
+            # page, so one recovery is enough and later pages add no value.
+            # A value never found anywhere stays pending and is searched on every
+            # remaining page (full recall preserved for genuine misses).
+            pending = list(missed_scoped)
+            for page_num in range(1, total_pages + 1):
+                if not pending:
+                    break
+                page_values = [
+                    v for v in pending if page_num not in named_pages_by_value[v]
+                ]
+                if not page_values:
+                    continue
+                yield (
+                    f"Fallback scan {doc_no} page {page_num}/{total_pages} "
+                    f"for {page_values} (matcher page missed)"
+                )
+                scan_page(page_num, page_values)
+                # Drop values that just got marked so later pages skip them.
+                pending = [v for v in pending if boxes_by_value.get(v, 0) == 0]
 
         if not all_boxes:
             yield f"No occurrences found for any mismatch in {doc_no}"
