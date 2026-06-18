@@ -431,6 +431,7 @@ class VisualDebugger:
         self._cache_path = os.path.join(output_dir, "vd_coord_cache.json")
         self._coord_cache = self._load_cache()
         self.last_coverage_report = None
+        self.last_marked_pages: list[int] = []
 
     # ── Cache ────────────────────────────────────────────────────────────────
 
@@ -1126,6 +1127,10 @@ class VisualDebugger:
             )
             for f, v in still_missing:
                 print(f"   [VD] absent: field={f!r} value={v!r}")
+
+        # Pages we actually drew a box on (1-indexed, ascending). Lets callers
+        # jump the PDF viewer straight to the marked page instead of page 1.
+        self.last_marked_pages = sorted({b["page_num"] for b in all_boxes})
 
         if not all_boxes:
             yield f"No occurrences found for any mismatch in {doc_no}"

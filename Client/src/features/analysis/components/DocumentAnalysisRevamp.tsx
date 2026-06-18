@@ -98,8 +98,10 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
     // PDF preview source: the marked DEED or the marked EC.
     const [pdfView, setPdfView] = useState<"deed" | "ec">("deed");
     // Per-document marked-EC state, fetched on demand (the EC scan is slow).
-    // docNo -> { status: "loading" | "done" | "error", url?, reason? }
-    const [ecMark, setEcMark] = useState<Record<string, { status: string; url?: string; reason?: string }>>({});
+    // docNo -> { status: "loading" | "done" | "error", url?, reason?, page?, ts? }
+    // `page` is the EC page the value was boxed on, so the viewer can jump
+    // straight to it; `ts` makes the scroll fire once when the mark completes.
+    const [ecMark, setEcMark] = useState<Record<string, { status: string; url?: string; reason?: string; page?: number; ts?: number }>>({});
 
     // Reset to the deed view whenever the selected document changes.
     useEffect(() => { setPdfView("deed"); }, [selectedDocNo]);
@@ -189,7 +191,8 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
             const r = await fetch(`${API_BASE_URL}/api/v1/visual-debug/mark-ec`, { method: "POST", body: fd });
             const data = await r.json();
             if (data?.url) {
-                setEcMark((prev) => ({ ...prev, [docNo]: { status: "done", url: getPdfUrl(data.url) } }));
+                const page = typeof data.page === "number" && data.page > 0 ? data.page : undefined;
+                setEcMark((prev) => ({ ...prev, [docNo]: { status: "done", url: getPdfUrl(data.url), page, ts: Date.now() } }));
             } else {
                 setEcMark((prev) => ({ ...prev, [docNo]: { status: "error", reason: data?.reason || "Could not mark the EC." } }));
             }
@@ -470,6 +473,7 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                                     url={m.url}
                                                     docId={`EC_${selectedResult.document_number}`}
                                                     parcelId={parcelId}
+                                                    scrollToPage={m.page ? { page: m.page, timestamp: m.ts || 0 } : undefined}
                                                 />
                                             );
                                         }

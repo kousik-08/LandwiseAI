@@ -2288,6 +2288,12 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
     if not queued:
         return {"url": None, "reason": "No EC-side values to mark for this document."}
 
+    # First page of the scoped range — where the client should jump the EC
+    # viewer. A fresh run may relocate via the fallback sweep, in which case we
+    # return the page actually marked instead (see below).
+    m_tp = re.search(r"\d+", page_info)
+    target_page = int(m_tp.group(0)) if m_tp else None
+
     safe_doc = re.sub(r"[^a-zA-Z0-9]", "_", str(doc_no))
     marked_name = f"{safe_doc}_ec.pdf"
 
@@ -2298,7 +2304,7 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
 
     # Cached marked EC for this document.
     if os.path.exists(marked_path) or ensure_local(marked_path):
-        return {"url": rel_path}
+        return {"url": rel_path, "page": target_page}
 
     # Locate the parcel's EC document.
     db = SessionLocal()
@@ -2352,6 +2358,12 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
         if not os.path.exists(marked_path):
             return {"url": None, "reason": "Could not locate any of the values on the EC."}
 
+        # Jump the viewer to the page the box was actually drawn on (the
+        # fallback sweep may land off the scoped page); fall back to the
+        # scoped target page.
+        marked_pages = getattr(vd, "last_marked_pages", []) or []
+        page = marked_pages[0] if marked_pages else target_page
+
         try:
             sync_dir(
                 os.path.join(output_dir, "matched_docs"),
@@ -2359,7 +2371,7 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
             )
         except Exception as e:
             print(f"[!] mark-ec sync failed: {e}")
-        return {"url": rel_path}
+        return {"url": rel_path, "page": page}
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
