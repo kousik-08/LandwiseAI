@@ -468,7 +468,7 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
         return (
             <div className="flex flex-col items-center justify-center p-10 gap-3 text-slate-400">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                <span className="text-xs font-bold uppercase tracking-widest">Loading Notes Hub…</span>
+                <span className="text-xs font-bold uppercase tracking-widest">Loading Annotations…</span>
             </div>
         );
     }
@@ -507,7 +507,7 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
                     </div>
                     <div className="min-w-0 flex-1">
                         <p className="text-sm font-display font-extrabold text-slate-900 leading-none">
-                            Notes Hub
+                            Annotations
                         </p>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.16em] mt-0.5">
                             Survey No <span className="text-amber-700">{data.survey_number}</span> ·{" "}

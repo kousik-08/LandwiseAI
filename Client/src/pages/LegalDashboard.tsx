@@ -56,7 +56,6 @@ import {
   ScrollText,
   Gavel,
   XCircle,
-  StickyNote,
   PanelLeftClose,
   PanelLeftOpen,
   Loader2,
@@ -76,7 +75,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ParcelWorkspaceLayout from "@/components/ParcelWorkspaceLayout";
-import { useAskAi } from "@/components/AppShell";
+import { useChatWidget } from "@/context/ChatWidgetContext";
 import { DocumentAnalysisRevamp } from "@/features/analysis/components/DocumentAnalysisRevamp";
 import { 
   DropdownMenu, 
@@ -89,7 +88,7 @@ import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { format } from "date-fns";
-import { cn, coerceMatchCount } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import { landwiseApi } from "@/lib/landwise-api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -118,7 +117,7 @@ import DocChat from "@/features/analysis/components/DocChat";
 import { ValidationResults } from "@/features/analysis/components/AnalysisDashboard";
 import { RiskScoreCard } from "@/features/analysis/components/RiskScoreCard";
 import LiveAnalysisProgress, { type AnalysisStep } from "@/features/analysis/components/LiveAnalysisProgress";
-import { LANDWISE_CHECKS, ALL_CHECK_IDS, AUTOMATED_CHECK_IDS, CHECK_CATEGORIES, getSelectedChecks, hasSavedChecks, setSelectedChecks as persistSelectedChecks } from "@/lib/landwise-checks";
+import { LANDWISE_CHECKS, ALL_CHECK_IDS, AUTOMATED_CHECK_IDS, CHECK_CATEGORIES, getSelectedChecks, hasSavedChecks, setSelectedChecks as persistSelectedChecks, type LandwiseCheck } from "@/lib/landwise-checks";
 import { getFileUrl, API_BASE_URL } from "@/lib/api";
 
 interface Project {
@@ -199,8 +198,8 @@ export default function LegalDashboard() {
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(urlParcelId);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<string>(urlTab || "overview");
-  // Publishes this parcel's context to the shell-hosted global Ask AI.
-  const { setAskAiContext } = useAskAi();
+  // Publishes this parcel's context to the shell-hosted floating chat widget.
+  const { setAnalysisContext } = useChatWidget();
   // Document the Risk Score tab asked us to focus inside Document Analysis.
   const [docAnalysisFocusDoc, setDocAnalysisFocusDoc] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -485,16 +484,7 @@ export default function LegalDashboard() {
             <Plus className="w-3.5 h-3.5" />
             Register Survey
           </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 hidden md:inline-flex"
-            onClick={() => setNotesSummaryOpen(true)}
-            title="View every note across every PDF for this parcel"
-          >
-            <StickyNote className="w-3.5 h-3.5" />
-            <span className="hidden lg:inline">Notes Hub</span>
-          </Button>
+          {/* Notes Hub moved into the workspace sidebar (ParcelWorkspaceLayout). */}
           <Button
             variant="ghost"
             size="icon"
@@ -672,18 +662,19 @@ export default function LegalDashboard() {
     return Array.from(set).sort();
   }, [analyzeCompleted, validationResults]);
 
-  // Feed the shell-hosted global Ask AI with the selected parcel's context.
-  // The Timeline tab has its own inline assistant (with hierarchy node-click
-  // @-mentions) and shares the same sessionStorage thread, so we publish null
-  // there to avoid a duplicate launcher. Cleared on unmount / no parcel.
+  // Feed the shell-hosted floating chat widget with the selected parcel's
+  // context. The Timeline tab publishes its own context (with hierarchy
+  // node-click @-mentions) via the same widget, so we clear it here on the
+  // timeline tab to avoid clobbering that richer context. Cleared on unmount /
+  // no parcel.
   useEffect(() => {
     if (selectedParcelId && activeTab !== "timeline") {
-      setAskAiContext({ requestId, parcelId: selectedParcelId, docNumbers: globalDocNumbers });
+      setAnalysisContext({ requestId, parcelId: selectedParcelId, docNumbers: globalDocNumbers });
     } else {
-      setAskAiContext(null);
+      setAnalysisContext({});
     }
-    return () => setAskAiContext(null);
-  }, [selectedParcelId, activeTab, requestId, globalDocNumbers, setAskAiContext]);
+    return () => setAnalysisContext({});
+  }, [selectedParcelId, activeTab, requestId, globalDocNumbers, setAnalysisContext]);
 
   // Tab content extracted into a const so it can render inside either the
   // new ParcelWorkspaceLayout (when a parcel is selected) or the legacy
@@ -692,7 +683,7 @@ export default function LegalDashboard() {
   // and the no-parcel fallback (project overview grid).
   const tabContentNode = (
     <ScrollArea className="flex-1">
-      <div className="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 lg:space-y-6">
+      <div className="p-3 sm:p-4 lg:p-6 w-full space-y-4 lg:space-y-6">
         {selectedParcelId ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
             {parcels.find(p => p.id === selectedParcelId)?.status === 'inactive' ? (
@@ -808,7 +799,7 @@ export default function LegalDashboard() {
   const selectedParcelForLayout = parcels.find(p => p.id === selectedParcelId);
 
   return (
-    <div className="h-screen w-full bg-[#F8FAFC] text-[#111827] overflow-hidden font-sans selection:bg-[#EBF1FF]">
+    <div className="h-[calc(100vh-3.75rem)] w-full bg-[#F8FAFC] text-[#111827] overflow-hidden font-sans selection:bg-[#EBF1FF]">
       {/* Engaging live analysis overlay — driven by the REAL analyze event
           stream: stages light up as the backend reports them, and each finished
           document is revealed as its result streams in. */}
@@ -842,6 +833,7 @@ export default function LegalDashboard() {
         <ParcelWorkspaceLayout
           activeTab={activeTab}
           setActiveTab={setActiveTab}
+          onNotesHubClick={() => setNotesSummaryOpen(true)}
           activeSurveyLabel={selectedParcelForLayout ? `SN ${selectedParcelForLayout.survey_number}` : undefined}
           activeSurveySubtitle={
             selectedParcelForLayout
@@ -1013,7 +1005,7 @@ export default function LegalDashboard() {
               widen the dialog and give it most of the viewport height. */}
           <DialogContent className="max-w-6xl w-[min(95vw,1100px)] p-0 overflow-hidden h-[85vh] flex flex-col">
             <DialogHeader className="sr-only">
-              <DialogTitle>Notes Hub</DialogTitle>
+              <DialogTitle>Annotations</DialogTitle>
             </DialogHeader>
             <NotesSummary
               parcelId={selectedParcelId}
@@ -1387,59 +1379,12 @@ function ParcelOverview({
 }) {
   const [scoreBreakdownExpanded, setScoreBreakdownExpanded] = React.useState(false);
 
-  // Mismatch Issues Hub state — relocated here from the Timeline tab. The
-  // hub flattens every non-MATCHED comparison across all validated documents
-  // in this parcel. Clicking a row opens a floating popup with the marked
-  // PDF (the server's box-annotated artifact at matched_docs/<docNo>.pdf,
-  // referenced by validationResult.file_path) scrolled to the cited page.
-  // scrollToPage is captured into state (not derived in JSX) so the
-  // timestamp is stable across re-renders. Otherwise Date.now() in JSX
-  // would re-fire PdfAnnotator's scroll effect on every render.
-  const [hubPreview, setHubPreview] = useState<{
-    docNo: string;
-    url: string;
-    page?: number;
-    scrollToPage?: { page: number; timestamp: number };
-  } | null>(null);
-  const hubPopupDragControls = useDragControls();
+  // The Mismatch Issues Hub that used to live here has moved into the
+  // Document Analysis tab (its "Mismatched" filter). See DocumentAnalysisRevamp.
 
-  const mismatchIssues = useMemo(() => {
-    const list: Array<{
-      docNo: string;
-      field: string;
-      status: string;
-      reason: string;
-      page?: string | number;
-      file_path?: string;
-      ec_value?: string;
-      metadata_value?: string;
-    }> = [];
-    (validationResults || []).forEach((r: any) => {
-      const comps = r?.validation_result?.comparisons || [];
-      comps.forEach((c: any) => {
-        const status = String(c?.status || "").toUpperCase();
-        // Clean MATCH = contains "MATCHED" AND not "NOT MATCHED"
-        const clean = status.includes("MATCHED") && !status.includes("NOT");
-        if (clean) return;
-        list.push({
-          docNo: r.document_number,
-          field: c.field,
-          status: c.status,
-          reason: c.reason,
-          page: c.page_number,
-          file_path: r.file_path,
-          ec_value: c.ec_value,
-          metadata_value: c.metadata_value,
-        });
-      });
-    });
-    return list;
-  }, [validationResults]);
-
-  // Guard AFTER all hooks (Rules of Hooks). Previously this was at the top of
-  // the component, before the useState/useMemo/useDragControls above — so when
-  // `parcel` toggled defined/undefined across re-renders the hook COUNT changed
-  // and React crashed ParcelOverview to a blank screen.
+  // Guard AFTER all hooks (Rules of Hooks). When `parcel` toggles
+  // defined/undefined across re-renders the hook COUNT must stay stable, so
+  // this early return lives below every hook above.
   if (!parcel) {
     // Show a loader rather than a blank screen while the parcel record loads
     // (or briefly toggles undefined during a refetch).
@@ -1450,35 +1395,6 @@ function ParcelOverview({
       </div>
     );
   }
-
-  // Build the download URL for a server-side artifact path. Mirrors the
-  // helper in SurveyTimeline.getPdfUrl — kept inline because the
-  // ParcelOverview is the only consumer here.
-  const getPdfUrlFromPath = (relPath: string | undefined) => {
-    if (!relPath) return undefined;
-    if (relPath.startsWith('http')) return relPath;
-    const cleaned = relPath.replace(/\\/g, "/").replace(/^(\.\.\/)+/, "").replace(/^\/+/, "");
-    return `${API_BASE_URL}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(cleaned)}`;
-  };
-
-  const handleHubIssueClick = (issue: { docNo: string; file_path?: string; page?: string | number }) => {
-    const url = getPdfUrlFromPath(issue.file_path);
-    if (!url) {
-      toast.error(`No PDF artifact recorded for ${issue.docNo}`);
-      return;
-    }
-    let pg: number | undefined;
-    if (issue.page !== undefined && issue.page !== null) {
-      const m = String(issue.page).match(/\d+/);
-      if (m) pg = parseInt(m[0]);
-    }
-    setHubPreview({
-      docNo: issue.docNo,
-      url,
-      page: pg,
-      scrollToPage: pg ? { page: pg, timestamp: Date.now() } : undefined,
-    });
-  };
 
   // First-load skeleton: render only when NONE of the data has arrived yet
   // (no stats AND no risk score AND no validation results). Once any of
@@ -1552,7 +1468,16 @@ function ParcelOverview({
     return { label: 'HIGH RISK', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-200' };
   };
   const trend = getTrend(riskScore);
-  
+  // Friendly one-line descriptor for the hero Risk KPI card (mirrors getTrend bands).
+  const riskSublabel = riskScore >= 80
+    ? 'Low title risk'
+    : riskScore >= 60
+      ? 'Moderate title risk'
+      : riskScore >= 40
+        ? 'Elevated title risk'
+        : 'High title risk';
+  const riskAnalysed = riskStatus !== 'PENDING' && riskStatus !== 'COMPUTING';
+
   return (
     <div className="space-y-5">
       <motion.div
@@ -1633,30 +1558,31 @@ function ParcelOverview({
           label="Risk Score"
           value={riskScore}
           unit="/ 100"
-          trend={riskStatus}
-          trendColor={trend.color}
           isRisk
-          alert={riskScore < 60}
+          hero
+          meter={{ value: riskScore, max: 100 }}
+          chip={riskAnalysed ? (riskGrade ? `${riskGrade} · ${riskStatus}` : riskStatus) : undefined}
+          sublabel={riskAnalysed ? riskSublabel : 'Awaiting analysis'}
         />
         <StatCard
           label="Documents"
           value={docCount}
-          unit=""
-          trend={
+          tone="brand"
+          meter={docCount > 0 ? { value: auditedDocs, max: docCount } : undefined}
+          sublabel={
             docCount === 0
-              ? 'Empty'
+              ? 'No documents yet'
               : pendingDocs > 0
-                ? `${pendingDocs} Pending`
-                : (auditedDocs > 0 ? `${auditedDocs} Verified` : 'Verified')
+                ? `${auditedDocs} audited · ${pendingDocs} pending`
+                : `All ${docCount} audited`
           }
-          trendColor={pendingDocs > 0 ? 'text-amber-600' : 'text-emerald-600'}
         />
         <StatCard
           label="Chain Length"
           value={chainYears}
           unit="Years"
-          trend={chainYears > 0 ? `${chainYears} Years` : 'N/A'}
-          trendColor={chainYears > 0 ? 'text-emerald-600' : 'text-slate-400'}
+          tone="slate"
+          sublabel={chainYears > 0 ? 'Title history span' : 'No chain data'}
         />
       </div>
 
@@ -1720,99 +1646,8 @@ function ParcelOverview({
         );
       })()}
 
-      {/* MISMATCH ISSUES HUB — surfaces every non-MATCHED comparison
-          across all validated docs in this parcel. Click any row to
-          open the Visual Debugger's marked PDF (the artifact the
-          server emits at outputs/validate/<reqId>/matched_docs/<docNo>.pdf
-          with the per-field bounding boxes drawn). */}
-      {mismatchIssues.length > 0 && (
-        <Card className="relative border-red-200 bg-gradient-to-br from-red-50/60 via-rose-50/30 to-red-50/30 overflow-hidden">
-          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-red-500 via-rose-500 to-red-500" />
-          <CardHeader className="py-2.5 px-3 flex flex-row items-center gap-2.5 space-y-0">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center shadow-sm shadow-red-500/30 shrink-0">
-              <AlertCircle className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-            </div>
-            <div className="min-w-0 flex-1">
-              <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-800">
-                Mismatch Issues Hub
-              </CardTitle>
-              <p className="text-[10px] text-red-700/80 mt-0.5 font-medium">
-                {mismatchIssues.length} issue{mismatchIssues.length !== 1 ? "s" : ""} across {new Set(mismatchIssues.map(i => i.docNo)).size} document{new Set(mismatchIssues.map(i => i.docNo)).size !== 1 ? "s" : ""} — click any row to open the marked PDF at the cited page
-              </p>
-            </div>
-            <Badge className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 shrink-0">
-              {mismatchIssues.length}
-            </Badge>
-          </CardHeader>
-          <CardContent className="px-3 pb-3 max-h-[320px] overflow-y-auto custom-scrollbar">
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-              {mismatchIssues.map((issue, idx) => {
-                const pageMatch = issue.page !== undefined && issue.page !== null
-                  ? String(issue.page).match(/\d+/)
-                  : null;
-                const pageLabel = pageMatch ? pageMatch[0] : null;
-                return (
-                  <button
-                    key={`${issue.docNo}-${issue.field}-${idx}`}
-                    onClick={() => handleHubIssueClick(issue)}
-                    className="text-left bg-white border border-red-100 hover:border-red-300 hover:shadow-md rounded-lg px-2.5 py-2 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-[11px] font-bold text-slate-900 tabular-nums truncate">
-                        {issue.docNo}
-                      </span>
-                      <Badge variant="outline" className="text-[8px] font-bold uppercase shrink-0 border-red-200 bg-red-50 text-red-700 px-1.5 py-0 h-4 whitespace-nowrap">
-                        {issue.status}
-                      </Badge>
-                    </div>
-                    <div className="text-[10px] font-bold text-slate-800 truncate" title={issue.field}>
-                      {issue.field}
-                    </div>
-                    {/* Side-by-side EC vs Deed values so the lawyer can see
-                        the actual mismatch at a glance without opening the
-                        PDF. Label column is fixed-width; value uses font-mono
-                        with break-all so long Tamil/multi-line strings wrap
-                        cleanly inside the narrow card. Falls back to "—" when
-                        the validator emitted no value for one side. */}
-                    {(issue.ec_value || issue.metadata_value) && (
-                      <div className="mt-1 space-y-0.5 bg-slate-50/60 rounded p-1.5 border border-slate-100">
-                        <div className="grid grid-cols-[40px_1fr] gap-1 items-baseline">
-                          <span className="text-[8px] font-bold uppercase tracking-wider text-red-700 text-right">EC:</span>
-                          <span className="text-[9px] font-mono text-slate-800 break-all line-clamp-2" title={String(issue.ec_value || "—")}>
-                            {issue.ec_value || "—"}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-[40px_1fr] gap-1 items-baseline">
-                          <span className="text-[8px] font-bold uppercase tracking-wider text-red-700 text-right">Deed:</span>
-                          <span className="text-[9px] font-mono text-slate-800 break-all line-clamp-2" title={String(issue.metadata_value || "—")}>
-                            {issue.metadata_value || "—"}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    {issue.reason && (
-                      <div className="text-[9px] text-slate-500 italic line-clamp-2 mt-1" title={issue.reason}>
-                        {issue.reason}
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-red-100/60">
-                      <span className="text-[8px] uppercase tracking-wider font-bold text-red-600 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
-                        <Eye className="w-2.5 h-2.5" />
-                        Open marked PDF
-                      </span>
-                      {pageLabel && (
-                        <span className="text-[8px] font-bold text-slate-400 uppercase whitespace-nowrap">
-                          Page {pageLabel}
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* The Mismatch Issues Hub previously rendered here has moved to the
+          Document Analysis tab (its "Mismatched" filter). */}
 
       {/* MAIN ANALYTICS ROW */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
@@ -1833,7 +1668,7 @@ function ParcelOverview({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="relative bg-white border border-blue-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 shadow-sm shadow-blue-100 min-h-[280px] sm:min-h-[320px] flex flex-col items-center justify-center overflow-hidden"
+              className="relative bg-white border border-blue-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 shadow-sm shadow-blue-100 overflow-hidden"
             >
               {/* Animated background flourish */}
               <div className="pointer-events-none absolute inset-0 opacity-60">
@@ -1845,7 +1680,7 @@ function ParcelOverview({
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative text-center space-y-3 max-w-md mx-auto"
+                  className="relative text-center space-y-3 max-w-md mx-auto py-8"
                 >
                   <div className="relative w-16 h-16 mx-auto">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 blur-2xl opacity-40 animate-pulse-glow" />
@@ -1875,68 +1710,65 @@ function ParcelOverview({
                   </div>
                 </motion.div>
               ) : (
-                <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 w-full animate-in fade-in duration-700">
-                  {/* Left: Score Gauge */}
-                  <div className="flex flex-col items-center justify-center">
-                    <div className="relative w-48 h-48">
-                      {/* Semi-circle gauge background */}
-                      <svg viewBox="0 0 200 120" className="w-full h-full">
-                        <path d="M 20 100 A 80 80 0 0 1 180 100" stroke="#E2E8F0" strokeWidth="20" fill="none" strokeLinecap="round" />
-                        <path 
-                          d="M 20 100 A 80 80 0 0 1 180 100" 
-                          stroke="currentColor" 
-                          strokeWidth="20" 
-                          fill="none" 
-                          strokeLinecap="round" 
-                          className={cn("transition-all duration-1000", trend.color.replace('text', 'stroke'))}
-                          strokeDasharray="251.2"
-                          strokeDashoffset={251.2 - (251.2 * riskScore / 100)}
-                        />
-                      </svg>
-                      <div className="absolute inset-0 flex flex-col items-center justify-center pt-8">
-                        <span className={cn("text-5xl font-black transition-colors duration-500", trend.color)}>{riskScore}</span>
-                        <span className="text-xs text-slate-400 mt-1 font-bold">/100</span>
-                      </div>
+                <div className="relative w-full space-y-4 animate-in fade-in duration-700">
+                  {/* Header row: title + REQ-ID */}
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Activity className="w-5 h-5 text-blue-600" />
+                      <h3 className="text-base sm:text-lg font-black text-slate-900">Title Health Score</h3>
                     </div>
-                    <Badge className={cn("mt-4 font-bold px-4 py-1 border transition-colors", trend.bg, trend.color, trend.border)}>
-                      <ShieldCheck className="w-3 h-3 mr-1" /> {riskStatus}
-                    </Badge>
+                    <p className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-tight truncate max-w-full">
+                      REQ-ID: {stats?.last_analysis_request_id || 'ANALYSIS_PENDING'}
+                    </p>
                   </div>
-                  
-                  {/* Right: Score Details */}
-                  <div className="space-y-6">
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Activity className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-lg font-black text-slate-900">Title Health Score</h3>
+
+                  {/* KPI Grid — compact Score tile alongside the metric tiles */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                    {/* Score KPI (hero tile) */}
+                    <div className={cn("rounded-xl p-3 border flex flex-col justify-between", trend.bg, trend.border)}>
+                      <div className="flex items-baseline justify-between gap-1">
+                        <span className={cn("text-2xl font-black tabular-nums leading-none transition-colors duration-500", trend.color)}>{riskScore}</span>
+                        <span className="text-[9px] font-bold text-slate-400 leading-none">/100</span>
                       </div>
-                      <p className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-tight">
-                        REQ-ID: {stats?.last_analysis_request_id || 'ANALYSIS_PENDING'}
-                      </p>
-                    </div>
-                    
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
-                        <div className="text-xl font-black text-emerald-600">
-                          {validationResults?.length || 0}/{stats?.document_count || 0}
-                        </div>
-                        <div className="text-[9px] text-emerald-600 font-bold uppercase tracking-wide">Docs Matched</div>
+                      <div className="mt-2 h-1.5 w-full rounded-full bg-white/70 overflow-hidden">
+                        <div
+                          className={cn(
+                            "h-full rounded-full transition-all duration-1000",
+                            riskScore >= 80 ? "bg-emerald-500" : riskScore >= 60 ? "bg-yellow-500" : riskScore >= 40 ? "bg-orange-500" : "bg-red-500",
+                          )}
+                          style={{ width: `${Math.min(100, Math.max(0, riskScore))}%` }}
+                        />
                       </div>
-                      <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
-                        <div className="text-xl font-black text-blue-600">
-                          {stats?.avg_trust || 0}%
-                        </div>
-                        <div className="text-[9px] text-blue-600 font-bold uppercase tracking-wide">Avg Trust</div>
-                      </div>
-                      <div className="bg-slate-50 rounded-xl p-3 text-center border border-slate-100">
-                        <div className="text-xl font-black text-slate-500">
-                          {stats?.scrutiny_doc_count || 0}
-                        </div>
-                        <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wide">Scrutiny Docs</div>
+                      <div className="mt-2 inline-flex items-center gap-1">
+                        <ShieldCheck className={cn("w-3 h-3", trend.color)} />
+                        <span className={cn("text-[9px] font-bold uppercase tracking-wide leading-none", trend.color)}>{riskStatus}</span>
                       </div>
                     </div>
-                    
+                    {/* Docs Matched */}
+                    <div className="bg-emerald-50 rounded-xl p-3 flex flex-col justify-center border border-emerald-100">
+                      <div className="text-xl font-black text-emerald-600 leading-none tabular-nums">
+                        {validationResults?.length || 0}/{stats?.document_count || 0}
+                      </div>
+                      <div className="text-[9px] text-emerald-600 font-bold uppercase tracking-wide mt-1.5">Docs Matched</div>
+                    </div>
+                    {/* Avg Trust */}
+                    <div className="bg-blue-50 rounded-xl p-3 flex flex-col justify-center border border-blue-100">
+                      <div className="text-xl font-black text-blue-600 leading-none tabular-nums">
+                        {stats?.avg_trust || 0}%
+                      </div>
+                      <div className="text-[9px] text-blue-600 font-bold uppercase tracking-wide mt-1.5">Avg Trust</div>
+                    </div>
+                    {/* Scrutiny */}
+                    <div className="bg-slate-50 rounded-xl p-3 flex flex-col justify-center border border-slate-100">
+                      <div className="text-xl font-black text-slate-500 leading-none tabular-nums">
+                        {stats?.scrutiny_doc_count || 0}
+                      </div>
+                      <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wide mt-1.5">Scrutiny Docs</div>
+                    </div>
+                  </div>
+
+                  {/* Detail stack */}
+                  <div className="space-y-3">
                     {/* AI Risk Assessment */}
                     <div className="bg-slate-900 rounded-xl p-4 text-white shadow-lg relative overflow-hidden group">
                       <div className="absolute top-0 right-0 w-20 h-20 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-colors" />
@@ -2070,62 +1902,8 @@ function ParcelOverview({
         </div>
       </div>
 
-      {/* Floating draggable PDF popup for the Mismatch Issues Hub.
-          Renders the Visual Debugger's marked PDF (box-annotated for the
-          mismatch) scrolled to the cited page. Same architecture as the
-          Timeline tab and HierarchyTab popups: fixed positioning, header
-          drag handle (dragListener=false + onPointerDown), z-[200] to sit
-          above all other dashboard chrome. */}
-      <AnimatePresence>
-        {hubPreview && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            drag
-            dragControls={hubPopupDragControls}
-            dragListener={false}
-            dragMomentum={false}
-            dragElastic={0}
-            className="fixed top-20 right-8 w-[680px] max-w-[92vw] h-[82vh] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[200]"
-          >
-            <div
-              onPointerDown={(e) => hubPopupDragControls.start(e)}
-              className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white cursor-grab active:cursor-grabbing select-none"
-            >
-              <div className="flex items-center gap-2 min-w-0">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <div className="min-w-0">
-                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] opacity-80 leading-none">Marked PDF</div>
-                  <div className="text-sm font-bold truncate flex items-center gap-2">
-                    {hubPreview.docNo}
-                    {hubPreview.page && (
-                      <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.5 rounded">
-                        Page {hubPreview.page}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => setHubPreview(null)}
-                className="p-1.5 hover:bg-white/20 rounded-lg transition-all text-white shrink-0"
-                title="Close preview"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 bg-slate-900 relative">
-              <PdfAnnotator
-                url={hubPreview.url}
-                docId={hubPreview.docNo}
-                scrollToPage={hubPreview.scrollToPage}
-              />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* The Mismatch Hub's floating marked-PDF popup moved with the hub into
+          the Document Analysis tab. */}
     </div>
   );
 }
@@ -2308,7 +2086,7 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="relative h-[calc(100vh-180px)] bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
+      className="relative h-[calc(100vh-7.5rem)] bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col"
     >
       {/* Top accent strip */}
       <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-10" />
@@ -2387,11 +2165,18 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
         </motion.div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar List - grouped by category */}
-        <div className="w-[300px] shrink-0 border-r border-slate-100 flex flex-col bg-gradient-to-b from-white to-slate-50/50">
+      {/* Resizable split — drag the divider to trade list vs. preview width.
+          The chosen ratio is persisted via autoSaveId. */}
+      <ResizablePanelGroup
+        direction="horizontal"
+        autoSaveId="pdf-vault-split"
+        className="flex-1 overflow-hidden"
+      >
+        {/* Sidebar List - grouped by category (compact) */}
+        <ResizablePanel defaultSize={22} minSize={13} maxSize={45} className="min-w-[160px]">
+          <div className="h-full border-r border-slate-100 flex flex-col bg-gradient-to-b from-white to-slate-50/50">
           <ScrollArea className="flex-1">
-            <div className="p-4 sm:p-5 space-y-6">
+            <div className="p-3 space-y-4">
               {DOC_CATEGORIES.map((cat) => {
                 const items = filtered[cat.key] || [];
                 if (items.length === 0) return null;
@@ -2463,10 +2248,13 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
               )}
             </div>
           </ScrollArea>
-        </div>
+          </div>
+        </ResizablePanel>
+
+        <ResizableHandle withHandle />
 
         {/* PDF Viewer Area */}
-        <div className="flex-1 bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50/30 relative">
+        <ResizablePanel defaultSize={78} minSize={40} className="bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50/30 relative">
           {selectedDoc ? (
             <motion.div
               key={selectedDoc.id}
@@ -2490,14 +2278,22 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 flex items-center justify-center overflow-hidden">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 {selectedDoc.original_filename.toLowerCase().endsWith('.pdf') ? (
-                  <iframe
-                    src={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}#toolbar=1&view=FitH`}
-                    className="w-full h-full bg-white"
-                    title="PDF Preview"
-                  />
+                  // Render via pdf.js (PdfAnnotator), NOT a native <iframe> PDF
+                  // viewer: Chrome's built-in viewer executes a PDF's embedded
+                  // JavaScript, and some government EC scans ship an OpenAction
+                  // `this.print()` that auto-opened the print dialog on select.
+                  // pdf.js rasterizes to canvas and ignores that embedded JS.
+                  <div className="h-full w-full bg-slate-900 relative">
+                    <PdfAnnotator
+                      url={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}`}
+                      docId={String(selectedDoc.document_number || selectedDoc.id)}
+                      parcelId={parcelId}
+                    />
+                  </div>
                 ) : (
+                  <div className="h-full flex items-center justify-center">
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -2520,14 +2316,15 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
                       </Button>
                     </div>
                   </motion.div>
+                  </div>
                 )}
               </div>
             </motion.div>
           ) : (
             <NoDocumentSelectedState />
           )}
-        </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </motion.div>
   );
 }
@@ -2693,7 +2490,8 @@ function DocumentVaultCard({
     },
   }[status];
 
-  // Compose meta line: source · year(s) · pages · size
+  // Compact row: filename + a tiny status dot. Full meta moves to the hover
+  // tooltip so the list stays dense and the preview pane keeps the space.
   const sizeStr = doc.file_size_bytes
     ? doc.file_size_bytes >= 1024 * 1024
       ? `${(doc.file_size_bytes / (1024 * 1024)).toFixed(1)} MB`
@@ -2705,75 +2503,40 @@ function DocumentVaultCard({
     : doc.year || null);
   const source = (doc.source || doc.registry || "").toString().toLowerCase();
   const metaParts = [source, yearLabel, pages ? `${pages}p` : null, sizeStr].filter(Boolean);
-  const fields = validationResult?.match_count
-    ? `${coerceMatchCount(validationResult.match_count, validationResult.comparisons)}/${validationResult.comparisons?.length || 0}`
-    : null;
+  const tooltip = `${doc.original_filename}${metaParts.length ? `\n${metaParts.join(" · ")}` : ""}\n${theme.label}`;
 
   return (
     <motion.button
-      variants={{ hidden: { opacity: 0, y: 6 }, visible: { opacity: 1, y: 0 } }}
-      whileHover={{ y: -2 }}
+      variants={{ hidden: { opacity: 0, y: 4 }, visible: { opacity: 1, y: 0 } }}
+      whileHover={{ x: 1 }}
       whileTap={{ scale: 0.99 }}
       onClick={onSelect}
+      title={tooltip}
       className={cn(
-        "relative w-full text-left p-4 rounded-2xl border transition-all overflow-hidden group ring-2 ring-transparent",
-        theme.bg,
-        theme.border,
-        theme.ring,
-        theme.shadow,
-        isSelected && "ring-indigo-400/60 shadow-lg"
+        "relative w-full text-left flex items-center gap-2.5 px-2.5 py-2 rounded-lg border transition-all group ring-1 ring-transparent",
+        isSelected
+          ? cn(theme.bg, theme.border, "ring-indigo-400/60 shadow-sm")
+          : "bg-white/70 border-slate-200/70 hover:bg-slate-50 hover:border-slate-300"
       )}
     >
-      {/* Status dot, top-right */}
-      <span className="absolute top-3 right-3 inline-flex items-center justify-center">
-        <span className={cn("w-2 h-2 rounded-full animate-pulse-glow", theme.dot)} />
-      </span>
-
       {/* Icon tile */}
       <div className={cn(
-        "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border border-white shadow-sm",
-        theme.iconBg
+        "w-6 h-6 rounded-md flex items-center justify-center shrink-0 border border-white shadow-sm",
+        isSelected ? theme.iconBg : "bg-slate-50"
       )}>
-        <Icon className={cn("w-4 h-4", theme.iconColor)} strokeWidth={2.2} />
+        <Icon className={cn("w-3 h-3", theme.iconColor)} strokeWidth={2.2} />
       </div>
 
-      {/* Title + meta */}
-      <div className="mt-3">
-        <p className="text-sm font-display font-extrabold text-slate-900 truncate" title={doc.original_filename}>
-          {doc.original_filename}
-        </p>
-        {metaParts.length > 0 && (
-          <p className="text-[10px] font-mono text-slate-500 mt-1.5 truncate">
-            {metaParts.map((p, i) => (
-              <span key={i}>
-                {p}
-                {i < metaParts.length - 1 && <span className="mx-1.5 text-slate-300">·</span>}
-              </span>
-            ))}
-          </p>
-        )}
-      </div>
+      {/* Filename */}
+      <span className="flex-1 min-w-0 text-[11px] font-bold text-slate-800 truncate">
+        {doc.original_filename}
+      </span>
 
-      {/* Status badge */}
-      <div className="mt-3 pt-3 border-t border-white/80 flex items-center justify-between gap-2">
-        <span className={cn(
-          "inline-flex items-center gap-1.5 text-[10px] font-bold tabular-nums px-2 py-0.5 rounded-md",
-          theme.labelColor
-        )}>
-          <span className={cn(
-            "inline-flex items-center justify-center w-3.5 h-3.5 rounded-[3px] text-white shadow-sm",
-            theme.labelBg
-          )}>
-            <theme.LabelIcon className="w-2.5 h-2.5" strokeWidth={3} />
-          </span>
-          {theme.label}
-        </span>
-        {fields && (
-          <span className="text-[10px] font-bold text-slate-500 tabular-nums">
-            {fields} fields
-          </span>
-        )}
-      </div>
+      {/* Status dot */}
+      <span
+        className={cn("w-2 h-2 rounded-full shrink-0 animate-pulse-glow", theme.dot)}
+        title={theme.label}
+      />
     </motion.button>
   );
 }
@@ -3408,13 +3171,30 @@ function BatchAuditModal({ isOpen, onClose, parcelId, onUploaded }: { isOpen: bo
 
 function ChecklistModal({ isOpen, onClose, onApprove }: { isOpen: boolean; onClose: () => void; onApprove: (ids: string[]) => void }) {
   const [selectedChecks, setSelectedChecks] = useState<string[]>(AUTOMATED_CHECK_IDS);
+  const [query, setQuery] = useState("");
   // Reset each time the modal opens: AI-automatable checks pre-selected (the
   // ones that actually run), manual ones shown but unticked.
   useEffect(() => {
-    if (isOpen) setSelectedChecks([...AUTOMATED_CHECK_IDS]);
+    if (isOpen) { setSelectedChecks([...AUTOMATED_CHECK_IDS]); setQuery(""); }
   }, [isOpen]);
   const toggleCheck = (id: string) =>
     setSelectedChecks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  // Search filters by category name OR check label. A category whose name
+  // matches keeps all its checks; otherwise only the matching checks show.
+  const q = query.trim().toLowerCase();
+  const visibleByCat = useMemo(() => {
+    const map: Record<string, LandwiseCheck[]> = {};
+    for (const cat of CHECK_CATEGORIES) {
+      const catMatches = !q || cat.toLowerCase().includes(q);
+      const checks = LANDWISE_CHECKS.filter(
+        (c) => c.category === cat && (catMatches || c.label.toLowerCase().includes(q)),
+      );
+      if (checks.length) map[cat] = checks;
+    }
+    return map;
+  }, [q]);
+  const visibleCats = CHECK_CATEGORIES.filter((c) => visibleByCat[c]);
 
   return (
     <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
@@ -3437,7 +3217,28 @@ function ChecklistModal({ isOpen, onClose, onApprove }: { isOpen: boolean; onClo
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex items-center justify-end gap-2 mt-3 mb-2">
+          <div className="relative mt-3 mb-2">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search a category or a check…"
+              className="w-full h-9 pl-9 pr-8 rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-400 transition"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-slate-400 hover:text-slate-600 hover:bg-slate-200/70"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 mb-2">
             <span className="text-[10px] font-bold text-emerald-700 tabular-nums">{selectedChecks.length}/{LANDWISE_CHECKS.length} selected</span>
             <button
               type="button"
@@ -3451,8 +3252,13 @@ function ChecklistModal({ isOpen, onClose, onApprove }: { isOpen: boolean; onClo
           {/* All sections on one scrollable page — every category shown with a
               sticky section header (no tabs). */}
           <div className="max-h-[440px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-100">
-            {CHECK_CATEGORIES.map((cat) => {
-              const catChecks = LANDWISE_CHECKS.filter((c) => c.category === cat);
+            {visibleCats.length === 0 && (
+              <div className="px-4 py-10 text-center text-sm text-slate-400 font-medium">
+                No checks match “{query}”.
+              </div>
+            )}
+            {visibleCats.map((cat) => {
+              const catChecks = visibleByCat[cat];
               const catSel = catChecks.filter((c) => selectedChecks.includes(c.id)).length;
               return (
                 <div key={cat}>
@@ -3473,7 +3279,7 @@ function ChecklistModal({ isOpen, onClose, onApprove }: { isOpen: boolean; onClo
                           <span className={cn("w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors", on ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-300")}>
                             {on && <CheckCircle2 className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
                           </span>
-                          <span className={cn("text-sm font-semibold truncate flex-1 min-w-0", on ? "text-slate-800" : "text-slate-400 line-through")}>{chk.label}</span>
+                          <span className={cn("text-sm font-semibold truncate flex-1 min-w-0 transition-colors", on ? "text-slate-800" : "text-slate-500")}>{chk.label}</span>
                           <span
                             className={cn(
                               "text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0",
@@ -3562,92 +3368,48 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StatCard({ label, value, unit, trend, trendColor, isRisk, alert }: { label: string, value: any, unit?: string, trend: string, trendColor?: string, isRisk?: boolean, alert?: boolean }) {
-  const numericValue = typeof value === "number" ? value : parseFloat(String(value));
-  const animatedNumber = useStatCountUp(Number.isFinite(numericValue) ? numericValue : 0);
-  const displayValue = Number.isFinite(numericValue) ? animatedNumber : value;
+type StatTone = 'risk' | 'brand' | 'slate' | 'emerald';
 
-  // Color theme per card — Risk=amber, Documents=amber, Chain=slate, Encumbrances=emerald
-  // (Brand spec: navy primary + outlined status accents)
+// Status-driven palette for the Risk KPI (bands mirror getTrend()).
+function riskPalette(score: number) {
+  if (score >= 80) return { accent: "bg-emerald-500", ring: "from-emerald-500 to-emerald-600", meter: "bg-emerald-500", number: "text-emerald-600", chip: "bg-emerald-50 text-emerald-700 border-emerald-200", heroBg: "bg-emerald-50/60", heroBorder: "border-emerald-200/70", shadow: "hover:shadow-emerald-100" };
+  if (score >= 60) return { accent: "bg-amber-400", ring: "from-amber-500 to-amber-600", meter: "bg-amber-500", number: "text-amber-600", chip: "bg-amber-50 text-amber-700 border-amber-200", heroBg: "bg-amber-50/60", heroBorder: "border-amber-200/70", shadow: "hover:shadow-amber-100" };
+  if (score >= 40) return { accent: "bg-orange-400", ring: "from-orange-500 to-orange-600", meter: "bg-orange-500", number: "text-orange-600", chip: "bg-orange-50 text-orange-700 border-orange-200", heroBg: "bg-orange-50/60", heroBorder: "border-orange-200/70", shadow: "hover:shadow-orange-100" };
+  return { accent: "bg-rose-500", ring: "from-rose-500 to-rose-600", meter: "bg-rose-500", number: "text-rose-600", chip: "bg-rose-50 text-rose-700 border-rose-200", heroBg: "bg-rose-50/60", heroBorder: "border-rose-200/70", shadow: "hover:shadow-rose-100" };
+}
+
+function StatCard({ label, value, unit, trend, trendColor, isRisk, alert, tone, hero, meter, chip, sublabel }: { label: string, value: any, unit?: string, trend?: string, trendColor?: string, isRisk?: boolean, alert?: boolean, tone?: StatTone, hero?: boolean, meter?: { value: number, max: number }, chip?: string, sublabel?: string }) {
+  const numericValue = typeof value === "number" ? value : parseFloat(String(value));
+  const isFinite = Number.isFinite(numericValue);
+  // Honour one decimal place for non-integer values (e.g. Risk 59.5) so the
+  // KPI number matches the gauge instead of rounding to 60.
+  const decimals = isFinite && !Number.isInteger(numericValue) ? 1 : 0;
+  const animatedNumber = useStatCountUp(isFinite ? numericValue : 0, 1100, decimals);
+  const displayValue = isFinite ? animatedNumber.toFixed(decimals) : value;
+
+  const resolvedTone: StatTone = tone ?? (isRisk ? 'risk' : label.toLowerCase().includes('chain') ? 'slate' : 'brand');
+
+  // Per-tone visual palette. Risk is status-driven; the rest are brand-fixed.
   const theme = (() => {
-    if (isRisk) {
-      return {
-        topAccent: "bg-[#F59E0B]",
-        ring:      "from-[#F59E0B] to-[#D97706]",
-        soft:      "bg-[#FEF3C7]",
-        dot:       "bg-[#F59E0B]",
-        text:      "text-[#D97706]",
-        border:    "hover:border-[#F59E0B]/40",
-        shadow:    "hover:shadow-amber-100",
-      };
-    }
-    const l = label.toLowerCase();
-    if (l.includes("doc")) {
-      return {
-        topAccent: "bg-[#F59E0B]",
-        ring:      "from-[#F59E0B] to-[#D97706]",
-        soft:      "bg-[#FEF3C7]",
-        dot:       "bg-[#F59E0B]",
-        text:      "text-[#D97706]",
-        border:    "hover:border-[#F59E0B]/40",
-        shadow:    "hover:shadow-amber-100",
-      };
-    }
-    if (l.includes("chain")) {
-      return {
-        topAccent: "bg-[#CBD5E1]",
-        ring:      "from-[#94A3B8] to-[#64748B]",
-        soft:      "bg-[#F1F5F9]",
-        dot:       "bg-[#94A3B8]",
-        text:      "text-[#475569]",
-        border:    "hover:border-[#CBD5E1]",
-        shadow:    "hover:shadow-slate-100",
-      };
-    }
-    if (l.includes("encum")) {
-      return {
-        topAccent: "bg-[#10B981]",
-        ring:      "from-[#10B981] to-[#059669]",
-        soft:      "bg-[#DCFCE7]",
-        dot:       "bg-[#10B981]",
-        text:      "text-[#166534]",
-        border:    "hover:border-[#10B981]/40",
-        shadow:    "hover:shadow-emerald-100",
-      };
-    }
-    if (l.includes("complete")) {
-      return {
-        topAccent: "bg-[#10B981]",
-        ring:      "from-[#10B981] to-[#059669]",
-        soft:      "bg-[#DCFCE7]",
-        dot:       "bg-[#10B981]",
-        text:      "text-[#166534]",
-        border:    "hover:border-[#10B981]/40",
-        shadow:    "hover:shadow-emerald-100",
-      };
-    }
-    // Fallback — navy brand
-    return {
-      topAccent: "bg-[#1A367E]",
-      ring:      "from-[#1A367E] to-[#3B82F6]",
-      soft:      "bg-[#EBF1FF]",
-      dot:       "bg-[#1A367E]",
-      text:      "text-[#1A367E]",
-      border:    "hover:border-[#1A367E]/30",
-      shadow:    "hover:shadow-blue-100",
-    };
+    if (resolvedTone === 'risk') return riskPalette(isFinite ? numericValue : 0);
+    if (resolvedTone === 'slate') return { accent: "bg-slate-300", ring: "from-slate-400 to-slate-500", meter: "bg-slate-400", number: "text-slate-900", chip: "bg-slate-50 text-slate-600 border-slate-200", heroBg: "bg-slate-50/60", heroBorder: "border-slate-200", shadow: "hover:shadow-slate-100" };
+    if (resolvedTone === 'emerald') return { accent: "bg-emerald-500", ring: "from-emerald-500 to-emerald-600", meter: "bg-emerald-500", number: "text-slate-900", chip: "bg-emerald-50 text-emerald-700 border-emerald-200", heroBg: "bg-emerald-50/60", heroBorder: "border-emerald-200", shadow: "hover:shadow-emerald-100" };
+    // brand (navy)
+    return { accent: "bg-[#1A367E]", ring: "from-[#1A367E] to-[#3B82F6]", meter: "bg-[#1A367E]", number: "text-slate-900", chip: "bg-[#EBF1FF] text-[#1A367E] border-[#1A367E]/15", heroBg: "bg-[#EBF1FF]/60", heroBorder: "border-[#1A367E]/20", shadow: "hover:shadow-blue-100" };
   })();
 
-  // Pick an icon based on label
+  // Pick an icon based on label/role.
   const StatIcon = (() => {
-    if (isRisk) return ShieldAlert;
+    if (isRisk || resolvedTone === 'risk') return ShieldAlert;
     const l = label.toLowerCase();
-    if (l.includes("doc"))     return FileText;
-    if (l.includes("chain"))   return Layers;
-    if (l.includes("encum"))   return AlertCircle;
-    if (l.includes("complete"))return CheckCircle2;
+    if (l.includes("doc"))      return FileText;
+    if (l.includes("chain"))    return Layers;
+    if (l.includes("encum"))    return AlertCircle;
+    if (l.includes("complete")) return CheckCircle2;
     return Activity;
   })();
+
+  const meterPct = meter && meter.max > 0 ? Math.min(100, Math.max(0, (meter.value / meter.max) * 100)) : null;
 
   return (
     <motion.div
@@ -3656,74 +3418,103 @@ function StatCard({ label, value, unit, trend, trendColor, isRisk, alert }: { la
       transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       whileHover={{ y: -2 }}
       className={cn(
-        "relative bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm transition-all overflow-hidden group hover:shadow-md",
-        theme.border, theme.shadow
+        "relative border rounded-xl p-3.5 shadow-sm transition-all overflow-hidden group hover:shadow-md",
+        hero ? cn(theme.heroBg, theme.heroBorder) : "bg-white border-slate-200",
+        theme.shadow
       )}
     >
       {/* Top accent ribbon */}
-      <div className={cn(
-        "absolute inset-x-0 top-0 h-[2px]",
-        theme.topAccent
-      )} />
+      <div className={cn("absolute inset-x-0 top-0 h-[2px]", theme.accent)} />
 
-      {/* Row 1: tiny label + icon */}
-      <div className="relative flex items-center justify-between gap-2 mb-1">
-        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em] leading-none truncate">
+      {/* Row 1: label + icon */}
+      <div className="relative flex items-center justify-between gap-2 mb-2">
+        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.16em] leading-none truncate">
           {label}
         </p>
         <div className={cn(
-          "w-5 h-5 rounded-md flex items-center justify-center bg-gradient-to-br text-white shrink-0",
+          "w-6 h-6 rounded-lg flex items-center justify-center bg-gradient-to-br text-white shrink-0 shadow-sm",
           theme.ring
         )}>
-          <StatIcon className="w-3 h-3" />
+          <StatIcon className="w-3.5 h-3.5" />
         </div>
       </div>
 
-      {/* Row 2: big number + unit + trend pill side-by-side */}
-      <div className="relative flex items-baseline justify-between gap-2">
+      {/* Row 2: big number + unit, with optional status chip on the right */}
+      <div className="relative flex items-end justify-between gap-2">
         <div className="flex items-baseline gap-1 min-w-0">
           <h4 className={cn(
-            "text-xl sm:text-2xl font-display font-extrabold tabular-nums tracking-tight leading-none",
-            isRisk ? "text-rose-600" : "text-slate-900"
+            "text-2xl sm:text-[28px] font-display font-extrabold tabular-nums tracking-tight leading-none",
+            theme.number
           )}>
             {displayValue}
           </h4>
-          {unit && <span className="text-[9px] font-bold text-slate-400 leading-none">{unit}</span>}
+          {unit && <span className="text-[10px] font-bold text-slate-400 leading-none">{unit}</span>}
         </div>
-        <span className={cn(
-          "text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1 border shrink-0",
-          (isRisk || alert)
-            ? "bg-rose-50 text-rose-700 border-rose-200"
-            : trendColor && trendColor.includes("emerald")
-              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-              : trendColor && trendColor.includes("amber")
-                ? "bg-amber-50 text-amber-700 border-amber-200"
-                : cn(theme.soft, theme.text, "border-transparent")
-        )}>
-          <span className={cn("w-1 h-1 rounded-full", (isRisk || alert) ? "bg-rose-500" : theme.dot)} />
-          {trend}
-        </span>
+        {chip ? (
+          <span className={cn(
+            "text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1 border shrink-0",
+            theme.chip
+          )}>
+            <span className={cn("w-1 h-1 rounded-full", theme.accent)} />
+            {chip}
+          </span>
+        ) : trend ? (
+          /* Back-compat trend pill (ProjectOverview cards still pass `trend`) */
+          <span className={cn(
+            "text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1 border shrink-0",
+            (isRisk || alert)
+              ? "bg-rose-50 text-rose-700 border-rose-200"
+              : trendColor && trendColor.includes("emerald")
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : trendColor && trendColor.includes("amber")
+                  ? "bg-amber-50 text-amber-700 border-amber-200"
+                  : cn(theme.chip)
+          )}>
+            <span className={cn("w-1 h-1 rounded-full", (isRisk || alert) ? "bg-rose-500" : theme.accent)} />
+            {trend}
+          </span>
+        ) : null}
       </div>
+
+      {/* Row 3: optional progress meter (Risk position, Documents audited share) */}
+      {meterPct !== null && (
+        <div className="relative mt-2.5 h-1.5 w-full rounded-full bg-slate-200/70 overflow-hidden">
+          <motion.div
+            className={cn("h-full rounded-full", theme.meter)}
+            initial={{ width: 0 }}
+            animate={{ width: `${meterPct}%` }}
+            transition={{ duration: 1, ease: [0.16, 1, 0.3, 1] }}
+          />
+        </div>
+      )}
+
+      {/* Row 4: optional context sublabel */}
+      {sublabel && (
+        <p className="relative mt-2 text-[10px] font-semibold text-slate-500 leading-none truncate">
+          {sublabel}
+        </p>
+      )}
     </motion.div>
   );
 }
 
-function useStatCountUp(target: number, duration = 1100) {
+function useStatCountUp(target: number, duration = 1100, decimals = 0) {
   const [val, setVal] = React.useState(0);
   React.useEffect(() => {
     if (!Number.isFinite(target)) return;
+    const factor = Math.pow(10, decimals);
     let raf = 0;
     let start: number | null = null;
     const tick = (ts: number) => {
       if (start === null) start = ts;
       const p = Math.min((ts - start) / duration, 1);
       const eased = 1 - Math.pow(1 - p, 3);
-      setVal(Math.round(eased * target));
+      setVal(Math.round(eased * target * factor) / factor);
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
+  }, [target, duration, decimals]);
   return val;
 }
 
@@ -5596,7 +5387,7 @@ function RisksTab({ requestId, onOpenDocAnalysis }: { requestId?: string; onOpen
   }
 
   return (
-    <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="mb-8">
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">AI Title Health Score</h2>
         <p className="text-slate-500 font-medium mt-1">Automated risk assessment of the property title chain — designed for legal professionals and banks.</p>

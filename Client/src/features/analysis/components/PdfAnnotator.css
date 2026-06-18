@@ -80,15 +80,23 @@
     font-style: italic;
 }
 
-/* Popup Bubble */
+/* Popup Bubble — kept compact and bounded so it always stays inside the
+ * preview pane. The library (TipContainer) clamps the bubble horizontally to
+ * the page width and flips it above/below the highlight; a hard max-width +
+ * capped, scrollable body keeps it from spilling past the box on short panes
+ * or narrow (page-fit) pages. */
 .anno-popup-card {
     background: white;
     color: #1e293b;
-    padding: 12px;
+    padding: 10px;
     border-radius: 12px;
-    width: 220px;
+    width: 200px;
+    max-width: min(240px, 80vw);
+    max-height: 220px;
+    overflow-y: auto;
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
     border: 1px solid #e2e8f0;
+    scrollbar-width: thin;
 }
 
 .anno-popup-header {
@@ -110,6 +118,9 @@
     line-height: 1.5;
     color: #334155;
     font-weight: 500;
+    max-height: 120px;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
 }
 
 /* Scroll Adjustment */

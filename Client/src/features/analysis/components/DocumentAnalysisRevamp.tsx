@@ -30,6 +30,11 @@ import {
     ChevronDown,
     Circle,
     ListChecks,
+    ArrowLeft,
+    ChevronRight,
+    Eye,
+    Columns2,
+    X,
 } from "lucide-react";
 import PdfAnnotator from "./PdfAnnotator";
 import { API_BASE_URL } from "@/lib/api";
@@ -74,7 +79,20 @@ interface Props {
     focusDocNo?: string;
 }
 
-type FilterMode = "all" | "review" | "matched";
+type FilterMode = "all" | "review" | "matched" | "mismatched";
+type ViewMode = "list" | "detail";
+
+// One field-level mismatch, flattened across every validated document. Drives
+// the "Mismatched" filter (the Mismatch Issues Hub relocated from Overview).
+interface MismatchIssue {
+    docNo: string;
+    field: string;
+    status: string;
+    reason: string;
+    page?: string | number;
+    ec_value?: string;
+    metadata_value?: string;
+}
 
 const getPdfUrl = (relPath: string | undefined): string | undefined => {
     if (!relPath) return undefined;
@@ -92,19 +110,22 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
     const [selectedDocNo, setSelectedDocNo] = useState<string | null>(
         results.length > 0 ? results[0].document_number : null,
     );
+    // Master-detail: the doc list and the per-doc detail are two views of the
+    // same tab. Start on the list; a row click opens the detail.
+    const [viewMode, setViewMode] = useState<ViewMode>("list");
     const [searchQuery, setSearchQuery] = useState("");
     const [filterMode, setFilterMode] = useState<FilterMode>("all");
     const [scrollToPage, setScrollToPage] = useState<{ page: number; timestamp: number } | undefined>(undefined);
-    // PDF preview source: the marked DEED or the marked EC.
-    const [pdfView, setPdfView] = useState<"deed" | "ec">("deed");
+    // Full-width Deed-vs-EC comparison view (mismatched docs only).
+    const [compareMode, setCompareMode] = useState(false);
     // Per-document marked-EC state, fetched on demand (the EC scan is slow).
     // docNo -> { status: "loading" | "done" | "error", url?, reason?, page?, ts? }
     // `page` is the EC page the value was boxed on, so the viewer can jump
     // straight to it; `ts` makes the scroll fire once when the mark completes.
     const [ecMark, setEcMark] = useState<Record<string, { status: string; url?: string; reason?: string; page?: number; ts?: number }>>({});
 
-    // Reset to the deed view whenever the selected document changes.
-    useEffect(() => { setPdfView("deed"); }, [selectedDocNo]);
+    // Exit the comparison view whenever the selected document changes.
+    useEffect(() => { setCompareMode(false); }, [selectedDocNo]);
 
     // Parent asked us to focus a specific document (e.g. a failed doc from the
     // Risk Score tab). Match leniently so "3765/2008" lands even if the caller
@@ -116,6 +137,7 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
         if (hit) {
             setSelectedDocNo(hit.document_number);
             setScrollToPage(undefined);
+            setViewMode("detail");
         }
     }, [focusDocNo, results]);
 
@@ -132,6 +154,36 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
             : null;
         return { total, matched, review, avgTrust };
     }, [results]);
+
+    // Flatten every non-MATCHED comparison across all docs — the Mismatch
+    // Issues Hub that used to live on the Overview tab, now surfaced by the
+    // "Mismatched" filter below.
+    const mismatchIssues = useMemo<MismatchIssue[]>(() => {
+        const list: MismatchIssue[] = [];
+        results.forEach(r => {
+            const comps = r.validation_result?.comparisons || [];
+            comps.forEach(c => {
+                const status = String(c?.status || "").toUpperCase();
+                const clean = status.includes("MATCHED") && !status.includes("NOT");
+                if (clean) return;
+                list.push({
+                    docNo: r.document_number,
+                    field: c.field,
+                    status: c.status,
+                    reason: c.reason,
+                    page: c.page_number,
+                    ec_value: c.ec_value,
+                    metadata_value: c.metadata_value,
+                });
+            });
+        });
+        return list;
+    }, [results]);
+
+    const mismatchDocCount = useMemo(
+        () => new Set(mismatchIssues.map(i => i.docNo)).size,
+        [mismatchIssues],
+    );
 
     // Filter the list by mode + search query.
     const filteredResults = useMemo(() => {
@@ -152,6 +204,24 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
     const handleDocClick = useCallback((docNo: string) => {
         setSelectedDocNo(docNo);
         setScrollToPage(undefined);
+        setViewMode("detail");
+    }, []);
+
+    // Opening a specific mismatch jumps straight to that doc's detail with the
+    // marked deed PDF scrolled to the cited page.
+    const handleMismatchClick = useCallback((issue: MismatchIssue) => {
+        setSelectedDocNo(issue.docNo);
+        const m = issue.page !== undefined && issue.page !== null
+            ? String(issue.page).match(/\d+/)
+            : null;
+        setScrollToPage(m ? { page: parseInt(m[0]), timestamp: Date.now() } : undefined);
+        setViewMode("detail");
+    }, []);
+
+    const handleBackToList = useCallback(() => {
+        setViewMode("list");
+        setScrollToPage(undefined);
+        setCompareMode(false);
     }, []);
 
     const handlePageJump = useCallback((page: number) => {
@@ -259,125 +329,225 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                 </div>
             </div>
 
-            {/* 3-COLUMN BODY */}
-            <div className="flex-1 min-h-0 flex">
-                {/* LEFT: DOC LIST */}
-                <aside className="w-[260px] shrink-0 border-r border-slate-200 bg-slate-50/40 flex flex-col">
-                    <div className="px-3 py-2.5 border-b border-slate-200 bg-white">
-                        <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
-                                Documents ({results.length})
-                            </span>
-                            <Badge variant="outline" className="text-[8px] uppercase font-bold border-rose-200 bg-rose-50 text-rose-700 px-1.5 py-0 h-4">
-                                Risk
-                            </Badge>
-                        </div>
-                        <div className="relative">
-                            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                            <input
-                                type="text"
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                placeholder="Search doc no..."
-                                className="w-full h-8 pl-8 pr-2 rounded-lg bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-xs font-medium placeholder:text-slate-400 outline-none transition-all"
-                            />
-                        </div>
-                        <div className="flex items-center gap-1 mt-2 bg-slate-100 p-0.5 rounded-lg">
-                            {([
-                                { id: "all" as FilterMode, label: "All", count: stats.total },
-                                { id: "review" as FilterMode, label: "Review", count: stats.review },
-                                { id: "matched" as FilterMode, label: "Matched", count: stats.matched },
-                            ]).map(opt => (
-                                <button
-                                    key={opt.id}
-                                    onClick={() => setFilterMode(opt.id)}
-                                    className={cn(
-                                        "flex-1 flex items-center justify-center gap-1 h-6 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all",
-                                        filterMode === opt.id
-                                            ? "bg-white text-slate-900 shadow-sm"
-                                            : "text-slate-500 hover:text-slate-700",
-                                    )}
-                                >
-                                    <span>{opt.label}</span>
-                                    <span className={cn(
-                                        "text-[8px] font-bold rounded px-1",
-                                        filterMode === opt.id ? "bg-indigo-100 text-indigo-700" : "bg-slate-200 text-slate-600",
-                                    )}>
-                                        {opt.count}
-                                    </span>
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto custom-scrollbar">
-                        {filteredResults.length === 0 ? (
-                            <div className="px-3 py-6 text-center text-[11px] text-slate-400">
-                                No documents match this filter.
+            {/* BODY: master list ⇄ per-document detail */}
+            <div className="flex-1 min-h-0 flex flex-col">
+                {viewMode === "list" ? (
+                    /* ── LIST VIEW ───────────────────────────────────────── */
+                    <>
+                        {/* Toolbar: search + filter tabs (All / Review / Matched / Mismatched) */}
+                        <div className="shrink-0 px-4 py-3 border-b border-slate-200 bg-white flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="relative w-full sm:max-w-xs">
+                                <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={searchQuery}
+                                    onChange={e => setSearchQuery(e.target.value)}
+                                    placeholder="Search doc no..."
+                                    className="w-full h-8 pl-8 pr-2 rounded-lg bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-xs font-medium placeholder:text-slate-400 outline-none transition-all"
+                                />
                             </div>
-                        ) : (
-                            <ul className="py-1">
-                                {filteredResults.map(r => {
-                                    const isActive = r.document_number === selectedDocNo;
-                                    const fieldCount = r.validation_result?.comparisons?.length || 0;
-                                    const matchCount = coerceMatchCount(r.validation_result?.match_count, r.validation_result?.comparisons);
-                                    const pct = fieldCount > 0 ? Math.round((matchCount / fieldCount) * 100) : 0;
+                            <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg w-full sm:w-auto">
+                                {([
+                                    { id: "all" as FilterMode, label: "All", count: stats.total },
+                                    { id: "review" as FilterMode, label: "Review", count: stats.review },
+                                    { id: "matched" as FilterMode, label: "Matched", count: stats.matched },
+                                    { id: "mismatched" as FilterMode, label: "Mismatched", count: mismatchDocCount },
+                                ]).map(opt => {
+                                    const isActive = filterMode === opt.id;
+                                    const isMismatch = opt.id === "mismatched";
                                     return (
-                                        <li key={r.document_number}>
-                                            <button
-                                                type="button"
-                                                onClick={() => handleDocClick(r.document_number)}
-                                                className={cn(
-                                                    "w-full px-3 py-2 flex items-center justify-between gap-2 text-left transition-all border-l-2",
-                                                    isActive
-                                                        ? "bg-slate-900 text-white border-indigo-500"
-                                                        : "border-transparent text-slate-700 hover:bg-slate-100",
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-2 min-w-0">
-                                                    <span
-                                                        className={cn(
-                                                            "w-1.5 h-1.5 rounded-full shrink-0",
-                                                            r.match ? "bg-emerald-500" : "bg-rose-500",
-                                                        )}
-                                                    />
-                                                    <span className={cn("text-xs font-bold tabular-nums truncate", isActive && "text-white")}>
-                                                        {r.document_number}
-                                                    </span>
-                                                </div>
-                                                <span
-                                                    className={cn(
-                                                        "text-[10px] font-bold tabular-nums shrink-0",
-                                                        isActive ? "text-indigo-200" : r.match ? "text-emerald-600" : "text-amber-600",
-                                                    )}
-                                                >
-                                                    {pct}%
-                                                </span>
-                                            </button>
-                                        </li>
+                                        <button
+                                            key={opt.id}
+                                            onClick={() => setFilterMode(opt.id)}
+                                            className={cn(
+                                                "flex-1 sm:flex-none flex items-center justify-center gap-1.5 h-7 px-3 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all active:scale-[0.97]",
+                                                isActive
+                                                    ? isMismatch
+                                                        ? "bg-rose-600 text-white shadow-sm"
+                                                        : "bg-white text-slate-900 shadow-sm"
+                                                    : "text-slate-500 hover:text-slate-700",
+                                            )}
+                                        >
+                                            <span>{opt.label}</span>
+                                            <span className={cn(
+                                                "text-[9px] font-bold rounded px-1 tabular-nums",
+                                                isActive
+                                                    ? isMismatch ? "bg-white/25 text-white" : "bg-indigo-100 text-indigo-700"
+                                                    : isMismatch ? "bg-rose-100 text-rose-700" : "bg-slate-200 text-slate-600",
+                                            )}>
+                                                {opt.count}
+                                            </span>
+                                        </button>
                                     );
                                 })}
-                            </ul>
-                        )}
-                    </div>
-                </aside>
+                            </div>
+                        </div>
 
-                {/* MIDDLE: DETAILS */}
-                <section className="flex-1 min-w-0 border-r border-slate-200 overflow-y-auto custom-scrollbar bg-white">
-                    {selectedResult ? (
-                        <DetailsPanel
-                            result={selectedResult}
-                            onMapClick={onOpenInMap}
-                            onPageJump={handlePageJump}
-                            parcelId={parcelId}
-                        />
-                    ) : (
-                        <div className="p-8 text-center text-sm text-slate-400">Select a document to view its analysis.</div>
-                    )}
-                </section>
+                        {/* Content: document cards, or relocated mismatch-issue cards */}
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-slate-50/40">
+                            {filterMode === "mismatched" ? (
+                                (() => {
+                                    const q = searchQuery.trim().toLowerCase();
+                                    const visible = mismatchIssues.filter(
+                                        i => !q || i.docNo.toLowerCase().includes(q) || (i.field || "").toLowerCase().includes(q),
+                                    );
+                                    if (visible.length === 0) {
+                                        return (
+                                            <div className="flex flex-col items-center justify-center py-20 text-center text-slate-400">
+                                                <CheckCircle2 className="w-10 h-10 text-emerald-300 mb-3" />
+                                                <p className="text-sm font-bold text-slate-600">No mismatches</p>
+                                                <p className="text-xs mt-1">Every checked field matched between the EC and the deeds.</p>
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <>
+                                            <div className="flex items-center gap-2 mb-3 text-[11px] font-bold uppercase tracking-[0.14em] text-rose-700">
+                                                <AlertCircle className="w-3.5 h-3.5" />
+                                                {visible.length} issue{visible.length !== 1 ? "s" : ""} across {new Set(visible.map(i => i.docNo)).size} document{new Set(visible.map(i => i.docNo)).size !== 1 ? "s" : ""}
+                                                <span className="text-slate-400 font-medium normal-case tracking-normal">— click any card to open the marked PDF at the cited page</span>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                                {visible.map((issue, idx) => (
+                                                    <MismatchCard
+                                                        key={`${issue.docNo}-${issue.field}-${idx}`}
+                                                        issue={issue}
+                                                        onClick={() => handleMismatchClick(issue)}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </>
+                                    );
+                                })()
+                            ) : filteredResults.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-20 text-center text-slate-400">
+                                    <FileText className="w-10 h-10 text-slate-300 mb-3" />
+                                    <p className="text-sm font-bold text-slate-600">No documents match this filter.</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                                    {filteredResults.map(r => (
+                                        <DocCard
+                                            key={r.document_number}
+                                            result={r}
+                                            onClick={() => handleDocClick(r.document_number)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    /* ── DETAIL VIEW ─────────────────────────────────────── */
+                    <>
+                        {/* Back bar */}
+                        <div className="shrink-0 px-4 py-2.5 border-b border-slate-200 bg-white flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={handleBackToList}
+                                className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-600 hover:text-slate-900 text-xs font-bold transition-all active:scale-[0.97]"
+                            >
+                                <ArrowLeft className="w-3.5 h-3.5" />
+                                Back
+                            </button>
+                            {selectedResult && (
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-sm font-bold text-slate-900 tabular-nums truncate">
+                                        {selectedResult.document_number}
+                                    </span>
+                                    <Badge className={cn(
+                                        "text-[9px] font-bold px-1.5 py-0 h-4",
+                                        selectedResult.match ? "bg-emerald-500 text-white" : "bg-amber-500 text-white",
+                                    )}>
+                                        {selectedResult.match ? "MATCHED" : "REVIEW"}
+                                    </Badge>
+                                </div>
+                            )}
+                        </div>
 
-                {/* RIGHT: PDF PREVIEW */}
-                <aside className="w-[40%] min-w-[360px] shrink-0 flex flex-col bg-slate-100">
+                        {compareMode && selectedResult ? (
+                            /* ── FULL-WIDTH DEED vs EC COMPARISON ──────────── */
+                            <div className="flex-1 min-h-0 flex flex-col bg-slate-100">
+                                <div className="shrink-0 px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-xs font-bold text-slate-900 tabular-nums truncate">
+                                            {selectedResult.document_number}
+                                        </span>
+                                        <Badge className="text-[9px] font-bold px-1.5 py-0 h-4 bg-amber-500 text-white">
+                                            REVIEW
+                                        </Badge>
+                                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 ml-1 hidden sm:inline">
+                                            Deed vs EC comparison
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setCompareMode(false)}
+                                        className="inline-flex items-center gap-1 h-6 px-2 rounded-md border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 text-slate-600 hover:text-slate-900 text-[9px] font-bold uppercase tracking-wider transition-all"
+                                        title="Exit comparison and return to the field details"
+                                    >
+                                        <X className="w-3 h-3" />
+                                        Exit Compare
+                                    </button>
+                                </div>
+                                <div className="flex-1 min-h-0 flex">
+                                    {/* DEED */}
+                                    <div className="flex-1 min-w-0 flex flex-col border-r border-slate-300">
+                                        <div className="shrink-0 px-3 py-1.5 bg-white border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                            Deed
+                                        </div>
+                                        <div className="flex-1 min-h-0 bg-slate-900 relative">
+                                            {(() => {
+                                                const deedUrl = getPdfUrl(selectedResult.file_path);
+                                                return deedUrl ? (
+                                                    <PdfAnnotator
+                                                        url={deedUrl}
+                                                        docId={selectedResult.document_number}
+                                                        parcelId={parcelId}
+                                                        scrollToPage={scrollToPage}
+                                                    />
+                                                ) : (
+                                                    <div className="h-full flex items-center justify-center text-xs text-white/50 italic px-6 text-center">
+                                                        No PDF artifact recorded for this document.
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    </div>
+                                    {/* EC */}
+                                    <div className="flex-1 min-w-0 flex flex-col">
+                                        <div className="shrink-0 px-3 py-1.5 bg-white border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+                                            EC
+                                        </div>
+                                        <div className="flex-1 min-h-0 bg-slate-900 relative">
+                                            <EcPdfPane
+                                                result={selectedResult}
+                                                parcelId={parcelId}
+                                                mark={ecMark[selectedResult.document_number]}
+                                                onRetry={() => loadEcMark(selectedResult)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                        <div className="flex-1 min-h-0 flex">
+                            {/* DETAILS */}
+                            <section className="flex-1 min-w-0 border-r border-slate-200 overflow-y-auto custom-scrollbar bg-white">
+                                {selectedResult ? (
+                                    <DetailsPanel
+                                        result={selectedResult}
+                                        onMapClick={onOpenInMap}
+                                        onPageJump={handlePageJump}
+                                        parcelId={parcelId}
+                                    />
+                                ) : (
+                                    <div className="p-8 text-center text-sm text-slate-400">Select a document to view its analysis.</div>
+                                )}
+                            </section>
+
+                            {/* PDF PREVIEW */}
+                            <aside className="w-[42%] min-w-[360px] shrink-0 flex flex-col bg-slate-100">
                     {selectedResult && (() => {
                         const url = getPdfUrl(selectedResult.file_path);
                         if (!url) {
@@ -405,23 +575,15 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                             {selectedResult.match ? "MATCHED" : "REVIEW"}
                                         </Badge>
                                         {!selectedResult.match && (
-                                            <div className="flex items-center rounded-md border border-slate-200 overflow-hidden ml-1 shrink-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPdfView("deed")}
-                                                    className={cn("px-2 h-5 text-[9px] font-bold uppercase tracking-wide transition-colors", pdfView === "deed" ? "bg-primary text-white" : "bg-white text-slate-500 hover:text-primary")}
-                                                >
-                                                    Deed
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { setPdfView("ec"); if (!selectedResult.ec_file_path) loadEcMark(selectedResult); }}
-                                                    className={cn("px-2 h-5 text-[9px] font-bold uppercase tracking-wide transition-colors", pdfView === "ec" ? "bg-primary text-white" : "bg-white text-slate-500 hover:text-primary")}
-                                                    title="Mark this document's mismatched values on the EC"
-                                                >
-                                                    EC
-                                                </button>
-                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => { setCompareMode(true); if (!selectedResult.ec_file_path) loadEcMark(selectedResult); }}
+                                                className="inline-flex items-center gap-1 h-5 px-2 ml-1 shrink-0 rounded-md bg-primary text-white text-[9px] font-bold uppercase tracking-wide hover:bg-primary/90 transition-colors"
+                                                title="Compare the deed and EC side by side"
+                                            >
+                                                <Columns2 className="w-3 h-3" />
+                                                Compare
+                                            </button>
                                         )}
                                     </div>
                                     <button
@@ -434,68 +596,81 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                     </button>
                                 </div>
                                 <div className="flex-1 min-h-0 bg-slate-900 relative">
-                                    {pdfView === "deed" ? (
-                                        <PdfAnnotator
-                                            url={url}
-                                            docId={selectedResult.document_number}
-                                            parcelId={parcelId}
-                                            scrollToPage={scrollToPage}
-                                        />
-                                    ) : (() => {
-                                        // Prefer the EC marked during analysis (no on-demand call);
-                                        // fall back to the on-demand result for older parcels.
-                                        const preMarked = selectedResult.ec_file_path
-                                            ? getPdfUrl(selectedResult.ec_file_path)
-                                            : null;
-                                        if (preMarked) {
-                                            return (
-                                                <PdfAnnotator
-                                                    url={preMarked}
-                                                    docId={`EC_${selectedResult.document_number}`}
-                                                    parcelId={parcelId}
-                                                />
-                                            );
-                                        }
-                                        const m = ecMark[selectedResult.document_number];
-                                        if (!m || m.status === "loading") {
-                                            return (
-                                                <div className="h-full flex flex-col items-center justify-center gap-3 text-white/70 text-center px-6">
-                                                    <Loader2 className="w-6 h-6 animate-spin" />
-                                                    <p className="text-xs font-medium max-w-[260px]">
-                                                        Marking the EC — scanning pages for the mismatched values. This can take a moment.
-                                                    </p>
-                                                </div>
-                                            );
-                                        }
-                                        if (m.status === "done" && m.url) {
-                                            return (
-                                                <PdfAnnotator
-                                                    url={m.url}
-                                                    docId={`EC_${selectedResult.document_number}`}
-                                                    parcelId={parcelId}
-                                                    scrollToPage={m.page ? { page: m.page, timestamp: m.ts || 0 } : undefined}
-                                                />
-                                            );
-                                        }
-                                        return (
-                                            <div className="h-full flex flex-col items-center justify-center gap-2 text-white/60 text-center px-6">
-                                                <p className="text-xs italic max-w-[280px]">{m.reason || "Could not mark the EC."}</p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => loadEcMark(selectedResult)}
-                                                    className="text-[10px] font-bold uppercase tracking-wide text-indigo-300 hover:text-indigo-200"
-                                                >
-                                                    Retry
-                                                </button>
-                                            </div>
-                                        );
-                                    })()}
+                                    <PdfAnnotator
+                                        url={url}
+                                        docId={selectedResult.document_number}
+                                        parcelId={parcelId}
+                                        scrollToPage={scrollToPage}
+                                    />
                                 </div>
                             </>
                         );
                     })()}
-                </aside>
+                            </aside>
+                        </div>
+                        )}
+                    </>
+                )}
             </div>
+        </div>
+    );
+}
+
+/**
+ * Renders the marked EC for a document inside the comparison view. Prefers the
+ * EC marked during analysis (no extra call); otherwise falls back to the
+ * on-demand mark state (loading / done / error+retry) for older parcels.
+ */
+function EcPdfPane({
+    result,
+    parcelId,
+    mark,
+    onRetry,
+}: {
+    result: ResultItem;
+    parcelId: string;
+    mark?: { status: string; url?: string; reason?: string };
+    onRetry: () => void;
+}) {
+    const preMarked = result.ec_file_path ? getPdfUrl(result.ec_file_path) : null;
+    if (preMarked) {
+        return (
+            <PdfAnnotator
+                url={preMarked}
+                docId={`EC_${result.document_number}`}
+                parcelId={parcelId}
+            />
+        );
+    }
+    if (!mark || mark.status === "loading") {
+        return (
+            <div className="h-full flex flex-col items-center justify-center gap-3 text-white/70 text-center px-6">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <p className="text-xs font-medium max-w-[260px]">
+                    Marking the EC — scanning pages for the mismatched values. This can take a moment.
+                </p>
+            </div>
+        );
+    }
+    if (mark.status === "done" && mark.url) {
+        return (
+            <PdfAnnotator
+                url={mark.url}
+                docId={`EC_${result.document_number}`}
+                parcelId={parcelId}
+            />
+        );
+    }
+    return (
+        <div className="h-full flex flex-col items-center justify-center gap-2 text-white/60 text-center px-6">
+            <p className="text-xs italic max-w-[280px]">{mark.reason || "Could not mark the EC."}</p>
+            <button
+                type="button"
+                onClick={onRetry}
+                className="text-[10px] font-bold uppercase tracking-wide text-indigo-300 hover:text-indigo-200"
+            >
+                Retry
+            </button>
         </div>
     );
 }
@@ -758,6 +933,126 @@ function DetailsPanel({
                 })}
             </div>
         </div>
+    );
+}
+
+/**
+ * DocCard — a single document tile in the list view. Click opens the detail.
+ * A left accent bar + status dot reads match health at a glance; the corner
+ * chevron signals it's a drill-in.
+ */
+function DocCard({ result, onClick }: { result: ResultItem; onClick: () => void }) {
+    const fieldCount = result.validation_result?.comparisons?.length || 0;
+    const matchCount = coerceMatchCount(result.validation_result?.match_count, result.validation_result?.comparisons);
+    const pct = fieldCount > 0 ? Math.round((matchCount / fieldCount) * 100) : 0;
+    const matched = result.match;
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+                "group relative text-left rounded-xl border bg-white p-3 pl-4 transition-all duration-200 overflow-hidden",
+                "hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 active:translate-y-0",
+                matched ? "border-slate-200 hover:border-emerald-300" : "border-slate-200 hover:border-amber-300",
+            )}
+        >
+            <span className={cn("absolute inset-y-0 left-0 w-1", matched ? "bg-emerald-500" : "bg-amber-500")} />
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", matched ? "bg-emerald-500" : "bg-rose-500")} />
+                    <span className="text-sm font-bold text-slate-900 tabular-nums truncate">{result.document_number}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2">
+                <Badge className={cn(
+                    "text-[9px] font-bold px-1.5 py-0 h-4",
+                    matched ? "bg-emerald-500 text-white" : "bg-amber-500 text-white",
+                )}>
+                    {matched ? "MATCHED" : "REVIEW"}
+                </Badge>
+                <span className={cn("text-xs font-extrabold tabular-nums", matched ? "text-emerald-600" : "text-amber-600")}>
+                    {pct}%
+                </span>
+            </div>
+            <div className="mt-1.5 text-[10px] font-medium text-slate-400 tabular-nums">
+                {matchCount} / {fieldCount} fields matched
+            </div>
+        </button>
+    );
+}
+
+/**
+ * MismatchCard — one field-level mismatch in the "Mismatched" filter (the
+ * relocated Mismatch Issues Hub). Click jumps to that doc's marked PDF.
+ */
+function MismatchCard({ issue, onClick }: { issue: MismatchIssue; onClick: () => void }) {
+    const pageMatch = issue.page !== undefined && issue.page !== null ? String(issue.page).match(/\d+/) : null;
+    const pageLabel = pageMatch ? pageMatch[0] : null;
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className={cn(
+                "group relative text-left rounded-xl border bg-white p-3 pl-4 transition-all duration-200 overflow-hidden",
+                "hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 active:translate-y-0",
+                "border-slate-200 hover:border-rose-300",
+            )}
+        >
+            {/* Left accent bar — mirrors DocCard */}
+            <span className="absolute inset-y-0 left-0 w-1 bg-rose-500" />
+
+            {/* Header: dot + doc-no + chevron */}
+            <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-rose-500" />
+                    <span className="text-sm font-bold text-slate-900 tabular-nums truncate">{issue.docNo}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+            </div>
+
+            {/* Mismatched field */}
+            <div className="mt-2.5 text-[11px] font-bold text-slate-800 truncate" title={issue.field}>
+                {issue.field}
+            </div>
+
+            {/* EC vs Deed values */}
+            {(issue.ec_value || issue.metadata_value) && (
+                <div className="mt-1.5 space-y-0.5 bg-slate-50/70 rounded-md p-1.5 border border-slate-100">
+                    <div className="grid grid-cols-[40px_1fr] gap-1 items-baseline">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-rose-700 text-right">EC:</span>
+                        <span className="text-[9px] font-mono text-slate-800 break-all line-clamp-2" title={String(issue.ec_value || "—")}>
+                            {issue.ec_value || "—"}
+                        </span>
+                    </div>
+                    <div className="grid grid-cols-[40px_1fr] gap-1 items-baseline">
+                        <span className="text-[8px] font-bold uppercase tracking-wider text-rose-700 text-right">Deed:</span>
+                        <span className="text-[9px] font-mono text-slate-800 break-all line-clamp-2" title={String(issue.metadata_value || "—")}>
+                            {issue.metadata_value || "—"}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {/* Reason */}
+            {issue.reason && (
+                <div className="mt-1.5 text-[9px] text-slate-500 italic line-clamp-2" title={issue.reason}>
+                    {issue.reason}
+                </div>
+            )}
+
+            {/* Footer: status badge + page — mirrors DocCard's badge row */}
+            <div className="mt-3 flex items-center justify-between gap-2">
+                <Badge className="text-[9px] font-bold px-1.5 py-0 h-4 bg-rose-500 text-white uppercase whitespace-nowrap">
+                    {issue.status}
+                </Badge>
+                {pageLabel && (
+                    <span className="text-[10px] font-medium text-slate-400 tabular-nums">
+                        Page {pageLabel}
+                    </span>
+                )}
+            </div>
+        </button>
     );
 }
 

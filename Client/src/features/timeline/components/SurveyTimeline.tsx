@@ -16,8 +16,8 @@ import {
 } from "@/components/ui/select";
 import { ReactFlowHierarchy } from "@/features/hierarchy/components/ReactFlowHierarchy";
 import DocChat from "@/features/analysis/components/DocChat";
-import OverallChat from "@/features/analysis/components/OverallChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
+import { useChatWidget } from "@/context/ChatWidgetContext";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
 import { landwiseApi } from "@/lib/landwise-api";
@@ -127,12 +127,10 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
     const [isPdfPopupOpen, setIsPdfPopupOpen] = useState(false);
     const pdfPopupDragControls = useDragControls();
 
-    // Property-wide ("overall") chatbot launched from near the search bar.
-    const [overallChatOpen, setOverallChatOpen] = useState(false);
-    // Injects "@<doc>" into the overall chat when a node's "Mention" is picked.
-    const [pendingMention, setPendingMention] = useState<{ doc: string; nonce: number } | null>(null);
-    // Small two-option chooser popup anchored at a clicked graph node.
-    const [nodeChooser, setNodeChooser] = useState<{ docNo: string; x: number; y: number } | null>(null);
+    // Property-wide ("overall") chatbot — now a global floating widget mounted
+    // in AppShell. This page publishes its parcel/request context into it and
+    // can open it / push documents into context.
+    const { open: openChat, addActiveDoc, setAnalysisContext } = useChatWidget();
 
     // Close the popup when the user picks a different document, so they
     // don't accidentally read doc A's PDF while the right pane's metadata
@@ -504,15 +502,14 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         });
         setPanelOpen(true);
 
-        // When invoked from a graph node click (position present), show the
-        // small chooser popup anchored at the node. Table-row clicks pass no
-        // position and simply open the panel as before — behaviour unchanged.
+        // Cursor-style: a single click on a graph node loads that document into
+        // the AI chat context and opens the assistant (no intermediate chooser).
+        // Table-row clicks pass no position and simply open the detail panel.
         if (position) {
-            setNodeChooser({ docNo, x: position.x, y: position.y });
-        } else {
-            setNodeChooser(null);
+            addActiveDoc(docNo);
+            openChat();
         }
-    }, [timeline, results, validationCache, masterTimeline, findVaultPdfUrl]);
+    }, [timeline, results, validationCache, masterTimeline, findVaultPdfUrl, addActiveDoc, openChat]);
 
     // All document numbers across the active + master timelines — feeds the
     // overall chatbot's @-mention autocomplete.
@@ -528,6 +525,15 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         collect(masterTimeline);
         return Array.from(set).sort();
     }, [timeline, masterTimeline]);
+
+    // Publish this analysis as the global chat widget's context so the floating
+    // assistant (mounted in AppShell) knows which property/documents to discuss.
+    // Clear it on unmount so other pages fall back to the "select a property"
+    // prompt instead of talking about a parcel the user has navigated away from.
+    useEffect(() => {
+        setAnalysisContext({ requestId, parcelId, docNumbers });
+        return () => setAnalysisContext({ docNumbers: [] });
+    }, [requestId, parcelId, docNumbers, setAnalysisContext]);
 
     const getFullSurveyNumber = (data: any): string | undefined => {
         if (!data) return undefined;
@@ -884,9 +890,9 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                     </span>
                 </button>
 
-                {/* Property-wide AI assistant launcher — opens a floating chat. */}
+                {/* Property-wide AI assistant launcher — opens the global floating chat. */}
                 <button
-                    onClick={() => setOverallChatOpen(true)}
+                    onClick={() => openChat()}
                     className="shrink-0 inline-flex items-center gap-1.5 font-bold text-[11px] sm:text-xs h-9 px-3 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/30 hover:from-violet-700 hover:to-indigo-700 transition-all"
                     title="Ask the property AI assistant"
                 >
@@ -1955,59 +1961,8 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                 )}
             </AnimatePresence>
 
-            {/* Node-click chooser — two options anchored at the clicked node.
-                The detail side-panel still opens on click (handleNodeClick); this
-                popup is purely additive. */}
-            {nodeChooser && (
-                <>
-                    <div className="fixed inset-0 z-[290]" onClick={() => setNodeChooser(null)} />
-                    <div
-                        className="fixed z-[295] bg-white rounded-xl border border-primary/20 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-[210px]"
-                        style={{
-                            left: Math.min(nodeChooser.x, window.innerWidth - 230),
-                            top: Math.min(nodeChooser.y, window.innerHeight - 120),
-                        }}
-                    >
-                        <div className="px-3 py-2 text-[9px] font-extra-bold uppercase tracking-wider text-slate-400 border-b font-mono">
-                            {nodeChooser.docNo}
-                        </div>
-                        <button
-                            onClick={() => {
-                                setOverallChatOpen(true);
-                                setPendingMention({ doc: nodeChooser.docNo, nonce: Date.now() });
-                                setNodeChooser(null);
-                            }}
-                            className="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-violet-50 hover:text-violet-700 flex items-center gap-2 transition-colors"
-                        >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Mention in chatbot
-                        </button>
-                        <button
-                            onClick={() => {
-                                setActiveTab("chat");
-                                setPanelOpen(true);
-                                setNodeChooser(null);
-                            }}
-                            className="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-primary/5 hover:text-primary flex items-center gap-2 border-t transition-colors"
-                        >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            Open document chat
-                        </button>
-                    </div>
-                </>
-            )}
-
-            {/* Property-wide floating AI assistant (launched from the "Ask AI"
-                button near the search bar). */}
-            {overallChatOpen && (
-                <OverallChat
-                    requestId={requestId}
-                    parcelId={parcelId}
-                    docNumbers={docNumbers}
-                    pendingMention={pendingMention}
-                    onClose={() => setOverallChatOpen(false)}
-                />
-            )}
+            {/* The property-wide AI assistant is a global floating widget mounted
+                in AppShell; it reads this page's context via useChatWidget(). */}
         </div>
     );
 }

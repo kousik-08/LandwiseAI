@@ -12,20 +12,19 @@ interface Message {
     content: string;
 }
 
-export interface PendingMention {
-    doc: string;
-    // Bump to re-trigger injection even when the same doc is mentioned twice.
-    nonce: number;
-}
-
 interface OverallChatProps {
     requestId?: string;
     parcelId?: string;
     /** All document numbers in the property — drives @-mention autocomplete. */
     docNumbers: string[];
     onClose?: () => void;
-    /** When set/changed, inserts "@<doc> " into the input (from a node click). */
-    pendingMention?: PendingMention | null;
+    /** Documents clicked into the conversation as silent context (rendered as
+     *  dismissible chips and merged into `mentions` on send). */
+    activeDocs?: string[];
+    onRemoveActiveDoc?: (doc: string) => void;
+    /** False when no analysis is active — disables sending and prompts the user
+     *  to pick a property first. */
+    hasContext?: boolean;
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -35,7 +34,9 @@ const OverallChat: React.FC<OverallChatProps> = ({
     parcelId,
     docNumbers,
     onClose,
-    pendingMention,
+    activeDocs = [],
+    onRemoveActiveDoc,
+    hasContext = true,
 }) => {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
@@ -68,18 +69,6 @@ const OverallChat: React.FC<OverallChatProps> = ({
     useEffect(() => {
         if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }, [messages, isLoading]);
-
-    // Inject "@<doc> " when a node asks to mention a document.
-    useEffect(() => {
-        if (!pendingMention?.doc) return;
-        setInput((prev) => {
-            const sep = prev && !prev.endsWith(" ") ? " " : "";
-            return `${prev}${sep}@${pendingMention.doc} `;
-        });
-        // Focus shortly after so the caret lands at the end.
-        setTimeout(() => inputRef.current?.focus(), 50);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [pendingMention?.nonce]);
 
     // Recompute the active @-token from the input + caret position.
     const refreshMention = (value: string, caret: number) => {
@@ -143,13 +132,18 @@ const OverallChat: React.FC<OverallChatProps> = ({
         setInput("");
         setIsLoading(true);
 
+        // Documents clicked into context behave exactly like typed @-mentions.
+        const mergedMentions = Array.from(
+            new Set([...activeDocs, ...extractMentions(text)]),
+        );
+
         try {
             const formData = new FormData();
             formData.append("message", text);
             if (requestId) formData.append("request_id", requestId);
             if (parcelId) formData.append("parcel_id", parcelId);
             formData.append("history", JSON.stringify(messages.slice(-6)));
-            formData.append("mentions", JSON.stringify(extractMentions(text)));
+            formData.append("mentions", JSON.stringify(mergedMentions));
 
             const response = await fetch(`${API_BASE_URL}/api/v1/chat-overall`, {
                 method: "POST",
@@ -199,13 +193,23 @@ const OverallChat: React.FC<OverallChatProps> = ({
                         <div className="p-4 bg-primary/5 rounded-full">
                             <Bot className="w-9 h-9 text-primary" />
                         </div>
-                        <div className="space-y-1">
-                            <p className="text-sm font-bold text-slate-700">Ask anything about this property</p>
-                            <p className="text-xs text-slate-500 max-w-[260px]">
-                                Type <span className="font-mono font-bold text-primary">@</span> to reference a document, then ask
-                                about ownership flow, mismatches, or the chain of transactions.
-                            </p>
-                        </div>
+                        {hasContext ? (
+                            <div className="space-y-1">
+                                <p className="text-sm font-bold text-slate-700">Ask anything about this property</p>
+                                <p className="text-xs text-slate-500 max-w-[260px]">
+                                    Click a document or type <span className="font-mono font-bold text-primary">@</span> to reference it,
+                                    then ask about ownership flow, mismatches, or the chain of transactions.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-1">
+                                <p className="text-sm font-bold text-slate-700">Ask me anything</p>
+                                <p className="text-xs text-slate-500 max-w-[260px]">
+                                    I can help with Indian property law, encumbrance certificates and how to
+                                    use LandwiseAI. Open a property's analysis to ask about its specific documents.
+                                </p>
+                            </div>
+                        )}
                     </div>
                 )}
 
@@ -273,6 +277,32 @@ const OverallChat: React.FC<OverallChatProps> = ({
                     </div>
                 )}
 
+                {/* Active document context — chips for documents clicked into the
+                    conversation. Invisible in the input, but sent as mentions. */}
+                {activeDocs.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                        <span className="text-[9px] font-extra-bold uppercase tracking-wider text-slate-400">Context</span>
+                        {activeDocs.map((doc) => (
+                            <span
+                                key={doc}
+                                className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-mono font-bold border border-primary/20"
+                            >
+                                {doc}
+                                {onRemoveActiveDoc && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onRemoveActiveDoc(doc)}
+                                        className="rounded-full hover:bg-primary/20 p-0.5 transition-colors"
+                                        title={`Remove ${doc} from context`}
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </span>
+                        ))}
+                    </div>
+                )}
+
                 <form className="flex w-full items-center gap-2" onSubmit={(e) => { e.preventDefault(); handleSendMessage(); }}>
                     <Button type="button" variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-red-500 shrink-0" onClick={clearChat} disabled={messages.length === 0} title="Clear conversation">
                         <Trash2 className="w-4 h-4" />
@@ -283,7 +313,7 @@ const OverallChat: React.FC<OverallChatProps> = ({
                         onChange={(e) => { setInput(e.target.value); refreshMention(e.target.value, e.target.selectionStart ?? e.target.value.length); }}
                         onKeyDown={handleKeyDown}
                         onClick={(e) => refreshMention((e.target as HTMLInputElement).value, (e.target as HTMLInputElement).selectionStart ?? 0)}
-                        placeholder="Ask about the property… type @ for a document"
+                        placeholder={hasContext ? "Ask about the property… type @ for a document" : "Ask me anything…"}
                         className="h-10 text-sm flex-1 bg-white border-primary/10 transition-all focus:ring-1 focus:ring-primary/30"
                         disabled={isLoading}
                     />

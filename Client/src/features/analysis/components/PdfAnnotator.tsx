@@ -9,7 +9,7 @@ import {
     Popup,
     AreaHighlight,
 } from "react-pdf-highlighter";
-import { Trash2, MessageSquare, Loader2, AlertCircle } from "lucide-react";
+import { Trash2, MessageSquare, Loader2, AlertCircle, Maximize2, MoveHorizontal, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import "./PdfAnnotator.css";
@@ -51,6 +51,9 @@ interface PdfAnnotatorProps {
      *  staring at the top of page 1. */
     focusHighlightId?: { id: string; page?: number; timestamp: number };
     externalHighlights?: IHighlight[];
+    /** Initial pdf.js scale. "page-fit" shows the whole page (default),
+     *  "page-width" fills the pane width, or a numeric string like "1.25". */
+    initialScale?: string;
 }
 
 const FLASH_KEY = "__pdf_focused__";
@@ -63,9 +66,24 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
     scrollToPage,
     focusHighlightId,
     externalHighlights = [],
+    initialScale = "page-fit",
 }) => {
     const [highlights, setHighlights] = useState<IHighlight[]>([]);
     const [selectionMode, setSelectionMode] = useState<"text" | "area">("text");
+    // pdf.js scale value passed to PdfHighlighter. Fit modes ("page-fit" /
+    // "page-width") recompute automatically when the pane is resized (the
+    // library runs a ResizeObserver); a numeric value pins an explicit zoom.
+    const [scaleValue, setScaleValue] = useState<string>(initialScale);
+    const numericScale = parseFloat(scaleValue);
+    const isNumericScale = !Number.isNaN(numericScale);
+    const applyZoom = useCallback((delta: number) => {
+        setScaleValue((prev) => {
+            const base = parseFloat(prev);
+            const start = Number.isNaN(base) ? 1 : base;
+            const next = Math.min(3, Math.max(0.3, +(start + delta).toFixed(2)));
+            return String(next);
+        });
+    }, []);
     const [flashedId, setFlashedId] = useState<string | null>(null);
     const highlighterRef = useRef<any>(null);
     const scrollViewerRef = useRef<any>(null);
@@ -468,6 +486,48 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
 
     return (
         <div className={cn("pdf-annotator-wrapper relative", selectionMode === "area" && "draw-mode")}>
+            {/* Zoom / Fit controls — top-left, opposite the Text/Draw toggle */}
+            <div className="absolute top-4 left-4 z-[100] flex items-center gap-0.5 bg-white/90 backdrop-blur shadow-xl border border-slate-200 p-1 rounded-full animate-in slide-in-from-top-4 duration-500">
+                <button
+                    title="Fit whole page"
+                    onClick={() => setScaleValue("page-fit")}
+                    className={cn(
+                        "flex items-center justify-center w-7 h-7 rounded-full transition-all",
+                        scaleValue === "page-fit" ? "bg-primary text-white shadow-md" : "text-slate-500 hover:text-primary hover:bg-slate-100"
+                    )}
+                >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                    title="Fit width"
+                    onClick={() => setScaleValue("page-width")}
+                    className={cn(
+                        "flex items-center justify-center w-7 h-7 rounded-full transition-all",
+                        scaleValue === "page-width" ? "bg-primary text-white shadow-md" : "text-slate-500 hover:text-primary hover:bg-slate-100"
+                    )}
+                >
+                    <MoveHorizontal className="w-3.5 h-3.5" />
+                </button>
+                <span className="w-px h-4 bg-slate-200 mx-0.5" />
+                <button
+                    title="Zoom out"
+                    onClick={() => applyZoom(-0.15)}
+                    className="flex items-center justify-center w-7 h-7 rounded-full text-slate-500 hover:text-primary hover:bg-slate-100 transition-all"
+                >
+                    <Minus className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] font-bold text-slate-600 tabular-nums w-9 text-center select-none">
+                    {isNumericScale ? `${Math.round(numericScale * 100)}%` : "Fit"}
+                </span>
+                <button
+                    title="Zoom in"
+                    onClick={() => applyZoom(0.15)}
+                    className="flex items-center justify-center w-7 h-7 rounded-full text-slate-500 hover:text-primary hover:bg-slate-100 transition-all"
+                >
+                    <Plus className="w-3.5 h-3.5" />
+                </button>
+            </div>
+
             {/* Mode Toggle UI */}
             <div className="absolute top-4 right-4 z-[100] flex bg-white/90 backdrop-blur shadow-xl border border-slate-200 p-1 rounded-full animate-in slide-in-from-top-4 duration-500">
                 <button
@@ -508,6 +568,7 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                 {(pdfDocument) => (
                     <PdfHighlighter
                         pdfDocument={pdfDocument}
+                        pdfScaleValue={scaleValue}
                         enableAreaSelection={(event) => selectionMode === "area" || event.altKey}
                         onScrollChange={() => { }}
                         scrollRef={(ref) => { scrollViewerRef.current = ref; }}

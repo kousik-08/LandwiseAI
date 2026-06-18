@@ -13,6 +13,7 @@ import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
 import NotFound from "./pages/NotFound";
 import { AuthProvider } from "./context/AuthContext";
+import { ChatWidgetProvider } from "./context/ChatWidgetContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import PageTransition from "./components/PageTransition";
 import AppShell from "./components/AppShell";
@@ -100,9 +101,11 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner position="top-right" richColors />
-        <BrowserRouter>
-          <AnimatedRoutes />
-        </BrowserRouter>
+        <ChatWidgetProvider>
+          <BrowserRouter>
+            <AnimatedRoutes />
+          </BrowserRouter>
+        </ChatWidgetProvider>
       </TooltipProvider>
     </AuthProvider>
   </QueryClientProvider>

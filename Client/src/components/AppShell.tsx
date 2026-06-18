@@ -1,10 +1,10 @@
 import React, { createContext, useContext, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { LogOut, Sparkles } from "lucide-react";
+import { LogOut, Scale } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { cn } from "@/lib/utils";
-import OverallChat from "@/features/analysis/components/OverallChat";
+import ChatWidget from "@/components/ChatWidget";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -33,48 +33,12 @@ const HeaderSlotContext = createContext<HeaderSlotContextValue>({
 });
 export const useHeaderSlot = () => useContext(HeaderSlotContext);
 
-/**
- * Ask AI context — lets any section publish the property it's showing so the
- * shell can host ONE global "Ask AI" assistant that follows the user across
- * every part of the app. Same inversion-of-control pattern as the header slot:
- * the chat lives in the shell; pages just feed it context.
- *
- * Usage from a page (publish while mounted, clear on unmount / when no parcel):
- *   const { setAskAiContext } = useAskAi();
- *   useEffect(() => {
- *     setAskAiContext(parcelId ? { requestId, parcelId, docNumbers } : null);
- *     return () => setAskAiContext(null);
- *   }, [requestId, parcelId, docNumbers]);
- *
- * The launcher only renders when a context is published, so sections with no
- * property in scope (login / landing / map) show nothing to chat about.
- */
-export interface AskAiContextData {
-  requestId?: string;
-  parcelId?: string;
-  /** Property document numbers — drives the @-mention autocomplete. */
-  docNumbers: string[];
-}
-interface AskAiContextValue {
-  setAskAiContext: (ctx: AskAiContextData | null) => void;
-}
-const AskAiContext = createContext<AskAiContextValue>({
-  setAskAiContext: () => {},
-});
-export const useAskAi = () => useContext(AskAiContext);
-
 const AppShell: React.FC<AppShellProps> = ({ children, fullBleed = false }) => {
   const { user, logout } = useAuth();
   const [headerSlot, setHeaderSlot] = useState<React.ReactNode>(null);
   const ctxValue = useMemo(() => ({ setHeaderSlot }), []);
 
-  // Global Ask AI — context published by the active section, chat hosted here.
-  const [askAiCtx, setAskAiCtx] = useState<AskAiContextData | null>(null);
-  const [askAiOpen, setAskAiOpen] = useState(false);
-  const askAiCtxValue = useMemo(() => ({ setAskAiContext: setAskAiCtx }), []);
-
   return (
-    <AskAiContext.Provider value={askAiCtxValue}>
     <HeaderSlotContext.Provider value={ctxValue}>
       <div className={cn("min-h-screen flex flex-col bg-background", fullBleed && "h-screen overflow-hidden")}>
         <motion.header
@@ -87,15 +51,22 @@ const AppShell: React.FC<AppShellProps> = ({ children, fullBleed = false }) => {
           )}
         >
           <div className="px-4 sm:px-6 py-2.5 flex items-center gap-4">
-            {/* Brand */}
-            <Link to="/" className="flex items-center gap-2 group shrink-0">
-              <img
-                src="/data-flow.png"
-                alt="LandwiseAI"
-                className="h-7 w-7 transition-transform group-hover:rotate-6"
-              />
-              <span className="hidden sm:block text-base font-display font-extrabold tracking-tight text-foreground">
-                Land<span className="text-gradient-primary">wiseAI</span>
+            {/* Brand — scales-of-justice mark + stacked LandwiseAI / Legal
+                Intelligence wordmark. */}
+            <Link to="/" className="flex items-center gap-2.5 group shrink-0">
+              <span className="relative shrink-0">
+                <span className="absolute inset-0 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 blur opacity-40 -z-10 transition-opacity group-hover:opacity-60" />
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-600 shadow-sm shadow-indigo-500/30 ring-1 ring-white/30 transition-transform group-hover:-rotate-6">
+                  <Scale className="h-4 w-4 text-white" strokeWidth={2.5} />
+                </span>
+              </span>
+              <span className="hidden sm:flex flex-col leading-none min-w-0">
+                <span className="text-base font-display font-extrabold tracking-tight text-foreground leading-none">
+                  Land<span className="text-gradient-primary">wiseAI</span>
+                </span>
+                <span className="text-[8px] uppercase tracking-[0.18em] font-bold text-slate-500 mt-0.5">
+                  Legal Intelligence
+                </span>
               </span>
             </Link>
 
@@ -126,36 +97,10 @@ const AppShell: React.FC<AppShellProps> = ({ children, fullBleed = false }) => {
           {children}
         </main>
 
-        {/* GLOBAL ASK AI — one assistant for the whole app. Rendered only when
-            the active section publishes a property context, so it follows the
-            user across the dashboard tabs, the hierarchy graph, etc., and stays
-            out of the way on pages with no property loaded. */}
-        {askAiCtx && (
-          <>
-            {!askAiOpen && (
-              <button
-                type="button"
-                onClick={() => setAskAiOpen(true)}
-                className="fixed bottom-4 right-4 z-[290] inline-flex items-center gap-2 h-11 pl-3.5 pr-4 rounded-full text-white text-sm font-bold shadow-xl shadow-indigo-500/30 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
-                title="Ask AI about this property"
-              >
-                <Sparkles className="w-4 h-4" />
-                Ask AI
-              </button>
-            )}
-            {askAiOpen && (
-              <OverallChat
-                requestId={askAiCtx.requestId}
-                parcelId={askAiCtx.parcelId}
-                docNumbers={askAiCtx.docNumbers}
-                onClose={() => setAskAiOpen(false)}
-              />
-            )}
-          </>
-        )}
+        {/* Floating Property AI Assistant — present on every protected page. */}
+        <ChatWidget />
       </div>
     </HeaderSlotContext.Provider>
-    </AskAiContext.Provider>
   );
 };
 

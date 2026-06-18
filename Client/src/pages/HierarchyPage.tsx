@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
 import { landwiseApi } from "@/lib/landwise-api";
 import { useDebouncedNoteSaver } from "@/hooks/useDebouncedNoteSaver";
-import { useAskAi } from "@/components/AppShell";
+import { useChatWidget } from "@/context/ChatWidgetContext";
 import { toast } from "sonner";
 
 export default function HierarchyPage() {
@@ -117,21 +117,21 @@ export default function HierarchyPage() {
         return Array.from(set).sort();
     }, [timeline]);
 
-    // Publish this section's property context to the shell-hosted global Ask AI
-    // so the assistant is available on the hierarchy view too.
-    const { setAskAiContext } = useAskAi();
+    // Publish this section's property context to the shell-hosted floating
+    // chat widget so the assistant is available on the hierarchy view too.
+    const { setAnalysisContext } = useChatWidget();
     useEffect(() => {
         if (requestId) {
-            setAskAiContext({
+            setAnalysisContext({
                 requestId,
                 parcelId: parcelId || undefined,
                 docNumbers: askAiDocNumbers,
             });
         } else {
-            setAskAiContext(null);
+            setAnalysisContext({});
         }
-        return () => setAskAiContext(null);
-    }, [requestId, parcelId, askAiDocNumbers, setAskAiContext]);
+        return () => setAnalysisContext({});
+    }, [requestId, parcelId, askAiDocNumbers, setAnalysisContext]);
 
     const debouncedSaveNote = useDebouncedNoteSaver();
 

@@ -2144,52 +2144,85 @@ async def handle_chat_overall(
 
     raw_text = _read_ec_raw_text(request_id)
 
-    if not (ec_data or raw_text):
-        return {
-            "response": (
-                "⚠️ I couldn't find extracted EC data for this property yet. "
-                "Please run the analysis first, then ask again."
+    has_property = bool(ec_data or raw_text)
+
+    # Shared formatting rules so property-scoped and general answers look alike.
+    _format_rules = """- ALWAYS answer as a SHORT bulleted list. Start every line with "- ".
+   Never write paragraphs. No intro sentence, no closing summary, do not
+   restate the question.
+- KEEP IT SMALL: at most 5 bullets, each ONE short sentence (~15 words or
+   fewer). If the answer is a simple yes/no, give one bullet plus at most two
+   supporting bullets.
+- Use SIMPLE, everyday words anyone can understand — write for a normal person,
+   not a lawyer. Avoid legal jargon; if a legal term is unavoidable (e.g. "lis
+   pendens", "encumbrance"), add a 2-3 word plain meaning in brackets, e.g.
+   "lis pendens (a pending court case)".
+- Use plain GitHub Markdown only — "- " bullets and short **bold** labels.
+   Do NOT use LaTeX/math notation ($$, \\text{}, \\quad, \\big|) and do NOT use
+   Markdown tables. For the Tamil Nadu three-date field, write it inline as
+   "Execution | Presentation | Registration"."""
+
+    if not has_property:
+        # General mode — no property analysis is loaded (e.g. the floating
+        # widget opened on a screen with no active parcel). Answer as a general
+        # Indian property-law assistant instead of refusing.
+        context = ""
+        instructions = f"""You are an expert Indian Property Legal Assistant for LandwiseAI.
+No specific property analysis is loaded right now, so answer the user's question
+as a knowledgeable general assistant on Indian property law, land records,
+encumbrance certificates (EC), registration, and how to use LandwiseAI.
+
+Rules:
+- Give accurate, general guidance. Never invent facts about any specific property.
+- If the question can only be answered from a specific property's documents, say
+  so in one bullet and suggest opening that property's analysis first.
+- Keep Tamil names in the original script.
+{_format_rules}
+
+Chat History:
+{json.dumps(history if history else [], ensure_ascii=False, indent=2)}
+
+User Question: {message}
+"""
+    else:
+        # Resolve @-mentioned documents to their EC entries (focused context).
+        mentions = [m for m in (mentions or []) if str(m).strip()]
+        focused = []
+        seen_focus = set()
+        for m in mentions:
+            for e in _find_ec_entries_for_doc(ec_data, m):
+                key = _normalize_docno(e.get("document_number"))
+                if key and key not in seen_focus:
+                    seen_focus.add(key)
+                    focused.append(e)
+
+        context_parts = []
+        if focused:
+            context_parts.append(
+                "### FOCUSED DOCUMENTS (the user @-mentioned these — prioritize them)\n"
+                + json.dumps(focused, ensure_ascii=False, indent=2)
             )
-        }
+        elif mentions:
+            context_parts.append(
+                "### NOTE\nThe user mentioned " + ", ".join(str(m) for m in mentions)
+                + " but no exact EC entry matched. Check the full chain below before "
+                "concluding they are absent."
+            )
+        if ec_data:
+            context_parts.append(
+                "### ALL EC ENTRIES (the full encumbrance chain for this property)\n"
+                + json.dumps(ec_data, ensure_ascii=False, indent=2)
+            )
+        if raw_text:
+            context_parts.append("### EC RAW EXTRACTED TEXT\n" + raw_text[:150000])
+        context = "\n\n".join(context_parts)
 
-    # Resolve @-mentioned documents to their EC entries (focused context).
-    mentions = [m for m in (mentions or []) if str(m).strip()]
-    focused = []
-    seen_focus = set()
-    for m in mentions:
-        for e in _find_ec_entries_for_doc(ec_data, m):
-            key = _normalize_docno(e.get("document_number"))
-            if key and key not in seen_focus:
-                seen_focus.add(key)
-                focused.append(e)
-
-    context_parts = []
-    if focused:
-        context_parts.append(
-            "### FOCUSED DOCUMENTS (the user @-mentioned these — prioritize them)\n"
-            + json.dumps(focused, ensure_ascii=False, indent=2)
+        mention_line = (
+            f"\nThe user is asking specifically about: "
+            f"{', '.join(str(m) for m in mentions)}.\n" if mentions else ""
         )
-    elif mentions:
-        context_parts.append(
-            "### NOTE\nThe user mentioned " + ", ".join(str(m) for m in mentions)
-            + " but no exact EC entry matched. Check the full chain below before "
-            "concluding they are absent."
-        )
-    if ec_data:
-        context_parts.append(
-            "### ALL EC ENTRIES (the full encumbrance chain for this property)\n"
-            + json.dumps(ec_data, ensure_ascii=False, indent=2)
-        )
-    if raw_text:
-        context_parts.append("### EC RAW EXTRACTED TEXT\n" + raw_text[:150000])
-    context = "\n\n".join(context_parts)
 
-    mention_line = (
-        f"\nThe user is asking specifically about: "
-        f"{', '.join(str(m) for m in mentions)}.\n" if mentions else ""
-    )
-
-    instructions = f"""You are an expert Indian Property Legal Assistant for LandwiseAI.
+        instructions = f"""You are an expert Indian Property Legal Assistant for LandwiseAI.
 You are answering questions about an ENTIRE property using its Encumbrance
 Certificate (EC) data — the full chain of registered transactions below.
 {mention_line}
@@ -2198,24 +2231,11 @@ Use the data to answer the question and to CHECK / COMPARE across the chain
 dates / consideration are consistent between transactions).
 
 Rules:
-1. Base your answer ONLY on the EC data provided — never invent facts.
-2. If something is not present in the data, say so in one short bullet.
-3. Cite transactions by their EC Document No (e.g. "Doc 3765/2008").
-4. Keep Tamil names in the original script.
-5. ALWAYS answer as a SHORT bulleted list. Start every line with "- ".
-   Never write paragraphs. No intro sentence, no closing summary, do not
-   restate the question.
-6. KEEP IT SMALL: at most 5 bullets, each ONE short sentence (~15 words or
-   fewer). If the answer is a simple yes/no, give one bullet plus at most two
-   supporting bullets.
-7. Use SIMPLE, everyday words anyone can understand — write for a normal person,
-   not a lawyer. Avoid legal jargon; if a legal term is unavoidable (e.g. "lis
-   pendens", "encumbrance"), add a 2-3 word plain meaning in brackets, e.g.
-   "lis pendens (a pending court case)".
-8. Use plain GitHub Markdown only — "- " bullets and short **bold** labels.
-   Do NOT use LaTeX/math notation ($$, \\text{{}}, \\quad, \\big|) and do NOT use
-   Markdown tables. For the Tamil Nadu three-date field, write it inline as
-   "Execution | Presentation | Registration".
+- Base your answer ONLY on the EC data provided — never invent facts.
+- If something is not present in the data, say so in one short bullet.
+- Cite transactions by their EC Document No (e.g. "Doc 3765/2008").
+- Keep Tamil names in the original script.
+{_format_rules}
 
 Chat History:
 {json.dumps(history if history else [], ensure_ascii=False, indent=2)}
