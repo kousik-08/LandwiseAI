@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
 import { landwiseApi } from "@/lib/landwise-api";
 import { useDebouncedNoteSaver } from "@/hooks/useDebouncedNoteSaver";
+import { useAskAi } from "@/components/AppShell";
 import { toast } from "sonner";
 
 export default function HierarchyPage() {
@@ -105,6 +106,32 @@ export default function HierarchyPage() {
             cancelled = true;
         };
     }, [requestId, parcelIdFromUrl]);
+
+    // Document numbers in this hierarchy — drives the global Ask AI @-mentions.
+    const askAiDocNumbers = useMemo(() => {
+        const set = new Set<string>();
+        (timeline?.react_flow_data?.nodes || []).forEach((n: any) => {
+            const d = n?.data?.document_number;
+            if (d && d !== "NO TRANSACTION FOUND") set.add(d);
+        });
+        return Array.from(set).sort();
+    }, [timeline]);
+
+    // Publish this section's property context to the shell-hosted global Ask AI
+    // so the assistant is available on the hierarchy view too.
+    const { setAskAiContext } = useAskAi();
+    useEffect(() => {
+        if (requestId) {
+            setAskAiContext({
+                requestId,
+                parcelId: parcelId || undefined,
+                docNumbers: askAiDocNumbers,
+            });
+        } else {
+            setAskAiContext(null);
+        }
+        return () => setAskAiContext(null);
+    }, [requestId, parcelId, askAiDocNumbers, setAskAiContext]);
 
     const debouncedSaveNote = useDebouncedNoteSaver();
 
