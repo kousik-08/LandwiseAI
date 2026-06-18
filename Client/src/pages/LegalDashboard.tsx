@@ -387,10 +387,35 @@ export default function LegalDashboard() {
     enabled: !!selectedParcelId
   });
 
+  // Authoritative single-parcel fetch. The project-scoped `parcels` list only
+  // contains parcels of `selectedProjectId`; when the URL/state lands on a
+  // parcel that belongs to a DIFFERENT project (deep link, or before the
+  // default project reconciles), `parcels.find()` returns undefined and the
+  // Overview hangs on "Loading parcel…". This by-id fetch always resolves the
+  // selected parcel and also gives us its real project_id to reconcile below.
+  const { data: parcelById } = useQuery({
+    queryKey: ['parcel', selectedParcelId],
+    queryFn: () => landwiseApi.getParcel(selectedParcelId!),
+    enabled: !!selectedParcelId,
+  });
+
   const parcels: Parcel[] = (parcelsData?.data || []).filter((p: Parcel | null | undefined): p is Parcel => !!p && !!p.id);
   const risks = risksData?.data || [];
   const selectedProject = useMemo(() => projects.find(p => p.id === selectedProjectId), [projects, selectedProjectId]);
-  const selectedParcel = useMemo(() => parcels.find(p => p.id === selectedParcelId), [parcels, selectedParcelId]);
+  // Prefer the parcel from the project list; fall back to the by-id fetch so the
+  // selected parcel resolves even when it isn't in the current project's list.
+  const selectedParcel = useMemo(
+    () => parcels.find(p => p.id === selectedParcelId) || (parcelById && (parcelById as Parcel).id ? (parcelById as Parcel) : undefined),
+    [parcels, selectedParcelId, parcelById],
+  );
+
+  // Reconcile the project in scope with the selected parcel's real project, so
+  // the project-scoped queries (parcels list, breadcrumb, stats) load correct
+  // data instead of a mismatched project.
+  useEffect(() => {
+    const pid = (parcelById as any)?.project_id;
+    if (pid && pid !== selectedProjectId) setSelectedProjectId(pid);
+  }, [parcelById, selectedProjectId]);
 
   // Auth — needed for the user pill we render into AppShell's header slot.
   const { user } = useAuth();
@@ -695,7 +720,7 @@ export default function LegalDashboard() {
       <div className="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 lg:space-y-6">
         {selectedParcelId ? (
           <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {parcels.find(p => p.id === selectedParcelId)?.status === 'inactive' ? (
+            {selectedParcel?.status === 'inactive' ? (
               <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bg-white rounded-3xl border border-dashed border-slate-200">
                 <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2">
                   <Trash2 className="w-8 h-8 text-red-500" />
@@ -716,7 +741,7 @@ export default function LegalDashboard() {
               <>
                 {activeTab === "overview" && (
                   <ParcelOverview
-                    parcel={parcels.find(p => p.id === selectedParcelId)}
+                    parcel={selectedParcel}
                     stats={parcelStatsData?.stats}
                     workflow={parcelStatsData?.workflow}
                     riskScore={riskScoreData?.data}
@@ -805,7 +830,7 @@ export default function LegalDashboard() {
   // accessed via top-bar pills). Otherwise keep the legacy
   // ResizablePanelGroup with the parcel-list sidebar for the project view.
   // Both branches share `tabContentNode` so the tab JSX isn't duplicated.
-  const selectedParcelForLayout = parcels.find(p => p.id === selectedParcelId);
+  const selectedParcelForLayout = selectedParcel;
 
   return (
     <div className="h-screen w-full bg-[#F8FAFC] text-[#111827] overflow-hidden font-sans selection:bg-[#EBF1FF]">
