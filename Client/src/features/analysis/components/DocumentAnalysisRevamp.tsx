@@ -556,6 +556,10 @@ function ChecklistVerification({ result, parcelId }: { result: ResultItem; parce
         return LANDWISE_CHECKS
             .filter((c) => ids.has(c.id))
             .map((c) => ({ check: c, status: deriveCheckStatus(c, result) }))
+            // Only show checks with a REAL per-document solution. Parcel-level
+            // AI placeholders ("AI · parcel") and offline manual items carry no
+            // verdict for this document, so they are dropped from the tab.
+            .filter(({ status }) => status === "issue" || status === "verified" || status === "na")
             .sort((a, b) => STATUS_META[a.status].rank - STATUS_META[b.status].rank);
     }, [result, parcelId]);
 
@@ -576,7 +580,7 @@ function ChecklistVerification({ result, parcelId }: { result: ResultItem; parce
                 <span className="ml-1 flex items-center gap-1.5 text-[10px] font-bold">
                     {issues > 0 && <span className="text-rose-600">{issues} issue{issues !== 1 ? "s" : ""}</span>}
                     {verified > 0 && <span className="text-emerald-600">{verified} verified</span>}
-                    <span className="text-slate-400">· {items.length} selected</span>
+                    <span className="text-slate-400">· {items.length} checked</span>
                 </span>
                 <ChevronDown className={cn("w-3.5 h-3.5 text-slate-400 ml-auto transition-transform", open && "rotate-180")} />
             </button>
