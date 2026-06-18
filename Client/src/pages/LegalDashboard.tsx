@@ -76,6 +76,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ParcelWorkspaceLayout from "@/components/ParcelWorkspaceLayout";
+import OverallChat from "@/features/analysis/components/OverallChat";
 import { DocumentAnalysisRevamp } from "@/features/analysis/components/DocumentAnalysisRevamp";
 import { 
   DropdownMenu, 
@@ -198,6 +199,8 @@ export default function LegalDashboard() {
   const [selectedParcelId, setSelectedParcelId] = useState<string | null>(urlParcelId);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<string>(urlTab || "overview");
+  // Global "Ask AI" property assistant — available on every workspace tab.
+  const [askAiOpen, setAskAiOpen] = useState(false);
   // Document the Risk Score tab asked us to focus inside Document Analysis.
   const [docAnalysisFocusDoc, setDocAnalysisFocusDoc] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -659,6 +662,16 @@ export default function LegalDashboard() {
     });
   }, [parcels, searchQuery]);
 
+  // Document numbers across the property — drives the global Ask AI
+  // @-mention autocomplete. Prefer live-streamed results, fall back to the
+  // persisted validation results.
+  const globalDocNumbers = useMemo(() => {
+    const src = (analyzeCompleted.length > 0 ? analyzeCompleted : validationResults) || [];
+    const set = new Set<string>();
+    src.forEach((r: any) => { if (r?.document_number) set.add(r.document_number); });
+    return Array.from(set).sort();
+  }, [analyzeCompleted, validationResults]);
+
   // Tab content extracted into a const so it can render inside either the
   // new ParcelWorkspaceLayout (when a parcel is selected) or the legacy
   // ResizablePanelGroup (project view) without being duplicated. Includes
@@ -826,6 +839,34 @@ export default function LegalDashboard() {
           }
         >
           <div className="flex flex-col h-full">{tabContentNode}</div>
+          {/* GLOBAL ASK AI — a floating assistant reachable from every
+              workspace tab. The Timeline tab has its own inline launcher
+              (with hierarchy node-click @-mentions) and shares the same
+              sessionStorage history, so we skip the floating one there to
+              avoid a duplicate panel. */}
+          {activeTab !== "timeline" && (
+            <>
+              {!askAiOpen && (
+                <button
+                  type="button"
+                  onClick={() => setAskAiOpen(true)}
+                  className="fixed bottom-4 right-4 z-[290] inline-flex items-center gap-2 h-11 pl-3.5 pr-4 rounded-full text-white text-sm font-bold shadow-xl shadow-indigo-500/30 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 transition-all animate-in fade-in slide-in-from-bottom-4 duration-300"
+                  title="Ask AI about this property"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  Ask AI
+                </button>
+              )}
+              {askAiOpen && (
+                <OverallChat
+                  requestId={requestId}
+                  parcelId={selectedParcelId || undefined}
+                  docNumbers={globalDocNumbers}
+                  onClose={() => setAskAiOpen(false)}
+                />
+              )}
+            </>
+          )}
         </ParcelWorkspaceLayout>
       ) : (
       <ResizablePanelGroup direction="horizontal" key={isDesktop ? "desktop" : "mobile"} className="h-full">
