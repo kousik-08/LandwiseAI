@@ -77,6 +77,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import ParcelWorkspaceLayout from "@/components/ParcelWorkspaceLayout";
 import { useAskAi } from "@/components/AppShell";
+import { WorkspaceHeader, StatPill } from "@/components/workspace/WorkspaceHeader";
 import { DocumentAnalysisRevamp } from "@/features/analysis/components/DocumentAnalysisRevamp";
 import { 
   DropdownMenu, 
@@ -1586,7 +1587,11 @@ function ParcelOverview({
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
         className="flex items-center justify-between flex-wrap gap-3"
       >
-        <div>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center shadow-sm shadow-indigo-500/30 shrink-0">
+            <LayoutDashboard className="w-4 h-4 text-white" strokeWidth={2.5} />
+          </div>
+          <div className="min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <h2 className="text-lg sm:text-xl lg:text-2xl font-display font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
               Parcel <span className="text-gradient-primary">SN {parcel.survey_number}</span>
@@ -1625,6 +1630,7 @@ function ParcelOverview({
             <span className="text-slate-300">·</span>
             <span>Tamil Nadu</span>
           </p>
+          </div>
         </div>
         <div className="flex gap-2 items-center">
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
@@ -4460,12 +4466,13 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
-       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <div>
-            <h3 className="text-base font-black text-slate-900 tracking-tight">Legal Opinion Workspace</h3>
-            <p className="text-[11px] text-slate-500 font-medium italic">Review AI-suggested sections and accept for final digital signing.</p>
-          </div>
-          <div className="flex gap-2">
+       <WorkspaceHeader
+          icon={ShieldCheck}
+          title="Legal Opinion Workspace"
+          badge="ADVISORY"
+          subtitle="Review AI sections · authorize & sign"
+          right={
+            <div className="flex gap-2">
             <Button
               variant="outline"
               className={cn(
@@ -4492,7 +4499,8 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
               {data.status === 'signed' ? 'VIEW SIGNED OPINION' : 'AUTHORIZE & SIGN'}
             </Button>
           </div>
-       </div>
+          }
+       />
 
        {reportUrl && (
          <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-slate-800 animate-in zoom-in-95 duration-500">
@@ -5309,86 +5317,49 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
-      {/* Header */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="relative rounded-2xl p-3 sm:p-4 text-white overflow-hidden shadow-lg shadow-indigo-900/20"
-      >
-        {/* Layered gradient background */}
-        <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900" />
-        {/* Animated aurora blobs */}
-        <div className="pointer-events-none absolute inset-0 opacity-50">
-          <div className="absolute -top-40 right-0 w-96 h-96 bg-gradient-to-br from-indigo-500/30 to-violet-500/30 rounded-full blur-3xl animate-blob-slow" />
-          <div className="absolute -bottom-40 -left-20 w-96 h-96 bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-full blur-3xl animate-blob" />
-        </div>
-        {/* Subtle grid */}
-        <div
-          className="absolute inset-0 opacity-[0.06]"
-          style={{
-            backgroundImage:
-              "linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)",
-            backgroundSize: "48px 48px",
-          }}
-        />
+      {/* Header — unified Document Analysis design */}
+      <WorkspaceHeader
+        icon={Users}
+        title="Ownership Distribution Audit"
+        badge="EC EXTRACT"
+        subtitle="Unique owner statistics per survey number"
+        right={<StatPill label="Parcels" value={surveyGroups.length} accent="indigo" />}
+      />
 
-        <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <div className="relative shrink-0">
-              <div className="w-8 h-8 bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 rounded-lg flex items-center justify-center shadow shadow-indigo-500/40 ring-1 ring-white/20">
-                <Users className="w-4 h-4 text-white" strokeWidth={2.5} />
-              </div>
-            </div>
-            <div className="min-w-0 flex-1">
-              <h3 className="text-base sm:text-lg font-display font-extrabold tracking-tight leading-tight">
-                Ownership <span className="bg-gradient-to-r from-indigo-300 via-blue-200 to-violet-300 bg-clip-text text-transparent">Distribution Audit</span>
-              </h3>
-              <p className="text-indigo-200/70 text-[10px] font-medium">Unique owner statistics per survey number (EC Extract)</p>
-            </div>
-            <Badge className="bg-indigo-500/20 text-indigo-200 border-indigo-400/40 uppercase font-bold text-[9px] tracking-[0.18em] px-2 h-5 inline-flex items-center gap-1 shrink-0">
-              <span className="w-1 h-1 rounded-full bg-indigo-300 animate-pulse-glow" />
-              {surveyGroups.length} Parcels
-            </Badge>
-          </div>
-
-          <div className="flex flex-col md:flex-row gap-2 items-stretch md:items-center">
-            <div className="relative flex-1 max-w-2xl group">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-300/60 group-focus-within:text-indigo-300 transition-colors z-10" />
-              <input
-                type="text"
-                placeholder="Search survey, owner, or doc no..."
-                className="relative w-full bg-indigo-950/60 backdrop-blur-md border border-indigo-400/20 rounded-lg py-1.5 pl-9 pr-3 text-xs text-white placeholder:text-indigo-300/40 focus:ring-1 focus:ring-indigo-400/40 focus:border-indigo-400/60 outline-none transition-all"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-            <div className="flex items-center bg-indigo-950/70 backdrop-blur-md rounded-lg border border-indigo-400/20 p-0.5 shrink-0 self-start md:self-auto">
-              {(["all", "survey", "owner"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setFilterMode(mode)}
-                  className={cn(
-                    "relative px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors",
-                    filterMode === mode
-                      ? "text-white"
-                      : "text-indigo-300/70 hover:text-indigo-100"
-                  )}
-                >
-                  {filterMode === mode && (
-                    <motion.span
-                      layoutId="ownership-filter-active"
-                      transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      className="absolute inset-0 rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 shadow shadow-indigo-500/40"
-                    />
-                  )}
-                  <span className="relative z-10">{mode}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+      {/* Search + filters */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm px-4 py-3 flex flex-col md:flex-row gap-2 items-stretch md:items-center">
+        <div className="relative flex-1 max-w-2xl group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-500 transition-colors z-10" />
+          <input
+            type="text"
+            placeholder="Search survey, owner, or doc no..."
+            className="relative w-full bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 rounded-lg py-2 pl-9 pr-3 text-xs text-slate-800 placeholder:text-slate-400 outline-none transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-      </motion.div>
+        <div className="flex items-center bg-slate-100 rounded-lg p-0.5 shrink-0 self-start md:self-auto">
+          {(["all", "survey", "owner"] as const).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setFilterMode(mode)}
+              className={cn(
+                "relative px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors",
+                filterMode === mode ? "text-white" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              {filterMode === mode && (
+                <motion.span
+                  layoutId="ownership-filter-active"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  className="absolute inset-0 rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 shadow shadow-indigo-500/40"
+                />
+              )}
+              <span className="relative z-10">{mode}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Table */}
       <motion.div
@@ -5622,10 +5593,13 @@ function RisksTab({ requestId, onOpenDocAnalysis }: { requestId?: string; onOpen
 
   return (
     <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="mb-8">
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">AI Title Health Score</h2>
-        <p className="text-slate-500 font-medium mt-1">Automated risk assessment of the property title chain — designed for legal professionals and banks.</p>
-      </div>
+      <WorkspaceHeader
+        icon={ShieldAlert}
+        title="AI Title Health Score"
+        badge="REQ"
+        subtitle="Encumbrance Risk · Title Chain Assessment"
+        className="mb-6"
+      />
       <RiskScoreCard
         requestId={requestId}
         onOpenDocAnalysis={onOpenDocAnalysis}
