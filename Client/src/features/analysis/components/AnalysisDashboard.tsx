@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import { useQuery } from "@tanstack/react-query";
+import { landwiseApi } from "@/lib/landwise-api";
 import {
   FileText,
   ShieldCheck,
@@ -13,17 +15,21 @@ import {
   StickyNote,
   ArrowRight,
   MessageSquare,
+  XCircle,
+  MapPin,
 } from "lucide-react";
-import { Accordion } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   ResizablePanelGroup,
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
-import { ValidationResultItem } from "./AnalysisResultItem";
+import { X, GripHorizontal } from "lucide-react";
+import { createPortal } from "react-dom";
 import PdfAnnotator from "./PdfAnnotator";
-import { cn } from "@/lib/utils";
+import { TrustabilityScore } from "./TrustabilityScore";
+import { cn, coerceMatchCount } from "@/lib/utils";
 import { getFileUrl } from "@/lib/api";
 
 interface Comparison {
@@ -41,6 +47,8 @@ interface ValidationResult {
   reason_for_failure: string;
   match_count: number;
   trustability_score?: number;
+  requires_extra_scrutiny?: boolean;
+  scrutiny_reason?: string;
 }
 
 interface ResultItem {
@@ -79,9 +87,6 @@ export function ValidationResults({
   const [selectedDocument, setSelectedDocument] = useState<string | null>(
     results.length > 0 ? results[0].document_number : null,
   );
-  const [openAccordion, setOpenAccordion] = useState<string | undefined>(
-    results.length > 0 ? results[0].document_number : undefined,
-  );
   // Drives PdfAnnotator's scroll-to-page when a citation chip is clicked.
   // The timestamp ensures clicking the same page twice still re-scrolls.
   const [scrollToPage, setScrollToPage] = useState<{ page: number; timestamp: number } | undefined>(
@@ -95,6 +100,21 @@ export function ValidationResults({
   // PdfAnnotator via onAnnotationChange so we can render the notes list
   // alongside the PDF without overlapping it.
   const [docNotes, setDocNotes] = useState<any[]>([]);
+  // Floating draggable annotations panel — open/close state lives here so
+  // the user can keep it open across doc selections while moving it around.
+  const [notesPopupOpen, setNotesPopupOpen] = useState(false);
+  const notesDragControls = useDragControls();
+
+  // Prefetch all parcel-wide annotations into react-query the moment this
+  // dashboard mounts. PdfAnnotator reads the same query key, so when the
+  // user clicks into a deed the highlights render in lockstep with the PDF
+  // instead of flashing in after a second fetch.
+  useQuery({
+    queryKey: ["annotations", parcelId],
+    queryFn: () => landwiseApi.getAnnotations(parcelId!),
+    enabled: !!parcelId,
+    staleTime: 60_000,
+  });
 
   // Auto-select first document when results stream in
   useEffect(() => {
@@ -135,11 +155,6 @@ export function ValidationResults({
     return Array.from(groups.entries()).sort((a, b) => a[0] - b[0]);
   }, [docNotes]);
 
-  const handleAccordionChange = (value: string | undefined) => {
-    setOpenAccordion(value);
-    if (value) setSelectedDocument(value);
-  };
-
   // Aggregate stats for the hero
   const totalDocs = results.length;
   const matchedDocs = results.filter((r) => r.match).length;
@@ -161,42 +176,29 @@ export function ValidationResults({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      className="relative flex flex-col h-[calc(100vh-160px)] min-h-[560px] w-full rounded-2xl sm:rounded-3xl overflow-hidden bg-white border border-slate-200 shadow-sm"
+      className="relative flex flex-col h-[calc(100vh-110px)] min-h-[520px] w-full rounded-xl overflow-hidden bg-white border border-slate-200 shadow-sm"
     >
       {/* Top gradient accent strip */}
-      <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-10" />
+      <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-10" />
 
-      {/* Hero header */}
-      <div className="relative px-4 sm:px-6 lg:px-8 py-4 sm:py-5 border-b border-slate-100 bg-gradient-to-r from-white via-indigo-50/40 to-white overflow-hidden">
-        {/* Background flourish */}
-        <div className="pointer-events-none absolute inset-0 opacity-50">
-          <div className="absolute -top-24 -right-20 w-64 h-64 rounded-full bg-gradient-to-br from-violet-200/40 to-indigo-200/40 blur-3xl animate-blob-slow" />
-        </div>
-
-        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+      {/* Compact single-row hero — title + inline stats + inline match-rate. */}
+      <div className="relative px-3 sm:px-4 py-2 border-b border-slate-100 bg-white shrink-0">
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Title */}
-          <div className="flex items-center gap-3 min-w-0">
-            <motion.div
-              initial={{ scale: 0.6, rotate: -15, opacity: 0 }}
-              animate={{ scale: 1, rotate: 0, opacity: 1 }}
-              transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-              className="relative shrink-0"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl blur-md opacity-40 -z-10 animate-pulse-glow" />
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 ring-1 ring-white/30">
-                <FileSearch className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
-            </motion.div>
-            <div className="min-w-0">
-              <h2 className="text-lg sm:text-xl lg:text-2xl font-display font-extrabold tracking-tight">
+          <div className="flex items-center gap-2 min-w-0 shrink-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 flex items-center justify-center shadow-sm shadow-indigo-500/30 shrink-0">
+              <FileSearch className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0 leading-tight">
+              <h2 className="text-sm font-display font-extrabold tracking-tight">
                 <span className="text-slate-900">Document </span>
                 <span className="text-gradient-primary">Analysis</span>
               </h2>
-              <p className="text-[10px] sm:text-[11px] text-slate-500 font-bold uppercase tracking-[0.18em] flex items-center gap-1.5 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-glow" />
-                Forensic Field-by-Field Verification
+              <p className="text-[9px] text-slate-500 font-bold uppercase tracking-[0.14em] flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse-glow" />
+                Forensic verification
                 {requestId && (
-                  <span className="hidden md:inline ml-2 font-mono normal-case tracking-tight text-slate-400">
+                  <span className="hidden md:inline ml-1 font-mono normal-case tracking-tight text-slate-400">
                     REQ&middot;{requestId.slice(0, 6)}
                   </span>
                 )}
@@ -204,219 +206,196 @@ export function ValidationResults({
             </div>
           </div>
 
-          {/* Stat pills */}
-          <motion.div
-            initial="hidden"
-            animate="visible"
-            variants={{
-              hidden: {},
-              visible: { transition: { staggerChildren: 0.06, delayChildren: 0.15 } },
-            }}
-            className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5 shrink-0 w-full lg:w-auto"
-          >
-            <StatPill
-              label="Total"
-              value={totalDocs}
-              icon={<FileText className="w-3.5 h-3.5" />}
-              theme="indigo"
-            />
-            <StatPill
-              label="Matched"
-              value={matchedDocs}
-              icon={<CheckCircle2 className="w-3.5 h-3.5" />}
-              theme="emerald"
-            />
-            <StatPill
+          {/* Inline mini-stats */}
+          <div className="flex items-center gap-3 ml-auto shrink-0">
+            <MiniStat label="Total" value={totalDocs} accent="text-indigo-700" />
+            <MiniStat label="Matched" value={matchedDocs} accent="text-emerald-700" />
+            <MiniStat
               label="Review"
               value={reviewDocs}
-              icon={<AlertCircle className="w-3.5 h-3.5" />}
-              theme={reviewDocs > 0 ? "amber" : "slate"}
+              accent={reviewDocs > 0 ? "text-amber-700" : "text-slate-500"}
             />
-            <StatPill
-              label="Avg Trust"
-              value={`${avgTrust}%`}
-              icon={<TrendingUp className="w-3.5 h-3.5" />}
-              theme="violet"
-            />
-          </motion.div>
+            <MiniStat label="Avg Trust" value={`${avgTrust}%`} accent="text-violet-700" />
+            {totalDocs > 0 && (
+              <div className="hidden md:flex items-center gap-1.5 w-32">
+                <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    className={cn(
+                      "h-full rounded-full bg-gradient-to-r",
+                      matchRate >= 90
+                        ? "from-emerald-400 to-emerald-500"
+                        : matchRate >= 70
+                          ? "from-indigo-500 to-blue-500"
+                          : matchRate >= 40
+                            ? "from-amber-400 to-orange-500"
+                            : "from-rose-400 to-red-500",
+                    )}
+                    style={{ width: `${matchRate}%` }}
+                  />
+                </div>
+                <span className="text-[10px] font-display font-extrabold text-slate-900 tabular-nums shrink-0">
+                  {matchRate}%
+                </span>
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Match rate progress */}
-        {totalDocs > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.4 }}
-            className="relative mt-4 flex items-center gap-3"
-          >
-            <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 shrink-0">
-              Match Rate
-            </span>
-            <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-              <motion.div
-                initial={{ width: 0 }}
-                animate={{ width: `${matchRate}%` }}
-                transition={{ delay: 0.5, duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
-                className={cn(
-                  "h-full rounded-full bg-gradient-to-r",
-                  matchRate >= 90
-                    ? "from-emerald-400 to-emerald-500"
-                    : matchRate >= 70
-                      ? "from-indigo-500 to-blue-500"
-                      : matchRate >= 40
-                        ? "from-amber-400 to-orange-500"
-                        : "from-rose-400 to-red-500",
-                )}
-              />
-            </div>
-            <span className="text-xs font-display font-extrabold text-slate-900 tabular-nums shrink-0">
-              {matchRate}%
-            </span>
-          </motion.div>
-        )}
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-hidden relative">
-        <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-          {/* LEFT: Validation Details */}
-          <ResizablePanel defaultSize={45} minSize={30}>
-            <div className="h-full overflow-y-auto custom-scrollbar p-4 sm:p-6 bg-gradient-to-br from-white via-slate-50/30 to-white">
-              <div className="flex items-center justify-between mb-5 gap-3">
-                <h3 className="text-sm sm:text-base font-display font-extrabold text-slate-900 flex items-center gap-2.5">
-                  <span className="inline-block w-1 h-5 rounded-full bg-gradient-to-b from-violet-500 to-indigo-600" />
-                  Validation Details
-                </h3>
-                {totalCriticalFlags > 0 && (
-                  <Badge className="bg-red-50 text-red-700 border-red-200 hover:bg-red-50 text-[10px] uppercase font-bold tracking-[0.16em] px-2 h-5 inline-flex items-center gap-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse-glow" />
-                    {totalCriticalFlags} Critical
-                  </Badge>
-                )}
-              </div>
-
-              {/* Red Flags */}
-              {red_flags.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                  className="mb-5 space-y-2.5 bg-gradient-to-br from-red-50 via-rose-50/50 to-orange-50/40 border border-red-200/60 p-4 rounded-2xl shadow-sm"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <ShieldCheck className="w-4 h-4 text-red-600" />
-                    <span className="text-[10px] font-bold text-red-900 uppercase tracking-[0.18em]">
-                      Chain of Title Risk Alerts
-                    </span>
-                    <Badge
-                      variant="outline"
-                      className="ml-auto bg-white text-red-700 border-red-200 font-bold text-[10px] tabular-nums"
-                    >
-                      {red_flags.length}
-                    </Badge>
-                  </div>
-                  <div className="space-y-2">
-                    {red_flags.map((flag, idx) => (
-                      <motion.div
-                        key={idx}
-                        initial={{ opacity: 0, x: -6 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.05 + idx * 0.04, duration: 0.3 }}
-                        className="p-3 bg-white border border-red-100 rounded-xl shadow-sm hover:shadow-md hover:border-red-200 transition-all"
-                      >
-                        <div className="flex items-start gap-3">
-                          <AlertCircle
-                            className={cn(
-                              "w-4 h-4 shrink-0 mt-0.5",
-                              flag.severity === "CRITICAL"
-                                ? "text-red-600 animate-pulse-glow"
-                                : "text-orange-500",
-                            )}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.16em] leading-none">
-                                {flag.type.replace(/_/g, " ")}
-                              </span>
-                              <Badge
-                                className={cn(
-                                  "text-[8px] h-4 px-1.5 font-bold uppercase tracking-wider",
-                                  flag.severity === "CRITICAL"
-                                    ? "bg-red-600 hover:bg-red-600"
-                                    : "bg-orange-500 hover:bg-orange-500",
-                                )}
-                              >
-                                {flag.severity}
-                              </Badge>
-                            </div>
-                            <p className="text-[11px] font-bold text-slate-800 leading-snug">
-                              {flag.message}
-                            </p>
-                            {(flag.doc || flag.docs) && (
-                              <button
-                                onClick={() => {
-                                  const docNo = flag.doc || flag.docs![0];
-                                  setSelectedDocument(docNo);
-                                  setOpenAccordion(docNo);
-                                }}
-                                className="mt-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:underline flex items-center gap-1 transition-colors"
-                              >
-                                Go to Deed
-                                <ExternalLink className="w-2.5 h-2.5" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Documents accordion list */}
-              {results.length > 0 ? (
-                <motion.div
-                  initial="hidden"
-                  animate="visible"
-                  variants={{
-                    hidden: {},
-                    visible: { transition: { staggerChildren: 0.05, delayChildren: 0.2 } },
-                  }}
-                >
-                  <Accordion
-                    type="single"
-                    collapsible
-                    className="w-full space-y-2.5"
-                    value={openAccordion}
-                    onValueChange={handleAccordionChange}
+      <div className="flex-1 overflow-hidden relative flex flex-col">
+        {/* DOCUMENT CAROUSEL — horizontal strip of clickable doc chips.
+            Selecting one drives the details + PDF panels below. Replaces the
+            previous vertical accordion sidebar; the deed list now lives at
+            the top so the body can give the PDF a wide 70% read column. */}
+        {results.length > 0 && (
+          <div className="border-b border-slate-100 bg-white shrink-0 px-2 py-1.5">
+            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em] shrink-0 pr-1">
+                Docs ({results.length})
+              </span>
+              {results.map((r) => {
+                const isSelected = r.document_number === selectedDocument;
+                const score = r.validation_result.trustability_score;
+                const fieldsTotal = r.validation_result.comparisons?.length || 0;
+                // Coerced via the shared helper — defends against the
+                // validator's match_count occasionally being a string like
+                // "9 / 9" which would render as "9/9/9" otherwise. See
+                // coerceMatchCount in @/lib/utils for the full rationale.
+                const fieldsMatched = coerceMatchCount(
+                  r.validation_result.match_count,
+                  r.validation_result.comparisons,
+                  fieldsTotal,
+                );
+                return (
+                  <button
+                    key={r.document_number}
+                    onClick={() => setSelectedDocument(r.document_number)}
+                    className={cn(
+                      "shrink-0 inline-flex items-center gap-2 rounded-md border px-2 py-1 text-left transition-all",
+                      isSelected
+                        ? "border-indigo-500 bg-indigo-50/60 ring-1 ring-indigo-300"
+                        : "border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50",
+                    )}
+                    title={`${r.document_number} — ${fieldsMatched}/${fieldsTotal} fields${typeof score === "number" ? ` · ${score}%` : ""}`}
                   >
-                    {results.map((result) => (
-                      <motion.div
-                        key={result.document_number}
-                        variants={{
-                          hidden: { opacity: 0, y: 8 },
-                          visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } },
-                        }}
+                    <span className="text-[11px] font-display font-extrabold text-slate-900 tabular-nums">
+                      {r.document_number}
+                    </span>
+                    <span
+                      className={cn(
+                        "w-1.5 h-1.5 rounded-full shrink-0",
+                        r.match ? "bg-emerald-500" : "bg-amber-500",
+                      )}
+                    />
+                    <span className="text-[9px] text-slate-500 font-bold tabular-nums">
+                      {fieldsMatched}/{fieldsTotal}
+                    </span>
+                    {typeof score === "number" && (
+                      <span
+                        className={cn(
+                          "text-[9px] font-bold tabular-nums",
+                          score >= 90
+                            ? "text-emerald-600"
+                            : score >= 70
+                              ? "text-blue-600"
+                              : score >= 40
+                                ? "text-amber-600"
+                                : "text-red-600",
+                        )}
                       >
-                        <ValidationResultItem
-                          result={result}
-                          onSelect={() => {
-                            setSelectedDocument(result.document_number);
-                          }}
-                          onPageSelect={(page) => {
-                            setSelectedDocument(result.document_number);
-                            // PdfAnnotator listens on scrollToPage changes;
-                            // bumping the timestamp re-triggers even if the
-                            // user clicks the same page chip twice.
-                            setScrollToPage({ page, timestamp: Date.now() });
-                          }}
-                          onOpenInMap={onOpenInMap}
-                        />
-                      </motion.div>
-                    ))}
-                  </Accordion>
-                </motion.div>
-              ) : (
+                        {score}%
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              {totalCriticalFlags > 0 && (
+                <Badge className="ml-auto bg-red-50 text-red-700 border-red-200 hover:bg-red-50 text-[9px] uppercase font-bold tracking-wider px-1.5 h-4 inline-flex items-center gap-1 shrink-0">
+                  <span className="w-1 h-1 rounded-full bg-red-500 animate-pulse-glow" />
+                  {totalCriticalFlags}
+                </Badge>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Red Flags strip — compact horizontal scroller when present. */}
+        {red_flags.length > 0 && (
+          <div className="border-b border-red-100 bg-gradient-to-r from-red-50 via-rose-50/50 to-orange-50/40 px-4 py-2 shrink-0">
+            <div className="flex items-center gap-2 mb-1.5">
+              <ShieldCheck className="w-3.5 h-3.5 text-red-600" />
+              <span className="text-[10px] font-bold text-red-900 uppercase tracking-[0.16em]">
+                Chain of Title Risk Alerts
+              </span>
+              <Badge
+                variant="outline"
+                className="bg-white text-red-700 border-red-200 font-bold text-[10px] tabular-nums h-4 px-1.5"
+              >
+                {red_flags.length}
+              </Badge>
+            </div>
+            <div className="flex gap-2 overflow-x-auto custom-scrollbar pb-1">
+              {red_flags.map((flag, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    const docNo = flag.doc || flag.docs?.[0];
+                    if (docNo) setSelectedDocument(docNo);
+                  }}
+                  className="shrink-0 max-w-[320px] p-2 bg-white border border-red-100 rounded-lg shadow-sm hover:shadow hover:border-red-200 transition-all text-left"
+                  title={flag.doc || flag.docs?.[0] ? "Open in document" : flag.message}
+                >
+                  <div className="flex items-start gap-2">
+                    <AlertCircle
+                      className={cn(
+                        "w-3.5 h-3.5 shrink-0 mt-0.5",
+                        flag.severity === "CRITICAL"
+                          ? "text-red-600 animate-pulse-glow"
+                          : "text-orange-500",
+                      )}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase tracking-[0.14em]">
+                          {flag.type.replace(/_/g, " ")}
+                        </span>
+                        <Badge
+                          className={cn(
+                            "text-[7px] h-3.5 px-1 font-bold uppercase tracking-wider",
+                            flag.severity === "CRITICAL"
+                              ? "bg-red-600 hover:bg-red-600"
+                              : "bg-orange-500 hover:bg-orange-500",
+                          )}
+                        >
+                          {flag.severity}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] font-bold text-slate-800 leading-snug line-clamp-2">
+                        {flag.message}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* SPLIT: 30% details · 70% PDF */}
+        <ResizablePanelGroup direction="horizontal" className="h-full w-full flex-1 min-h-0">
+          {/* LEFT: Selected document — field-by-field details */}
+          <ResizablePanel defaultSize={30} minSize={20} maxSize={50}>
+            <div className="h-full overflow-y-auto custom-scrollbar p-3 sm:p-4 bg-gradient-to-br from-white via-slate-50/30 to-white">
+              {selectedResult ? (
+                <SelectedDocumentDetails
+                  result={selectedResult}
+                  onPageSelect={(page) => {
+                    setScrollToPage({ page, timestamp: Date.now() });
+                  }}
+                  onOpenInMap={onOpenInMap}
+                />
+              ) : results.length === 0 ? (
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -436,14 +415,21 @@ export function ValidationResults({
                     Trigger an audit to populate field-by-field forensic comparisons.
                   </p>
                 </motion.div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-full text-center text-slate-400 gap-2">
+                  <Sparkles className="w-5 h-5" />
+                  <p className="text-[11px] font-bold uppercase tracking-widest">
+                    Pick a document above
+                  </p>
+                </div>
               )}
             </div>
           </ResizablePanel>
 
           <ResizableHandle withHandle className="bg-slate-100" />
 
-          {/* RIGHT: PDF Preview */}
-          <ResizablePanel defaultSize={55} minSize={35}>
+          {/* RIGHT: PDF Preview — now 70% of the body */}
+          <ResizablePanel defaultSize={70} minSize={40}>
             <div className="h-full flex flex-col bg-gradient-to-br from-slate-100 via-slate-50 to-indigo-50/30">
               {pdfUrl && selectedResult ? (
                 <motion.div
@@ -453,24 +439,17 @@ export function ValidationResults({
                   transition={{ duration: 0.35 }}
                   className="h-full flex flex-col"
                 >
-                  <div className="px-4 sm:px-5 py-3 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0 shadow-md shadow-indigo-500/30">
-                        <FileText className="w-4 h-4 text-white" />
+                  <div className="px-3 py-1.5 border-b border-slate-200 bg-white/80 backdrop-blur-md flex items-center justify-between gap-2 flex-wrap shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shrink-0">
+                        <FileText className="w-3 h-3 text-white" />
                       </div>
-                      <div className="min-w-0">
-                        <p className="font-display font-extrabold text-sm sm:text-base text-slate-900 truncate">
-                          {selectedResult.document_number}
-                        </p>
-                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-[0.16em]">
-                          Active Document Preview
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                      <p className="font-display font-extrabold text-xs text-slate-900 truncate">
+                        {selectedResult.document_number}
+                      </p>
                       <Badge
                         className={cn(
-                          "px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] inline-flex items-center gap-1.5 border",
+                          "px-1.5 h-4 text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1 border",
                           selectedResult.match
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50"
                             : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-50",
@@ -478,124 +457,57 @@ export function ValidationResults({
                       >
                         <span
                           className={cn(
-                            "w-1.5 h-1.5 rounded-full animate-pulse-glow",
+                            "w-1 h-1 rounded-full animate-pulse-glow",
                             selectedResult.match ? "bg-emerald-500" : "bg-amber-500",
                           )}
                         />
-                        {selectedResult.match ? "Matched" : "Manual Review"}
+                        {selectedResult.match ? "Matched" : "Review"}
                       </Badge>
-                      {docNotes.length > 0 && (
-                        <Badge className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 border-amber-300">
-                          <StickyNote className="w-3 h-3" />
-                          {docNotes.length} note{docNotes.length === 1 ? "" : "s"}
-                        </Badge>
-                      )}
                     </div>
+                    {/* Notes trigger — toggles the draggable floating panel.
+                        The panel itself is portaled to <body> below so it
+                        floats over EVERYTHING and the user can drag it
+                        anywhere on the screen via its header bar. */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setNotesPopupOpen((v) => !v)}
+                      className={cn(
+                        "h-6 px-1.5 gap-1 text-[9px] font-bold uppercase tracking-wider text-amber-800 hover:text-amber-900 hover:bg-amber-50 shrink-0",
+                        notesPopupOpen && "bg-amber-100 text-amber-900",
+                      )}
+                      title={notesPopupOpen ? "Hide PDF annotations" : "Show PDF annotations"}
+                    >
+                      <StickyNote className="w-3 h-3" />
+                      Notes
+                      <Badge
+                        className={cn(
+                          "h-3.5 px-1 text-[9px] font-bold tabular-nums border-0",
+                          docNotes.length > 0
+                            ? "bg-amber-500 text-white"
+                            : "bg-slate-100 text-slate-500",
+                        )}
+                      >
+                        {docNotes.length}
+                      </Badge>
+                    </Button>
                   </div>
 
-                  {/* Vertical split: PDF (with note-taking) on top, list of
-                      this document's notes on the bottom. The two regions
-                      use a Resizable handle so the user can grow the notes
-                      list when reviewing many highlights. Nothing overlays
-                      the PDF — they sit in distinct stacked regions. */}
-                  <ResizablePanelGroup direction="vertical" className="flex-1">
-                    <ResizablePanel defaultSize={70} minSize={40}>
-                      <div className="h-full p-3 sm:p-4">
-                        <div className="w-full h-full rounded-2xl shadow-2xl bg-white border border-slate-200 overflow-hidden relative">
-                          <PdfAnnotator
-                            url={pdfUrl}
-                            docId={selectedResult.document_number}
-                            parcelId={parcelId}
-                            scrollToPage={scrollToPage}
-                            focusHighlightId={focusHighlightId}
-                            onAnnotationChange={(h) => setDocNotes(h)}
-                          />
-                        </div>
-                      </div>
-                    </ResizablePanel>
-
-                    <ResizableHandle withHandle className="bg-slate-100" />
-
-                    <ResizablePanel defaultSize={30} minSize={15}>
-                      <div className="h-full bg-white border-t border-slate-200 flex flex-col">
-                        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
-                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            PDF Annotations
-                          </h4>
-                          <Badge variant="outline" className="text-[10px] font-bold bg-white">
-                            {docNotes.length}
-                          </Badge>
-                        </div>
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
-                          {docNotes.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 gap-2">
-                              <StickyNote className="w-7 h-7 opacity-40" />
-                              <p className="text-[11px] font-bold text-slate-500">
-                                No notes on this document yet
-                              </p>
-                              <p className="text-[10px] max-w-[280px] leading-snug">
-                                Toggle <span className="font-bold text-slate-600">Text</span> or{" "}
-                                <span className="font-bold text-slate-600">Draw</span> in the
-                                PDF, select a region, and your notes will land here grouped by
-                                page.
-                              </p>
-                            </div>
-                          ) : (
-                            notesByPage.flatMap(([page, items]) =>
-                              items.map((n: any) => {
-                                const ts = Date.now();
-                                return (
-                                  <div
-                                    key={n.id}
-                                    onClick={() => {
-                                      setScrollToPage({ page, timestamp: ts });
-                                      setFocusHighlightId({ id: n.id, page, timestamp: ts });
-                                    }}
-                                    className="rounded-2xl bg-slate-50/70 border border-slate-200 p-4 cursor-pointer hover:bg-amber-50/60 transition-colors space-y-3"
-                                    title="Click to scroll to this highlight"
-                                  >
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setScrollToPage({ page, timestamp: ts });
-                                        setFocusHighlightId({ id: n.id, page, timestamp: ts });
-                                      }}
-                                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-sm hover:shadow active:scale-95 transition-all"
-                                      title={`Jump to page ${page}`}
-                                    >
-                                      <ArrowRight className="w-3 h-3" />
-                                      Page {page}
-                                    </button>
-
-                                    {n.content?.text && (
-                                      <p className="text-xs italic font-semibold text-slate-700">
-                                        "{n.content.text}"
-                                      </p>
-                                    )}
-
-                                    {n.comment?.text ? (
-                                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-white border border-slate-200">
-                                        <MessageSquare className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                                        <p className="text-xs font-medium text-slate-800 leading-snug break-words">
-                                          {n.comment.text}
-                                        </p>
-                                      </div>
-                                    ) : (
-                                      <div className="flex items-start gap-2 px-3 py-2.5 rounded-xl bg-white border border-slate-200">
-                                        <MessageSquare className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
-                                        <p className="text-xs italic text-slate-400">(no note text)</p>
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })
-                            )
-                          )}
-                        </div>
-                      </div>
-                    </ResizablePanel>
-                  </ResizablePanelGroup>
+                  {/* PDF — full height of the right pane, no bottom drawer.
+                      The annotations list now lives in a slide-in Sheet
+                      triggered from the header above. */}
+                  <div className="flex-1 min-h-0 p-1.5">
+                    <div className="w-full h-full rounded-lg shadow-md bg-white border border-slate-200 overflow-hidden relative">
+                      <PdfAnnotator
+                        url={pdfUrl}
+                        docId={selectedResult.document_number}
+                        parcelId={parcelId}
+                        scrollToPage={scrollToPage}
+                        focusHighlightId={focusHighlightId}
+                        onAnnotationChange={(h) => setDocNotes(h)}
+                      />
+                    </div>
+                  </div>
                 </motion.div>
               ) : (
                 <motion.div
@@ -628,7 +540,156 @@ export function ValidationResults({
           </ResizablePanel>
         </ResizablePanelGroup>
       </div>
+
+      {/* DRAGGABLE FLOATING ANNOTATIONS PANEL.
+          Portaled to <body> so it floats over the entire app and can be
+          dragged anywhere on the screen. The header bar (with the grip
+          icon) is the drag handle — useDragControls + dragListener=false
+          stops the scrollable body from absorbing pointer-down events. */}
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {notesPopupOpen && selectedResult && (
+              <motion.div
+                key="annotations-panel"
+                drag
+                dragControls={notesDragControls}
+                dragListener={false}
+                dragMomentum={false}
+                dragElastic={0}
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                className="fixed top-20 right-6 z-[60] w-[480px] max-w-[92vw] rounded-xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/20 overflow-hidden select-none"
+                style={{ touchAction: "none" }}
+              >
+                {/* Drag handle bar — only this header captures pointer-down
+                    for dragging. Body remains scrollable + clickable. */}
+                <div
+                  onPointerDown={(e) => notesDragControls.start(e)}
+                  className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-amber-50/70 to-white cursor-move"
+                  title="Drag to move"
+                >
+                  <GripHorizontal className="w-4 h-4 text-slate-400 shrink-0" />
+                  <StickyNote className="w-4 h-4 text-amber-500 shrink-0" />
+                  <span className="text-sm font-display font-extrabold text-slate-900 shrink-0">
+                    PDF Annotations
+                  </span>
+                  <Badge variant="outline" className="text-[11px] font-bold bg-white h-5 px-2 shrink-0">
+                    {docNotes.length}
+                  </Badge>
+                  <span className="ml-2 text-[11px] text-slate-500 font-medium truncate flex-1">
+                    {selectedResult.document_number}
+                  </span>
+                  <button
+                    onClick={() => setNotesPopupOpen(false)}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                    aria-label="Close annotations"
+                    title="Close"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div
+                  className="max-h-[78vh] overflow-y-auto custom-scrollbar p-4 space-y-3"
+                  onPointerDown={(e) => e.stopPropagation()}
+                >
+                  {docNotes.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center text-center text-slate-400 gap-3 py-14">
+                      <StickyNote className="w-10 h-10 opacity-40" />
+                      <p className="text-sm font-bold text-slate-500">
+                        No notes on this document yet
+                      </p>
+                      <p className="text-xs max-w-[320px] leading-snug">
+                        Toggle <span className="font-bold text-slate-600">Text</span> or{" "}
+                        <span className="font-bold text-slate-600">Draw</span> in the
+                        PDF, select a region, and your notes land here.
+                      </p>
+                    </div>
+                  ) : (
+                    notesByPage.flatMap(([page, items]) =>
+                      items.map((n: any) => {
+                        const ts = Date.now();
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => {
+                              setScrollToPage({ page, timestamp: ts });
+                              setFocusHighlightId({ id: n.id, page, timestamp: ts });
+                            }}
+                            className="rounded-xl bg-slate-50/70 border border-slate-200 p-3 cursor-pointer hover:bg-amber-50/60 transition-colors space-y-2"
+                            title="Click to scroll to this highlight"
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setScrollToPage({ page, timestamp: ts });
+                                setFocusHighlightId({ id: n.id, page, timestamp: ts });
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-sm hover:shadow active:scale-95 transition-all"
+                              title={`Jump to page ${page}`}
+                            >
+                              <ArrowRight className="w-3 h-3" />
+                              Page {page}
+                            </button>
+
+                            {n.content?.text && (
+                              <p className="text-xs italic font-semibold text-slate-700 leading-snug">
+                                "{n.content.text}"
+                              </p>
+                            )}
+
+                            {n.comment?.text ? (
+                              <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200">
+                                <MessageSquare className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                                <p className="text-xs font-medium text-slate-800 leading-snug break-words">
+                                  {n.comment.text}
+                                </p>
+                              </div>
+                            ) : (
+                              <div className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-white border border-slate-200">
+                                <MessageSquare className="w-3.5 h-3.5 text-slate-300 shrink-0 mt-0.5" />
+                                <p className="text-xs italic text-slate-400">(no note text)</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    )
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
+        )}
     </motion.div>
+  );
+}
+
+// ─── Compact hero mini-stat (single label + number, no card chrome) ──────
+function MiniStat({
+  label,
+  value,
+  accent,
+}: {
+  label: string;
+  value: number | string;
+  accent: string;
+}) {
+  return (
+    <div className="flex flex-col leading-tight">
+      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-[0.14em]">
+        {label}
+      </span>
+      <span className={cn("text-xs font-display font-extrabold tabular-nums", accent)}>
+        {value}
+      </span>
+    </div>
   );
 }
 
@@ -712,6 +773,157 @@ function StatPill({
           {value}
         </span>
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Selected Document Details ─────────────────────────────────────────────
+// Field-by-field verification for the doc the user picked in the carousel.
+// Renders the same content the previous AccordionContent did, minus the
+// accordion chrome — the carousel above replaces the per-doc trigger row.
+function SelectedDocumentDetails({
+  result,
+  onPageSelect,
+  onOpenInMap,
+}: {
+  result: ResultItem;
+  onPageSelect: (page: number) => void;
+  onOpenInMap?: (docNo: string) => void;
+}) {
+  if (!result?.validation_result) return null;
+  const vr = result.validation_result;
+
+  return (
+    <motion.div
+      key={result.document_number}
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className="space-y-3"
+    >
+      <div className="flex items-start justify-between gap-2 pb-2 border-b border-slate-100">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-display font-extrabold text-sm text-slate-900 truncate">
+              {result.document_number}
+            </span>
+            <Badge
+              className={cn(
+                "text-[9px] uppercase font-bold tracking-wider px-1.5 h-4 border",
+                result.match
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-amber-50 text-amber-700 border-amber-200",
+              )}
+            >
+              {result.match ? "Match" : "Review"}
+            </Badge>
+          </div>
+          <p className="text-[10px] text-slate-500 font-bold tabular-nums mt-0.5">
+            {coerceMatchCount(vr.match_count, vr.comparisons)}/{vr.comparisons?.length || 0} fields matched
+          </p>
+        </div>
+        {onOpenInMap && (
+          <button
+            onClick={() => onOpenInMap(result.document_number)}
+            className="flex items-center gap-1 px-2 py-1 bg-primary/10 hover:bg-primary/20 text-primary text-[9px] font-bold rounded-md transition-all border border-primary/20 shrink-0"
+            title="Open in lineage map"
+          >
+            <MapPin className="w-3 h-3" />
+            MAP
+          </button>
+        )}
+      </div>
+
+      {vr.requires_extra_scrutiny && (
+        <div className="p-3 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 space-y-1.5">
+          <div className="flex items-center gap-2 text-amber-800 font-bold text-xs">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            LEGAL HEIR SCRUTINY ALERT
+          </div>
+          <p className="text-[11px] text-amber-900 leading-relaxed font-medium">
+            {vr.scrutiny_reason ||
+              "This document involves a family transfer (Settlement/Partition) which requires verification of Legal Heir Certificates and Death Certificates."}
+          </p>
+        </div>
+      )}
+
+      <TrustabilityScore score={vr.trustability_score} />
+
+      {(vr.comparisons || []).map((comparison, idx) => {
+        const isMatched =
+          comparison.status.includes("MATCHED") &&
+          !comparison.status.includes("NOT");
+        const pageMatch = comparison.page_number?.match(/\d+/);
+        const page = pageMatch ? Math.max(1, parseInt(pageMatch[0])) : null;
+        return (
+          <div
+            key={idx}
+            className={cn(
+              "p-3 rounded-lg border",
+              isMatched ? "bg-emerald-50/60 border-emerald-200" : "bg-red-50/60 border-red-200",
+            )}
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="min-w-0 flex-1">
+                <span className="font-bold text-xs text-slate-900 leading-tight">
+                  {comparison.field}
+                </span>
+                {page !== null && (
+                  <button
+                    onClick={() => onPageSelect(page)}
+                    className="mt-1.5 text-[10px] bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 px-2 py-0.5 rounded transition-all flex items-center gap-1 font-bold w-fit"
+                    title="Open the source PDF at this page"
+                  >
+                    <ExternalLink className="w-2.5 h-2.5" />
+                    Source · Page {page}
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isMatched ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-600" />
+                )}
+                <Badge
+                  className={cn(
+                    "text-[9px] px-1.5 h-4 font-bold uppercase tracking-wider",
+                    isMatched
+                      ? "bg-emerald-600 hover:bg-emerald-600 text-white"
+                      : "bg-red-600 hover:bg-red-600 text-white",
+                  )}
+                >
+                  {comparison.status}
+                </Badge>
+              </div>
+            </div>
+            <div className="space-y-1 text-[11px]">
+              <div className="break-words">
+                <span className="text-slate-500 font-medium">EC Value: </span>
+                <span className="font-semibold text-slate-800">{comparison.ec_value}</span>
+              </div>
+              <div className="break-words">
+                <span className="text-slate-500 font-medium">Metadata Value: </span>
+                <span className="font-semibold text-slate-800">{comparison.metadata_value}</span>
+              </div>
+              {comparison.reason && (
+                <div className="pt-1.5 mt-1 text-slate-500 italic border-t border-slate-200/80 text-[10px] leading-relaxed">
+                  {comparison.reason}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {vr.reason_for_failure &&
+        vr.reason_for_failure !== "All fields consistent" && (
+          <div className="p-2.5 rounded-lg bg-red-100 border border-red-300">
+            <span className="text-[11px] text-red-700 font-semibold">
+              Reason: {vr.reason_for_failure}
+            </span>
+          </div>
+        )}
     </motion.div>
   );
 }

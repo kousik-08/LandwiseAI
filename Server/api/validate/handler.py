@@ -26,10 +26,17 @@ from common.workflow_checkpoint import WorkflowCheckpoint
 from common.run_paths import RunPaths
 from common.storage import get_storage
 from common.landwise_models import (
-    LandwiseDocument, Parcel, Owner, OwnershipTransfer, Encumbrance, 
-    RiskFlag, ConsistencyCheck, ConsistencyMismatch, ChecklistItem, 
+    LandwiseDocument, Parcel, Owner, OwnershipTransfer, Encumbrance,
+    RiskFlag, ConsistencyCheck, ConsistencyMismatch, ChecklistItem,
     LegalOpinion, AnalysisResult, ExtractedField
 )
+from common.perf_cache import TTLCache
+
+# Hierarchy responses are immutable per request_id (a new analysis run
+# generates a fresh request_id), so a 10-minute TTL is generous and safe.
+# Caching here saves ~4 sequential S3 reads + JSON parsing + react-flow
+# generation per parcel-page load.
+_HIERARCHY_CACHE = TTLCache(maxsize=64, ttl=600.0)
 
 
 # Canonical cache index lives in storage (S3), not local disk, so the
@@ -222,6 +229,13 @@ def workflow_generator(
                 try:
                     with open(ec_json_path, "r", encoding="utf-8") as f:
                         ec_data = json.load(f)
+                    # Defensive: tolerate the dict-envelope shape an
+                    # intermediate build briefly used. New writes are
+                    # always plain lists.
+                    if isinstance(ec_data, dict) and isinstance(ec_data.get("data"), list):
+                        ec_data = ec_data["data"]
+                    if not isinstance(ec_data, list):
+                        ec_data = []
                     for entry in ec_data:
                         ec_rec = ECRecord(
                             request_id=processing_id,
@@ -293,13 +307,58 @@ def workflow_generator(
             # We need to re-read targets or pass them back from load_and_match
             # For now, let's just log based on len mismatch
             match_count = len(matched_docs)
-            
+
             yield event(
                 "sub_log", message=f"{match_count} documents matched from ZIP", step="matching"
             )
-            
+
             if match_limit and match_count < match_limit:
                  yield event("log", message=f"(i) Note: Only {match_count} unique documents were found for matching (requested {match_limit}). This happens due to deduplication or missing files.", step="matching")
+
+            # When the user picked "last N" but we had to dig past skipped
+            # docs (their PDFs weren't in the upload zip), tell them WHICH
+            # newer transactions got passed over. Without this, the user
+            # sees an old slice (e.g. 1990–2011) when their EC actually
+            # extends to recent years, and has no idea WHY. The matcher
+            # walks newest-first, so skipped_no_pdf is always newer than
+            # the oldest match in `matched_docs`.
+            skipped = getattr(matcher, "last_skipped_no_pdf", []) or []
+            if match_limit and skipped:
+                total_ec = getattr(matcher, "last_total_ec_entries", 0)
+                yield event(
+                    "log",
+                    message=(
+                        f"⚠ Heads up: you asked for the last {match_limit} transactions, "
+                        f"but {len(skipped)} newer EC transaction(s) had no matching PDF in "
+                        f"your upload zip — so we dug deeper into the EC history to fill the "
+                        f"quota. The selection you're seeing reaches back further in time "
+                        f"than the actual newest {match_limit} transactions in the EC "
+                        f"({total_ec} transactions total)."
+                    ),
+                    step="matching",
+                )
+                preview = skipped[: min(len(skipped), max(match_limit, 10))]
+                skipped_str = ", ".join(
+                    f"{s['document_number']} ({s.get('date') or 'N/A'})" for s in preview
+                )
+                more = "" if len(skipped) <= len(preview) else f", … (+{len(skipped) - len(preview)} more)"
+                yield event(
+                    "sub_log",
+                    message=(
+                        f"Skipped newer transactions (PDF missing in upload): "
+                        f"{skipped_str}{more}"
+                    ),
+                    step="matching",
+                )
+                yield event(
+                    "sub_log",
+                    message=(
+                        "To see those newer transactions instead, add their deed PDFs to the "
+                        "zip — filenames should match the doc number (e.g. '4939_2018.pdf' or '4939/2018.pdf')."
+                    ),
+                    step="matching",
+                )
+
             # List the matched documents
             doc_list_str = ", ".join(
                 [d.get("document_number", "N/A") for d in matched_docs]
@@ -356,48 +415,55 @@ def workflow_generator(
                 )
             yield event(
                 "log",
-                message="Extracting Sale Deed details...",
+                message="Processing each document (extract + validate) and streaming results...",
                 step="sale_deed_extraction",
             )
-            sd_proc = SaleDeedProcessor(output_dir=processing_output_dir)
+            # Per-document pipeline: extract the deed metadata AND validate it
+            # against the EC for EACH document, streaming the result the moment
+            # it finishes — so the FIRST document's output appears immediately
+            # instead of waiting for every document to be extracted first.
+            # validate_single_doc extracts the metadata on demand, so by the
+            # time hierarchy runs (below) all metadata is present.
+            validator = Validator(output_dir=processing_output_dir, ec_pdf_path=ec_pdf_path)
+            try:
+                with open(ec_json_path, "r", encoding="utf-8") as _ecf:
+                    _ec_lookup = {e.get("document_number"): e for e in json.load(_ecf)}
+            except Exception:
+                _ec_lookup = {}
 
             # process_matched_list(matched_docs) replaced with granular loop
             total_docs = len(matched_docs)
             
             if total_docs >= 2:
                 from concurrent.futures import ThreadPoolExecutor
-                yield event("log", message=f"Running parallel extraction for {total_docs} documents with 3 workers...", step="sale_deed_extraction")
+                yield event("log", message=f"Processing {total_docs} documents (extract + validate) with 3 workers...", step="sale_deed_extraction")
                 
                 with ThreadPoolExecutor(max_workers=3) as executor:
-                    # Submit all tasks
-                    futures = {executor.submit(sd_proc.process_file, doc.get("file_path")): doc for doc in matched_docs}
-                    
+                    futures = {executor.submit(validator.validate_single_doc, doc, ec_json_path, visual_debug, _ec_lookup): doc for doc in matched_docs}
                     done_count = 0
                     for future in futures:
                         doc = futures[future]
                         doc_num = doc.get("document_number", "Unknown")
-                        # We wait for each but they are running in parallel
-                        future.result() 
+                        try:
+                            _res = future.result()
+                        except Exception as _fe:
+                            yield event("log", message=f"Processing crashed for {doc_num}: {_fe}", step="sale_deed_extraction")
+                            continue
                         done_count += 1
-                        yield event(
-                            "log",
-                            message=f"[{done_count}/{total_docs}] Extracted metadata for Document {doc_num}",
-                            step="sale_deed_extraction"
-                        )
+                        if _res:
+                            results.append(_res)
+                            _st = "[MATCHED]" if _res.get("match") else "[ISSUE]"
+                            yield event("log", message=f"[{done_count}/{total_docs}] {doc_num}: {_st}", step="sale_deed_extraction")
+                            yield event("partial_result", data=_res)
             else:
                 for idx, doc in enumerate(matched_docs, 1):
                     doc_num = doc.get("document_number", "Unknown")
-                    file_path = doc.get("file_path")
-
-                    # Yield progress log
-                    yield event(
-                        "log",
-                        message=f"[{idx}/{total_docs}] Extracting metadata for Document {doc_num}...",
-                        step="sale_deed_extraction",
-                    )
-
-                    # Process individual file
-                    sd_proc.process_file(file_path)
+                    _res = validator.validate_single_doc(doc, ec_json_path, visual_debug=visual_debug, ec_lookup=_ec_lookup)
+                    if _res:
+                        results.append(_res)
+                        _st = "[MATCHED]" if _res.get("match") else "[ISSUE]"
+                        yield event("log", message=f"[{idx}/{total_docs}] {doc_num}: {_st}", step="sale_deed_extraction")
+                        yield event("partial_result", data=_res)
 
             try:
                 sync_dir(processing_output_dir, key_prefix=_s3_output_prefix)
@@ -466,11 +532,13 @@ def workflow_generator(
                     }
                 )
             yield event("log", message="Validating against EC...", step="validation")
-            validator = Validator(output_dir=processing_output_dir)
+            validator = Validator(output_dir=processing_output_dir, ec_pdf_path=ec_pdf_path)
             
             total_docs = len(matched_docs)
-            results = []
-            
+            # 'results' is already populated by the per-document stage above, so
+            # the loop below is skipped (guarded by `not results`); it remains as
+            # a fallback if validation is ever reached without pre-processing.
+
             # Prepare EC lookup once for both paths
             if not os.path.exists(ec_json_path):
                 ec_lookup = {}
@@ -479,16 +547,32 @@ def workflow_generator(
                     ec_data = json.load(f)
                 ec_lookup = {entry.get("document_number"): entry for entry in ec_data}
 
-            if total_docs >= 2:
+            if not results and total_docs >= 2:
                 yield event("log", message=f"Running parallel validation for {total_docs} documents...", step="validation")
-                from concurrent.futures import ThreadPoolExecutor
-                
+                from concurrent.futures import ThreadPoolExecutor, as_completed
+
                 with ThreadPoolExecutor(max_workers=3) as executor:
                     future_to_doc = {executor.submit(validator.validate_single_doc, doc, ec_json_path, visual_debug, ec_lookup): doc for doc in matched_docs}
-                    
+
+                    # as_completed yields futures in COMPLETION order, not
+                    # submission order. The previous `for future in
+                    # future_to_doc` iterated insertion order and called
+                    # .result() on each — which BLOCKS until that specific
+                    # future finishes. Net effect: if doc #1's visual
+                    # debugger hangs for 10 minutes, every later doc that
+                    # finished in 2s gets held back from being yielded, and
+                    # the frontend looks empty until the slow doc finally
+                    # unblocks. as_completed lets fast docs surface
+                    # immediately and the slow one stops blocking the rest.
                     completed = 0
-                    for future in future_to_doc:
-                        res = future.result()
+                    for future in as_completed(future_to_doc):
+                        try:
+                            res = future.result()
+                        except Exception as e:
+                            doc = future_to_doc[future]
+                            doc_no = doc.get("document_number", "?") if isinstance(doc, dict) else "?"
+                            yield event("log", message=f"Validation crashed for {doc_no}: {e}", step="validation")
+                            continue
                         if res:
                             results.append(res)
                             completed += 1
@@ -496,7 +580,7 @@ def workflow_generator(
                             yield event("log", message=f"[{completed}/{total_docs}] Validated {res['document_number']}: {status}", step="validation")
                             # Yield incremental result
                             yield event("partial_result", data=res)
-            else:
+            elif not results:
                 for idx, doc in enumerate(matched_docs, 1):
                     res = validator.validate_single_doc(doc, ec_json_path, visual_debug=visual_debug, ec_lookup=ec_lookup)
                     if res:
@@ -891,9 +975,10 @@ async def persist_forensic_results_to_db(parcel_id: str, request_id: str, output
 
                         enc_date = entry.get("date")
                         try:
-                            from datetime import datetime as _dt
+                            from api.validate.matcher import _parse_ec_date
                             if isinstance(enc_date, str):
-                                enc_date = _dt.fromisoformat(enc_date).date()
+                                dt = _parse_ec_date(enc_date)
+                                enc_date = dt.date() if dt != datetime.min else None
                         except Exception:
                             enc_date = None
 
@@ -932,9 +1017,10 @@ async def persist_forensic_results_to_db(parcel_id: str, request_id: str, output
 
                         reg_date = entry.get("date")
                         try:
-                            from datetime import datetime as _dt
+                            from api.validate.matcher import _parse_ec_date
                             if isinstance(reg_date, str):
-                                reg_date = _dt.fromisoformat(reg_date).date()
+                                dt = _parse_ec_date(reg_date)
+                                reg_date = dt.date() if dt != datetime.min else None
                         except Exception:
                             reg_date = None
 
@@ -1098,6 +1184,7 @@ async def handle_validate(
     visual_debug: bool = False,
     transaction_limit: Optional[int] = None,
     parcel_id: Optional[str] = None,
+    cleanup_dir: Optional[str] = None,
 ):
     """
     Handles validation workflow with support for both local_path and files input types.
@@ -1476,7 +1563,33 @@ async def handle_validate(
             return final_result
 
         if stream:
-            # Return StreamingResponse directly
+            # When this run is tied to a parcel, the post-workflow bookkeeping
+            # the SYNC path does (register documents + persist forensic results)
+            # must still run — but only AFTER the stream is fully consumed, so we
+            # hang it off a BackgroundTask. That same task also cleans up the
+            # caller's materialized temp dir (cleanup_dir), which must survive
+            # until the workflow finishes reading it. Keeping stream_generator a
+            # plain sync generator lets FastAPI run it in a threadpool so the
+            # multi-minute workflow never blocks the event loop.
+            from starlette.background import BackgroundTask
+
+            async def _finalize_stream():
+                if parcel_id:
+                    try:
+                        _register_documents_for_parcel(
+                            parcel_id, processing_id, actual_ec_pdf_path, actual_registration_docs_dir
+                        )
+                    except Exception as e:
+                        print(f"[!] stream finalize: register documents failed: {e}")
+                    try:
+                        await persist_forensic_results_to_db(
+                            parcel_id, processing_id, processing_output_dir
+                        )
+                    except Exception as e:
+                        print(f"[!] stream finalize: persist forensic results failed: {e}")
+                if cleanup_dir and os.path.exists(cleanup_dir):
+                    shutil.rmtree(cleanup_dir, ignore_errors=True)
+
             response = StreamingResponse(
                 stream_generator(
                     ec_pdf_path=actual_ec_pdf_path,
@@ -1488,6 +1601,7 @@ async def handle_validate(
                     logger=logger,
                 ),
                 media_type="application/x-ndjson",
+                background=BackgroundTask(_finalize_stream),
             )
             duration = (time.time() - start_time) * 1000
             logger.log_output(
@@ -1777,27 +1891,197 @@ def resolve_pdf_path(doc_no: str, request_id: Optional[str] = None, hint: Option
 
     return None
 
-async def handle_chat_with_doc(doc_no: str, message: str, history: list = None, request_id: Optional[str] = None):
+def _normalize_docno(s) -> str:
+    """Collapse a document number to digits+letters for tolerant matching
+    ("3765/2008" -> "37652008", "266-2009" -> "2662009")."""
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def _read_ec_raw_text(request_id: Optional[str]) -> str:
     """
-    Handles a chat query about a specific document.
+    Return the EC raw OCR text for an analyze run, stripped of the
+    `# OCR_VERSION=N` header, or "" if unavailable. Tries local scratch
+    first, then pulls from the storage backend via ensure_local — same
+    three-tier shape resolve_pdf_path uses for PDFs.
     """
+    if not request_id:
+        return ""
+    path = os.path.join("outputs", "validate", request_id, "ec_raw_full.txt")
+    if not os.path.exists(path):
+        try:
+            ensure_local(path)
+        except Exception:
+            pass
+    if not os.path.exists(path):
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except OSError:
+        return ""
+    return re.sub(r"^#\s*OCR_VERSION=\d+\s*\n", "", raw)
+
+
+def _find_ec_entries_for_doc(ec_data, doc_no):
+    """EC transaction entries whose document_number matches doc_no."""
+    target = _normalize_docno(doc_no)
+    if not target or not isinstance(ec_data, list):
+        return []
+    return [
+        e for e in ec_data
+        if isinstance(e, dict) and _normalize_docno(e.get("document_number")) == target
+    ]
+
+
+def _sanitize_chat_response(text: str) -> str:
+    """
+    Clean LLM output for the chat UI. DocChat renders with ReactMarkdown and
+    NO math/GFM-table plugins, so LaTeX the model occasionally emits
+    ($$...$$, \\text{}, \\quad, \\big|) leaks through as raw symbols (exactly
+    the "$$\\text{Date of Execution}...$$" the user saw). Strip those to plain
+    text and tidy whitespace. Currency is left untouched (we only unwrap the
+    $$...$$ block form, never single-$).
+    """
+    if not text:
+        return text
+    s = text
+    # Unwrap $$ ... $$ block math, keeping the inner content.
+    s = re.sub(r"\$\$(.+?)\$\$", r"\1", s, flags=re.S)
+    # Common LaTeX tokens -> plain text.
+    s = re.sub(r"\\(?:text|mathrm|mathbf|textbf)\s*\{([^}]*)\}", r"\1", s)
+    s = s.replace(r"\quad", "   ").replace(r"\big|", "|").replace(r"\mid", "|")
+    s = s.replace(r"\,", " ").replace(r"\;", " ").replace(r"\:", " ")
+    s = re.sub(r"\\\\", " ", s)          # stray LaTeX line-breaks
+    # Collapse 3+ newlines so answers stay compact.
+    s = re.sub(r"\n{3,}", "\n\n", s)
+    return s.strip()
+
+
+async def handle_chat_with_doc(
+    doc_no: str,
+    message: str,
+    history: list = None,
+    request_id: Optional[str] = None,
+    parcel_id: Optional[str] = None,
+):
+    """
+    Answer a chat question about a specific document.
+
+    Primary source is the property's already-EXTRACTED EC data
+    (ec_final.json + ec_raw_full.txt) for the analyze run. This is what the
+    user asked for — "use the EC json for the check, not the pdf vault" — and
+    it has two payoffs:
+      * Speed: no PDF re-upload + Gemini vision-OCR on every message; we send
+        compact extracted text/JSON and answer in ~1-3s.
+      * Comparison: the assistant sees the WHOLE encumbrance chain, so it can
+        check whether this document appears in the EC and whether its details
+        line up with the surrounding transactions.
+
+    Falls back to reading the document PDF directly only when no EC artifacts
+    exist, and degrades to a friendly message rather than a 404/500 so the
+    chat panel never shows a hard error.
+    """
+    import asyncio
     from common.gemini_helper import GeminiHelper
-    
+    from services.artifact_store import read_json_artifact
+
+    # ---- Build context from already-extracted EC data ------------------
+    ec_data = read_json_artifact(request_id, "ec_final.json") if request_id else None
+    # Tolerate the dict-envelope shape an intermediate build briefly used.
+    if isinstance(ec_data, dict) and isinstance(ec_data.get("data"), list):
+        ec_data = ec_data["data"]
+    if not isinstance(ec_data, list):
+        ec_data = []
+
+    raw_text = _read_ec_raw_text(request_id)
+    matched_entries = _find_ec_entries_for_doc(ec_data, doc_no)
+
+    if ec_data or raw_text:
+        print(f"[*] Chatting with EC data for {doc_no} (request {request_id}, "
+              f"{len(ec_data)} entries, matched={len(matched_entries)})")
+
+        context_parts = []
+        if matched_entries:
+            context_parts.append(
+                f"### EC ENTRY FOR THIS DOCUMENT (Doc No: {doc_no})\n"
+                + json.dumps(matched_entries, ensure_ascii=False, indent=2)
+            )
+        else:
+            context_parts.append(
+                f"### NOTE\nNo EC entry's document number is an exact match for "
+                f"{doc_no}. It may appear under a slightly different serial/year — "
+                f"check the full list of entries below before concluding it is absent."
+            )
+        if ec_data:
+            context_parts.append(
+                "### ALL EC ENTRIES (the encumbrance chain — use for cross-checking and comparison)\n"
+                + json.dumps(ec_data, ensure_ascii=False, indent=2)
+            )
+        if raw_text:
+            # Cap the raw OCR to keep chat latency low on very large ECs; the
+            # structured entries above already carry the key fields.
+            context_parts.append("### EC RAW EXTRACTED TEXT\n" + raw_text[:150000])
+        context = "\n\n".join(context_parts)
+
+        instructions = f"""You are an expert Indian Property Legal Assistant for LandwiseAI.
+You are answering questions about document **{doc_no}** using the property's
+Encumbrance Certificate (EC) extracted data provided to you. The EC is the chain
+of registered transactions for this property.
+
+Use the data to:
+- Answer questions about this specific document ({doc_no}).
+- CHECK / COMPARE this document against the EC: whether it appears in the EC and
+  whether its details (parties, survey number, extent, dates, consideration) are
+  consistent with the EC record and the surrounding transactions.
+
+Rules:
+1. Base your answer ONLY on the EC data provided — never invent facts.
+2. If something is not present in the data, say so plainly.
+3. Cite transactions by their EC Document No and Date (e.g. "Doc 3765/2008").
+4. Keep Tamil names in the original script; add a transliteration/translation where helpful.
+5. Respond in clear Markdown.
+6. Be concise and direct: lead with the answer in 1-2 sentences, then only the
+   supporting details that matter. Do not restate the question or pad the reply.
+7. Use plain GitHub Markdown only — short **bold** labels and "- " bullet lists.
+   Do NOT use LaTeX/math notation ($$, \\text{{}}, \\quad, \\big|) and do NOT use
+   Markdown tables (the chat UI renders neither). For the Tamil Nadu three-date
+   field, write it inline as "Execution | Presentation | Registration".
+
+Chat History:
+{json.dumps(history if history else [], ensure_ascii=False, indent=2)}
+
+User Question: {message}
+"""
+        try:
+            gemini = GeminiHelper(model_id="gemini-3.5-flash")  # flash = large context
+            # Run the blocking SDK call off the event loop so the API stays responsive.
+            response = await asyncio.to_thread(
+                gemini.generate_from_text, context, instructions
+            )
+            return {"response": _sanitize_chat_response(response)}
+        except Exception as e:
+            print(f"[!] EC-context chat failed for {doc_no}: {e} — trying PDF fallback")
+            # fall through to the PDF path below
+
+    # ---- Fallback: read the document PDF directly (legacy path) --------
     file_path = resolve_pdf_path(doc_no, request_id=request_id)
-    
     if not file_path:
-        print(f"[!] PDF not found for chat: {doc_no} (Target ID: {request_id})")
-        raise HTTPException(status_code=404, detail=f"Document PDF not found for {doc_no}. Ensure it has been uploaded or processed.")
+        print(f"[!] No EC data and no PDF for chat: {doc_no} (request {request_id})")
+        return {
+            "response": (
+                f"⚠️ I couldn't find extracted EC data or a document file for "
+                f"**{doc_no}**. Please run the analysis for this property first, "
+                f"then ask again."
+            )
+        }
 
-    print(f"[*] Chatting with PDF: {file_path}")
-    gemini = GeminiHelper(model_id="gemini-2.5-flash-lite") # Use flash for large context
+    print(f"[*] Chatting with PDF (fallback): {file_path}")
+    gemini = GeminiHelper(model_id="gemini-3.5-flash")  # flash for large context
 
-
-    
     context_prompt = f"""
-    You are an expert Indian Property Legal Assistant. 
+    You are an expert Indian Property Legal Assistant.
     You are answering questions about the enclosed land registration document (Document No: {doc_no}).
-    
+
     Rules:
     1. Base your answers ONLY on the provided document.
     2. If the information is not in the document, say so.
@@ -1810,18 +2094,275 @@ async def handle_chat_with_doc(doc_no: str, message: str, history: list = None, 
     - Use the format [[Page:X]] for citations, where X is the page number.
     - Example: "The executant of this deed is John Doe [[Page:2]]."
     - If information spans multiple pages, cite them like [[Page:2,3]].
-    
+
     Chat History:
     {json.dumps(history if history else [], indent=2)}
-    
+
     User Question: {message}
     """
-    
+
     try:
-        response = gemini.generate_from_file(file_path, context_prompt, display_name=f"Deed_{doc_no}")
-        return {"response": response}
+        response = await asyncio.to_thread(
+            gemini.generate_from_file, file_path, context_prompt, f"Deed_{doc_no}"
+        )
+        return {"response": _sanitize_chat_response(response)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "response": (
+                "⚠️ Sorry, I hit an error reading this document. "
+                f"Please try again. ({e})"
+            )
+        }
+
+
+async def handle_chat_overall(
+    message: str,
+    history: list = None,
+    request_id: Optional[str] = None,
+    parcel_id: Optional[str] = None,
+    mentions: Optional[list] = None,
+):
+    """
+    Property-wide ("overall") chat. Answers over the WHOLE encumbrance chain for
+    an analyze run rather than a single document, so the user can ask
+    cross-document questions from one place. When the user @-mentions specific
+    document numbers, those entries are surfaced as FOCUSED context on top of the
+    full chain (the assistant can still compare against everything else).
+
+    Same fast, PDF-free path as handle_chat_with_doc: reads the already-extracted
+    ec_final.json + ec_raw_full.txt and answers with generate_from_text.
+    """
+    import asyncio
+    from common.gemini_helper import GeminiHelper
+    from services.artifact_store import read_json_artifact
+
+    ec_data = read_json_artifact(request_id, "ec_final.json") if request_id else None
+    if isinstance(ec_data, dict) and isinstance(ec_data.get("data"), list):
+        ec_data = ec_data["data"]
+    if not isinstance(ec_data, list):
+        ec_data = []
+
+    raw_text = _read_ec_raw_text(request_id)
+
+    if not (ec_data or raw_text):
+        return {
+            "response": (
+                "⚠️ I couldn't find extracted EC data for this property yet. "
+                "Please run the analysis first, then ask again."
+            )
+        }
+
+    # Resolve @-mentioned documents to their EC entries (focused context).
+    mentions = [m for m in (mentions or []) if str(m).strip()]
+    focused = []
+    seen_focus = set()
+    for m in mentions:
+        for e in _find_ec_entries_for_doc(ec_data, m):
+            key = _normalize_docno(e.get("document_number"))
+            if key and key not in seen_focus:
+                seen_focus.add(key)
+                focused.append(e)
+
+    context_parts = []
+    if focused:
+        context_parts.append(
+            "### FOCUSED DOCUMENTS (the user @-mentioned these — prioritize them)\n"
+            + json.dumps(focused, ensure_ascii=False, indent=2)
+        )
+    elif mentions:
+        context_parts.append(
+            "### NOTE\nThe user mentioned " + ", ".join(str(m) for m in mentions)
+            + " but no exact EC entry matched. Check the full chain below before "
+            "concluding they are absent."
+        )
+    if ec_data:
+        context_parts.append(
+            "### ALL EC ENTRIES (the full encumbrance chain for this property)\n"
+            + json.dumps(ec_data, ensure_ascii=False, indent=2)
+        )
+    if raw_text:
+        context_parts.append("### EC RAW EXTRACTED TEXT\n" + raw_text[:150000])
+    context = "\n\n".join(context_parts)
+
+    mention_line = (
+        f"\nThe user is asking specifically about: "
+        f"{', '.join(str(m) for m in mentions)}.\n" if mentions else ""
+    )
+
+    instructions = f"""You are an expert Indian Property Legal Assistant for LandwiseAI.
+You are answering questions about an ENTIRE property using its Encumbrance
+Certificate (EC) data — the full chain of registered transactions below.
+{mention_line}
+Use the data to answer the question and to CHECK / COMPARE across the chain
+(ownership flow, whether a document appears, whether parties / survey / extent /
+dates / consideration are consistent between transactions).
+
+Rules:
+1. Base your answer ONLY on the EC data provided — never invent facts.
+2. If something is not present in the data, say so in one short bullet.
+3. Cite transactions by their EC Document No (e.g. "Doc 3765/2008").
+4. Keep Tamil names in the original script.
+5. ALWAYS answer as a SHORT bulleted list. Start every line with "- ".
+   Never write paragraphs. No intro sentence, no closing summary, do not
+   restate the question.
+6. KEEP IT SMALL: at most 5 bullets, each ONE short sentence (~15 words or
+   fewer). If the answer is a simple yes/no, give one bullet plus at most two
+   supporting bullets.
+7. Use SIMPLE, everyday words anyone can understand — write for a normal person,
+   not a lawyer. Avoid legal jargon; if a legal term is unavoidable (e.g. "lis
+   pendens", "encumbrance"), add a 2-3 word plain meaning in brackets, e.g.
+   "lis pendens (a pending court case)".
+8. Use plain GitHub Markdown only — "- " bullets and short **bold** labels.
+   Do NOT use LaTeX/math notation ($$, \\text{{}}, \\quad, \\big|) and do NOT use
+   Markdown tables. For the Tamil Nadu three-date field, write it inline as
+   "Execution | Presentation | Registration".
+
+Chat History:
+{json.dumps(history if history else [], ensure_ascii=False, indent=2)}
+
+User Question: {message}
+"""
+
+    try:
+        gemini = GeminiHelper(model_id="gemini-3.5-flash")
+        response = await asyncio.to_thread(
+            gemini.generate_from_text, context, instructions
+        )
+        return {"response": _sanitize_chat_response(response)}
+    except Exception as e:
+        print(f"[!] Overall chat failed (request {request_id}): {e}")
+        return {"response": "⚠️ Sorry, I hit an error answering that. Please try again."}
+
+
+async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatches: list):
+    """
+    Run the visual debugger on the PARCEL'S EC PDF to box the mismatched
+    ec_values for a given deed — producing a marked EC PDF so the user can see
+    the conflicting value highlighted on the EC, side-by-side with the deed.
+
+    `mismatches` is supplied by the client from the already-loaded comparison
+    data: [{ "field": str, "value": <ec_value> }, ...]. We scope the search to
+    the transaction's EC page(s) (ec_page_start/end from ec_final.json) and
+    anchor on the EC document number so we land on the RIGHT row — not every
+    place a name happens to appear across the EC. max_occurrences=1 keeps each
+    value boxed once. Result is cached per document under the run's output dir.
+    """
+    import asyncio
+    import shutil
+    import tempfile
+    from api.validate.visual_debugger import VisualDebugger
+    from common.gemini_helper import GeminiHelper
+    from common.run_paths import RunPaths
+    from common.storage import get_storage
+    from services.artifact_store import read_json_artifact
+
+    # Page-scope from the stored EC page range for THIS transaction, and grab the
+    # EC's own document number as the primary row anchor. Empty page_info -> the
+    # debugger scans all pages (older caches without page numbers).
+    page_info = ""
+    ec_doc_anchor = ""
+    try:
+        ec_data = read_json_artifact(request_id, "ec_final.json") if request_id else None
+        if isinstance(ec_data, dict) and isinstance(ec_data.get("data"), list):
+            ec_data = ec_data["data"]
+        entries = _find_ec_entries_for_doc(ec_data, doc_no) if isinstance(ec_data, list) else []
+        if entries:
+            entry = entries[0]
+            ps, pe = entry.get("ec_page_start"), entry.get("ec_page_end")
+            if isinstance(ps, int) and isinstance(pe, int) and 1 <= ps <= pe:
+                page_info = "Pages " + ", ".join(str(n) for n in range(ps, pe + 1))
+            ec_doc_anchor = str(entry.get("document_number") or "").strip()
+    except Exception as e:
+        print(f"[!] mark-ec: could not read EC page scope for {doc_no}: {e}")
+
+    _PLACEHOLDER = ("", "n/a", "na", "none", "null", "not found", "unknown", "missing")
+    queued = []
+    # Anchor on the EC's document number first (most reliable row locator), so
+    # the page scan disambiguates which row to box when a name repeats.
+    if ec_doc_anchor and ec_doc_anchor.lower() not in _PLACEHOLDER:
+        queued.append({"field": "Document Number", "value": ec_doc_anchor, "page_info": page_info})
+    for m in (mismatches or []):
+        val = m.get("value")
+        if val and str(val).strip().lower() not in _PLACEHOLDER:
+            queued.append({"field": m.get("field", "") or "", "value": val, "page_info": page_info})
+    if not queued:
+        return {"url": None, "reason": "No EC-side values to mark for this document."}
+
+    safe_doc = re.sub(r"[^a-zA-Z0-9]", "_", str(doc_no))
+    marked_name = f"{safe_doc}_ec.pdf"
+
+    rp = RunPaths(request_id, kind="validate").ensure()
+    output_dir = rp.output_dir
+    marked_path = os.path.join(output_dir, "matched_docs", marked_name)
+    rel_path = f"validate/{request_id}/matched_docs/{marked_name}"
+
+    # Cached marked EC for this document.
+    if os.path.exists(marked_path) or ensure_local(marked_path):
+        return {"url": rel_path}
+
+    # Locate the parcel's EC document.
+    db = SessionLocal()
+    try:
+        from common.landwise_models import LandwiseDocument
+        docs = (
+            db.query(LandwiseDocument)
+            .filter(LandwiseDocument.parcel_id == parcel_id, LandwiseDocument.deleted_at.is_(None))
+            .all()
+        )
+    finally:
+        db.close()
+    ec_doc = next(
+        (d for d in docs if d.document_type and d.document_type.upper().replace(" ", "_") in ("ENCUMBRANCE_CERTIFICATE", "EC")),
+        None,
+    )
+    if not ec_doc:
+        return {"url": None, "reason": "No EC document found for this parcel."}
+
+    storage = get_storage()
+    tmpdir = tempfile.mkdtemp(prefix="mark_ec_")
+    try:
+        # Name the local copy per-document so the marked output (matched_docs/
+        # <basename>) is unique to this deed's mismatches.
+        src = os.path.join(tmpdir, marked_name)
+        materialized = False
+        if ec_doc.storage_key and os.path.isabs(ec_doc.storage_key) and os.path.exists(ec_doc.storage_key):
+            shutil.copy2(ec_doc.storage_key, src); materialized = True
+        else:
+            try:
+                if ec_doc.storage_key and storage.exists(ec_doc.storage_key):
+                    storage.download_to(ec_doc.storage_key, src); materialized = True
+            except Exception as e:
+                print(f"[!] mark-ec: EC download failed: {e}")
+            if not materialized and ec_doc.file_content:
+                with open(src, "wb") as f:
+                    f.write(ec_doc.file_content)
+                materialized = True
+        if not materialized:
+            return {"url": None, "reason": "Could not load the EC PDF."}
+
+        gemini = GeminiHelper(model_id="gemini-3.5-flash")
+        vd = VisualDebugger(gemini, output_dir=output_dir)
+        # Drain the generator off the event loop (it rasterizes + calls Gemini).
+        await asyncio.to_thread(
+            lambda: list(vd.debug_mismatches_batch(
+                pdf_path=src, doc_no=f"EC_{doc_no}", mismatches=queued, max_occurrences=1,
+            ))
+        )
+
+        if not os.path.exists(marked_path):
+            return {"url": None, "reason": "Could not locate any of the values on the EC."}
+
+        try:
+            sync_dir(
+                os.path.join(output_dir, "matched_docs"),
+                key_prefix=f"outputs/validate/{request_id}/matched_docs",
+            )
+        except Exception as e:
+            print(f"[!] mark-ec sync failed: {e}")
+        return {"url": rel_path}
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
 
 async def handle_validate_single(request: Request, body: dict):
     """
@@ -1938,42 +2479,88 @@ def get_doc_map(request_id: str) -> dict:
     return doc_map
 
 async def handle_get_global_hierarchy(request_id: str):
-    # Canonical location is S3 key outputs/validate/<rid>/hierarchy_tree.json.
-    hierarchy_key = f"outputs/validate/{request_id}/hierarchy_tree.json"
-    hierarchy_data = read_json(hierarchy_key, default=None)
+    # Cache hit short-circuit: hierarchy responses are immutable per
+    # request_id, so once we've assembled one we can return it directly.
+    cached = _HIERARCHY_CACHE.get(request_id)
+    if cached is not None:
+        return cached
 
-    if hierarchy_data is None:
-        # Fallback to DB-persisted AnalysisResult (some runs persist it both ways).
+    # Three-tier read through the canonical helper (Phase 3 / item #37).
+    # Local-scratch first (fast path during an active analyze), then S3,
+    # then the DB AnalysisResult row as a last-ditch fallback. The DB
+    # fallback closure isolates the model knowledge from artifact_store.
+    from services.artifact_store import read_json_artifact
+
+    def _hierarchy_from_db():
         from common.database import SessionLocal
         from common.landwise_models import AnalysisResult
         db = SessionLocal()
         try:
-            result = db.query(AnalysisResult).filter(
+            row = db.query(AnalysisResult).filter(
                 AnalysisResult.request_id == request_id,
-                AnalysisResult.result_type == 'hierarchy_tree'
+                AnalysisResult.result_type == 'hierarchy_tree',
             ).first()
-            if result:
-                hierarchy_data = result.data
+            return row.data if row else None
         finally:
             db.close()
-            
+
+    hierarchy_data = read_json_artifact(
+        request_id, "hierarchy_tree.json", db_fallback=_hierarchy_from_db,
+    )
+
     if not hierarchy_data:
         raise HTTPException(status_code=404, detail="Hierarchy data not available")
-    
+
     doc_map = get_doc_map(request_id)
     gen = HierarchyGenerator(output_dir="")
     gen.node_counter = 0
     rf_data = gen._generate_react_flow_data(hierarchy_data, doc_map=doc_map)
 
-    # 3. Load validation results from S3 (canonical store).
-    s3_prefix = f"outputs/validate/{request_id}"
-    validation_results = read_json(f"{s3_prefix}/results.json", default=None)
+    # 3. Load validation results — local → S3 → DB ValidationResult fallback.
+    # The DB fallback is new (audit item #10): previously this only checked
+    # results.json then final_result.json on S3, so a parcel whose validation
+    # was persisted ONLY to DB (rare; happens when analyze crashed between
+    # the DB commit and the sync_dir) showed 0 validation results in the
+    # hierarchy view.
+    def _validation_from_db():
+        from common.database import SessionLocal
+        try:
+            from common.models import ValidationResult
+        except ImportError:
+            return None
+        db = SessionLocal()
+        try:
+            rows = db.query(ValidationResult).filter(
+                ValidationResult.request_id == request_id,
+            ).all()
+            if not rows:
+                return None
+            return [
+                {
+                    "document_number": r.document_number,
+                    "match": r.match,
+                    "reason_for_failure": r.reason_for_failure,
+                    "file_path": r.file_path,
+                    "vault_path": r.vault_path,
+                    "validation_result": {
+                        "trustability_score": r.trustability_score,
+                        "comparisons": r.comparisons,
+                    },
+                }
+                for r in rows
+            ]
+        finally:
+            db.close()
+
+    validation_results = read_json_artifact(
+        request_id, "results.json", db_fallback=None,
+    )
     if not validation_results:
-        final_data = read_json(f"{s3_prefix}/final_result.json", default=None)
+        final_data = read_json_artifact(request_id, "final_result.json")
         if isinstance(final_data, dict):
             validation_results = final_data.get("results", []) or []
-        else:
-            validation_results = []
+    if not validation_results:
+        validation_results = _validation_from_db() or []
 
     # Normalize file_path on every result so legacy / leaking paths like
     # tmp/work/validate/<rid>/matched_docs/x.pdf become the frontend-relative
@@ -1995,16 +2582,23 @@ async def handle_get_global_hierarchy(request_id: str):
             if "vault_path" in res:
                 res["vault_path"] = _normalize_file_path(res.get("vault_path"))
 
-    # 4. Load EC final data for Ownership Tabs
-    ec_final = read_json(f"{s3_prefix}/ec_final.json", default=None) or []
+    # 4. Load EC final data for Ownership Tabs.
+    # The earlier refactor that introduced read_json_artifact removed the
+    # local `s3_prefix` variable but missed this trailing call site —
+    # producing the "NameError: name 's3_prefix' is not defined" that
+    # 500'd /hierarchy. Routing it through the same artifact_store helper
+    # keeps the three-tier (local → S3 → DB) discipline consistent.
+    ec_final = read_json_artifact(request_id, "ec_final.json") or []
 
-    return {
+    payload = {
         "status": "success",
         "react_flow_data": rf_data,
         "validation_results": validation_results,
         "ec_final": ec_final,
         "request_id": request_id
     }
+    _HIERARCHY_CACHE.set(request_id, payload)
+    return payload
 
 async def handle_search_survey_timeline(request_id: str, survey_number: str, limit: Optional[int] = None):
     hierarchy_path = os.path.join("outputs", "validate", request_id, "hierarchy_tree.json")
@@ -2045,26 +2639,68 @@ async def handle_search_survey_timeline(request_id: str, survey_number: str, lim
 async def handle_generate_report(request_id: str):
     """
     Generates a formal Legal Opinion Report based on validated hierarchy data.
+
+    Data source is dual: local scratch first (fast path during an active
+    analyze run), then the S3-mirrored canonical copy. The previous
+    implementation only checked local disk, so any /report call after a
+    backend restart — or against a request_id whose scratch dir had been
+    cleaned up — 404'd even though the data was fine on S3. Same
+    architectural bug we already fixed for /hierarchy and /report-sections.
     """
     from common.gemini_helper import GeminiHelper
     from prompts.opinion_prompts import OPINION_REPORT_PROMPT
-    
-    # 1. Load Data
+    from common.storage_sync import read_json as _storage_read_json, ensure_local as _storage_ensure_local
+
+    # 1. Load Data — local-first, S3 fallback
     target_dir = os.path.join("outputs", "validate", request_id)
     hierarchy_path = os.path.join(target_dir, "hierarchy_tree.json")
     results_path = os.path.join(target_dir, "results.json")
-    
-    if not os.path.exists(hierarchy_path):
-        print(f"[!] Hierarchy missing for report: {hierarchy_path}")
+    # Same paths are valid S3 keys (forward-slash-normalized).
+    hierarchy_key = f"outputs/validate/{request_id}/hierarchy_tree.json"
+    results_key = f"outputs/validate/{request_id}/results.json"
+
+    hierarchy_data = None
+    if os.path.exists(hierarchy_path):
+        with open(hierarchy_path, 'r', encoding='utf-8') as f:
+            hierarchy_data = json.load(f)
+    else:
+        # S3 fallback: pull the hierarchy down. read_json returns None ONLY
+        # when the key truly doesn't exist; transient S3 errors raise
+        # (handled by the storage_sync retry layer) so we won't 404 on a
+        # network blip.
+        hierarchy_data = _storage_read_json(hierarchy_key, default=None)
+        if hierarchy_data is None:
+            # Last-ditch: maybe the analyze persisted it to DB instead.
+            from common.database import SessionLocal as _SL
+            from common.landwise_models import AnalysisResult as _AR
+            db = _SL()
+            try:
+                result = db.query(_AR).filter(
+                    _AR.request_id == request_id,
+                    _AR.result_type == 'hierarchy_tree'
+                ).first()
+                if result:
+                    hierarchy_data = result.data
+            finally:
+                db.close()
+
+    if not hierarchy_data:
+        print(f"[!] Hierarchy missing for report: {hierarchy_path} (also not in S3 / DB)")
         raise HTTPException(status_code=404, detail="Hierarchy data not available. Please complete validation first.")
 
-    with open(hierarchy_path, 'r', encoding='utf-8') as f:
-        hierarchy_data = json.load(f)
-
+    # validation_results.json — same local-first, S3-fallback pattern.
     validation_results = []
     if os.path.exists(results_path):
         with open(results_path, 'r', encoding='utf-8') as f:
             validation_results = json.load(f)
+    else:
+        validation_results = _storage_read_json(results_key, default=None) or []
+        # Final fallback: final_result.json wraps results in {"results": [...]}
+        if not validation_results:
+            final_key = f"outputs/validate/{request_id}/final_result.json"
+            final_data = _storage_read_json(final_key, default=None)
+            if isinstance(final_data, dict):
+                validation_results = final_data.get("results", []) or []
 
     # 2. Format Data for LLM
     # We flatten the hierarchy a bit to make it readable in the prompt
@@ -2086,20 +2722,41 @@ async def handle_generate_report(request_id: str):
     traverse(hierarchy_data)
     
     # 2.5 Enrich history with full metadata from extraction files
+    # Same dual-tier discipline: local first, then storage fallback. The
+    # second fallback (matched_docs subfolder) is preserved, with its own
+    # storage probe so a backend that lost local scratch but has the S3
+    # mirror still enriches the report instead of falling back to a
+    # contentless prompt.
     for entry in flattened_history:
         doc_no = entry.get("Doc_No", "").replace('/', '_')
         metadata_filename = f"{doc_no}_metadata.txt"
-        metadata_path = os.path.join(target_dir, metadata_filename)
-        
-        # If not there, check matched_docs subfolder
-        if not os.path.exists(metadata_path):
-             metadata_path = os.path.join(target_dir, "matched_docs", metadata_filename)
+        candidate_local_paths = [
+            os.path.join(target_dir, metadata_filename),
+            os.path.join(target_dir, "matched_docs", metadata_filename),
+        ]
+        candidate_keys = [
+            f"outputs/validate/{request_id}/{metadata_filename}",
+            f"outputs/validate/{request_id}/matched_docs/{metadata_filename}",
+        ]
 
-        if os.path.exists(metadata_path):
+        chosen = next((p for p in candidate_local_paths if os.path.exists(p)), None)
+        if not chosen:
+            # Try to materialize from S3 into local scratch. ensure_local()
+            # is a no-op if the file already exists; on miss it pulls the
+            # bytes down and creates the dir tree. Stops on first success.
+            for local_p, key in zip(candidate_local_paths, candidate_keys):
+                if _storage_ensure_local(local_p, key=key):
+                    chosen = local_p
+                    break
+
+        if chosen and os.path.exists(chosen):
             try:
-                with open(metadata_path, 'r', encoding='utf-8') as f:
+                with open(chosen, 'r', encoding='utf-8') as f:
                     entry["Full_Metadata"] = f.read()
-            except: pass
+            except Exception as _e:
+                # Per-doc enrichment is best-effort; one bad file shouldn't
+                # tank the whole report. Log and move on.
+                print(f"[!] Could not read metadata for {doc_no}: {_e}")
 
     # Sort history by date
     from api.validate.hierarchy_generator import HierarchyGenerator
@@ -2113,7 +2770,7 @@ async def handle_generate_report(request_id: str):
     ]
 
     # 3. Generate Report via LLM
-    gemini = GeminiHelper(model_id="gemini-2.5-flash") # Use standard flash for drafting
+    gemini = GeminiHelper(model_id="gemini-3.5-flash") # Use standard flash for drafting
     
     prompt = OPINION_REPORT_PROMPT.format(
         hierarchy=json.dumps(flattened_history, indent=2),
@@ -2333,7 +2990,30 @@ async def handle_generate_report(request_id: str):
         report_filename_pdf = "legal_opinion_report.pdf"
         report_path_pdf = os.path.join(legal_dir, report_filename_pdf)
         pdf.output(report_path_pdf)
-        
+
+        # Mirror the freshly-written legal/ folder to storage so the
+        # subsequent /download-by-path can stream the PDF (and the
+        # /report-sections endpoint can re-read the .md after a restart).
+        # Without this sync the legal artifacts stayed local-only:
+        # `outputs/validate/<rid>/legal/legal_opinion_report.pdf` would
+        # be returned in `report_url` but the next GET against
+        # /download-by-path 404'd because the key was never created on S3.
+        # We use the existing storage_sync helpers — they're no-ops when
+        # STORAGE_BACKEND=local, so the local-dev flow is unaffected.
+        s3_prefix = f"outputs/validate/{request_id}/legal"
+        try:
+            sync_file(report_path_md,
+                      content_type="text/markdown; charset=utf-8",
+                      key=f"{s3_prefix}/{report_filename_md}")
+            sync_file(report_path_pdf,
+                      content_type="application/pdf",
+                      key=f"{s3_prefix}/{report_filename_pdf}")
+            print(f"[+] Synced legal report artifacts to {s3_prefix}/")
+        except Exception as _e:
+            # Non-fatal: the local copy still works for an in-process
+            # response; the user can re-trigger generation if S3 is down.
+            print(f"[!] Failed to sync legal report to storage (non-fatal): {_e}")
+
         return {
             "status": "success",
             "report_md": report_content,
@@ -2550,7 +3230,15 @@ ENCUMBRANCE_NATURES = (
 )
 ENCUMBRANCE_RELEASE_NATURES = (
     "mortgage release", "release of mortgage", "discharge", "satisfaction",
-    "memo of satisfaction", "cancellation of mortgage"
+    "memo of satisfaction", "cancellation of mortgage",
+    # TN registries record mortgage discharges as plain "Receipt" with a
+    # PR Number pointing back to the parent mortgage (e.g., entry 1911/2009
+    # discharging 2850/2004 in the Survey 63 EC). Without these terms, the
+    # release-matching pass treated every Receipt as "other" → every
+    # historical mortgage stayed open forever → the Encumbrances card
+    # showed "10 ACTIVE" for a parcel that genuinely had 0 unreleased
+    # mortgages.
+    "receipt", "deed of receipt", "redemption", "deed of redemption",
 )
 PARTITION_NATURES = ("partition", "deed of partition")
 
@@ -2570,6 +3258,106 @@ def _classify_nature(nature: str) -> str:
     if any(term in n for term in TRANSFER_NATURES):
         return "transfer"
     return "other"
+
+
+def count_open_encumbrances_from_ec(ec_data: list) -> int:
+    """
+    Count UNRELEASED encumbrances in an EC by walking entries chronologically
+    and matching each "mortgage discharge" / "deed of receipt" entry against
+    the most recent unmatched mortgage / charge for the same parties.
+
+    Why this exists:
+        The `Encumbrance` DB rows written during analyze insert every
+        mortgage/charge/attachment with `status='active'` and NEVER get
+        updated when the EC contains the discharge receipts. So a parcel
+        with 30 years of historical mortgages (all long discharged) was
+        showing "10 ACTIVE encumbrances" forever on the Overview card.
+
+        This helper mirrors the release-matching logic in
+        handle_get_survey_ownership (lines 2929-2951) but in a cheap,
+        no-DB form so the /stats endpoint can compute the right number
+        on every dashboard load — no re-analyze required.
+
+    Algorithm (matches the audit logic):
+        1. Sort EC entries by execution date.
+        2. For each entry, classify via _classify_nature.
+        3. encumbrance      → push onto open list (creditor=buyer, borrower=seller).
+        4. encumbrance_release → mark the most recent matching open entry as
+                                  released (party-overlap on creditor or
+                                  borrower); fall back to oldest open if no
+                                  match (best-effort, same as the audit).
+        5. Return count of entries still unreleased at the end.
+
+    Args:
+        ec_data: list of EC entry dicts as written to ec_final.json.
+
+    Returns:
+        Integer count of currently-unreleased encumbrances. 0 if the EC
+        has no encumbrance entries OR every one of them has a matching
+        release receipt later in the chain.
+    """
+    if not ec_data:
+        return 0
+
+    from api.validate.hierarchy_generator import HierarchyGenerator
+    hg = HierarchyGenerator(output_dir="")
+
+    # Normalize each entry into the same shape the audit consumes.
+    def _split_parties(raw) -> set:
+        if not raw:
+            return set()
+        if isinstance(raw, list):
+            return {str(x).strip().lower() for x in raw if x}
+        # String form — comma-split conservatively.
+        return {p.strip().lower() for p in str(raw).split(",") if p.strip()}
+
+    history = []
+    for entry in ec_data:
+        history.append({
+            "date": entry.get("date") or "",
+            "doc_no": entry.get("document_number") or "",
+            "nature": entry.get("nature_of_document") or entry.get("nature") or "",
+            "sellers_set": _split_parties(entry.get("sellers")),
+            "buyers_set": _split_parties(entry.get("buyers")),
+        })
+
+    # Chronological sort, oldest → newest, so release receipts always
+    # come AFTER the mortgage they discharge.
+    history.sort(key=lambda x: hg._parse_date_for_sort(x["date"]))
+
+    open_list: list[dict] = []
+    for h in history:
+        kind = _classify_nature(h["nature"])
+        if kind == "encumbrance":
+            # In TN mortgages: the "buyer" column = the mortgagee (creditor),
+            # the "seller" column = the mortgagor (borrower). Surface both
+            # so the release-match can hit either side.
+            open_list.append({
+                "creditor": h["buyers_set"],
+                "borrower": h["sellers_set"],
+                "released": False,
+            })
+        elif kind == "encumbrance_release":
+            parties = h["sellers_set"] | h["buyers_set"]
+            # Walk newest first so we discharge the MOST RECENT matching
+            # open entry — matches the audit's reverse() walk.
+            matched = False
+            for enc in reversed(open_list):
+                if enc["released"]:
+                    continue
+                if _parties_overlap(enc["creditor"], parties) or _parties_overlap(enc["borrower"], parties):
+                    enc["released"] = True
+                    matched = True
+                    break
+            if not matched:
+                # Best-effort fallback: discharge the OLDEST open entry,
+                # same conservative choice the audit makes.
+                for enc in open_list:
+                    if not enc["released"]:
+                        enc["released"] = True
+                        break
+
+    return sum(1 for enc in open_list if not enc["released"])
 
 
 async def handle_get_survey_ownership(request_id: str):

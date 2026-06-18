@@ -41,7 +41,7 @@ def main():
     print(f"[*] Source PDF: {src_pdf}")
 
     out_dir = os.path.join(work, "outputs")
-    gemini = GeminiHelper(model_id="gemini-2.5-flash")
+    gemini = GeminiHelper(model_id="gemini-3.5-flash")
     vd = VisualDebugger(gemini, out_dir)
 
     print(f"[*] Running debug_mismatches_batch ...")

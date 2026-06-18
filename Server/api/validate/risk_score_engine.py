@@ -144,6 +144,37 @@ def _recommendation_from_grade(grade: str) -> str:
     }.get(grade, "Seek legal advice.")
 
 
+def _is_field_matched(status: str) -> bool:
+    """
+    True for any positive-match status the validator emits:
+      MATCHED, MATCHED (LINKED), MATCHED (SUPPLEMENTAL),
+      MATCHED (PARTIAL), MATCHED (PARTIAL/OVERLAP), MATCHED (REASONABLE).
+    Critically, returns False for "NOT MATCHED" — `"MATCHED" in status`
+    is a substring trap because it matches "NOT MATCHED" too.
+    """
+    s = (status or "").strip().upper()
+    return s.startswith("MATCHED")
+
+
+def _field_match_ratio(validation_result: Dict) -> float:
+    """
+    Returns the fraction of fields that came back MATCHED on this doc
+    (any positive MATCHED status). Used for partial credit so an 8/9 deed
+    that only fails on one field doesn't earn 0 trust just because `match`
+    is boolean.
+
+    Falls back to the boolean `match` flag if the validator didn't emit
+    a per-field comparisons array.
+    """
+    if not isinstance(validation_result, dict):
+        return 0.0
+    comparisons = validation_result.get("comparisons") or []
+    if not comparisons:
+        return 1.0 if validation_result.get("match") else 0.0
+    matched = sum(1 for c in comparisons if _is_field_matched(c.get("status")))
+    return matched / len(comparisons)
+
+
 def compute_risk_score(
     validation_results: List[Dict],
     hierarchy_data: List[Dict],
@@ -154,21 +185,32 @@ def compute_risk_score(
     Master scoring function.
 
     Scoring Model (100 points total):
-    - Validation Pass Rate: 28 pts (proportional to pass rate)
-    - Average Trustability Score: 17 pts (scaled from avg trust)
+    - Validation Pass Rate: 28 pts (partial credit per field-match ratio)
+    - Average Trustability Score: 17 pts (scaled by field-match ratio)
     - Encumbrance Gap Penalty: -6 per gap (max -30)
     - Extra Scrutiny Documents Penalty: -7 per doc (max -25)
     - Lis Pendens / Court Attachment: -25 per hit (max -40)
     - Panchami / Restricted Land: -30 per hit (max -40)
 
-    Base starts at 45 (allows score to reach 100 with clean data).
+    Base starts at 55 (so a perfectly clean parcel reaches 100).
     """
     total_docs = len(validation_results)
     passed_docs = sum(1 for r in validation_results if r.get("match"))
     failed_docs = total_docs - passed_docs
 
+    # Per-doc field-match ratios drive both validation and trust credit.
+    # This is what fixes "8/9 fields matched but the score acts like 0/9":
+    # under the old all-or-nothing rule, a single critical mismatch (e.g.,
+    # doc number 2714 misread as 2214) zeroed the entire deed's contribution
+    # to both score_pass and score_trust, even though every other field
+    # cross-verified cleanly.
+    field_ratios = [_field_match_ratio(r.get("validation_result")) for r in validation_results]
+
     # ── 1. Validation Pass Rate (0–28) ──────────────────────────────────────
-    pass_rate = (passed_docs / total_docs) if total_docs > 0 else 1.0
+    # Empty parcel → 0.0 (was 1.0, which made empty parcels read as "100%
+    # passed" and silently graded B without any actual evidence of clean
+    # title — legally indefensible).
+    pass_rate = (sum(field_ratios) / total_docs) if total_docs > 0 else 0.0
     score_pass = round(pass_rate * 28, 1)
 
     # ── 2. Average Trustability Score (0–17) ────────────────────────────────
@@ -181,20 +223,19 @@ def compute_risk_score(
     ]
     avg_trust = (sum(trust_scores_all) / len(trust_scores_all)) if trust_scores_all else 75.0
 
-    # Aggregate contribution to risk score: only credit docs that PASSED
-    # validation. Failed deeds must not earn positive trust points just
-    # because OCR confidence was high. This keeps the aggregate consistent
-    # with the per-document breakdown shown to legal advisors.
-    trust_scores_passed = [
-        r.get("validation_result", {}).get("trustability_score", 0)
-        for r in validation_results
-        if r.get("match")
-        and isinstance(r.get("validation_result", {}).get("trustability_score"), (int, float))
-    ]
+    # Aggregate contribution to risk score: now scaled by each doc's
+    # field-match ratio. A passed deed earns its full trustability; an
+    # 8/9 deed earns 8/9ths of its trustability; a fully failed deed
+    # still earns 0. This stays consistent with the per-document
+    # breakdown shown to legal advisors while no longer punishing deeds
+    # whose minor field mismatches are clearly OCR errors.
     if total_docs > 0:
-        score_trust = round(
-            (sum(trust_scores_passed) / 100) * (17 / total_docs), 1
-        )
+        weighted_trust = 0.0
+        for r, ratio in zip(validation_results, field_ratios):
+            trust = r.get("validation_result", {}).get("trustability_score", 0)
+            if isinstance(trust, (int, float)):
+                weighted_trust += trust * ratio
+        score_trust = round((weighted_trust / 100) * (17 / total_docs), 1)
     else:
         score_trust = 0.0
 
@@ -228,7 +269,11 @@ def compute_risk_score(
     restricted_penalty = min(len(restricted_hits) * 30, 40)  # cap at -40
 
     # ── Final Score Calculation ──────────────────────────────────────────────
-    base = 45.0
+    # Base 55 (was 45). With score_pass_max=28 + score_trust_max=17, the
+    # ceiling is now 100 (was 90), so a perfectly clean parcel can actually
+    # reach a top score. The previous 90 cap silently held scores below
+    # 100 even when everything passed.
+    base = 55.0
     raw_score = (
         base
         + score_pass
@@ -305,7 +350,7 @@ def compute_risk_score(
     ai_summary = None
     if generate_ai_summary:
         try:
-            gemini = GeminiHelper(model_id="gemini-2.5-flash-lite")
+            gemini = GeminiHelper(model_id="gemini-3.5-flash")
             prompt = RISK_SCORE_AI_SUMMARY_PROMPT.format(
                 total_docs=total_docs,
                 passed_docs=passed_docs,
@@ -346,17 +391,15 @@ def compute_risk_score(
             mismatch_reason = r.get("validation_result", {}).get("mismatch_reason", "")
             
             # Calculate this document's contribution to the score.
-            # Validation points: full points if passed, 0 if failed.
-            doc_validation_points = round(points_per_doc, 1) if match else 0
-
-            # Trustability points: only credited to documents that PASSED
-            # validation. A failed deed (chain-of-title mismatch) must not
-            # earn positive points just because OCR confidence was high —
-            # that's the legally defensible behavior. Scrutiny docs still
-            # get trust points since they technically match (scrutiny is a
-            # separate flag that applies its own -7 penalty below).
-            doc_trust_points = (
-                round(trust_points_per_doc * (trust / 100), 1) if match else 0
+            # Both validation and trust points are now scaled by the
+            # field-match ratio (e.g., 8/9 matched → 8/9 of the credit
+            # the deed would earn if it had passed cleanly). A fully
+            # failed deed (0 fields matched) still earns 0; a perfect
+            # deed earns full points.
+            field_ratio = _field_match_ratio(r.get("validation_result"))
+            doc_validation_points = round(points_per_doc * field_ratio, 1)
+            doc_trust_points = round(
+                trust_points_per_doc * (trust / 100) * field_ratio, 1
             )
 
             # Penalties per document
@@ -364,26 +407,54 @@ def compute_risk_score(
             if scrutiny:
                 doc_penalty -= 7  # Per scrutiny document
 
-            # Extract specific mismatches
+            # Extract specific mismatches from the validator's per-field
+            # comparisons array. The previous version read a
+            # `field_mismatches` dict that the validator never emits —
+            # dead code. The comparisons array (Document Number / Date /
+            # Executant Name / etc.) is the real source.
             mismatches = []
             if not match:
                 if mismatch_reason:
                     mismatches.append(mismatch_reason)
-                # Check for specific field mismatches
-                field_mismatches = r.get("validation_result", {}).get("field_mismatches", {})
-                if field_mismatches:
-                    for field, diff in field_mismatches.items():
-                        mismatches.append(f"{field}: {diff}")
+                comparisons = r.get("validation_result", {}).get("comparisons") or []
+                for c in comparisons:
+                    if _is_field_matched(c.get("status")):
+                        continue
+                    field = c.get("field", "Unknown field")
+                    reason = (c.get("reason") or "").strip()
+                    ec_val = (c.get("ec_value") or "").strip()
+                    md_val = (c.get("metadata_value") or "").strip()
+                    detail_parts = []
+                    if reason:
+                        detail_parts.append(reason)
+                    if ec_val and md_val:
+                        detail_parts.append(f"EC='{ec_val}' vs Deed='{md_val}'")
+                    detail = " — ".join(detail_parts) if detail_parts else "mismatch"
+                    mismatches.append(f"{field}: {detail}")
 
-            # Build trustability breakdown
-            if match:
-                trust_calc = f"({trust}/100) x {round(trust_points_per_doc, 1)} pts = {doc_trust_points} pts"
+            # Build trustability breakdown. Now exposes the field-match
+            # ratio so the user can see WHY an 8/9 deed earns partial
+            # credit instead of zero.
+            comparisons_count = len(r.get("validation_result", {}).get("comparisons") or [])
+            matched_count = round(field_ratio * comparisons_count) if comparisons_count else int(match)
+            ratio_pct = round(field_ratio * 100)
+            if comparisons_count:
+                trust_calc = (
+                    f"({trust}/100) × {round(trust_points_per_doc, 1)} pts × "
+                    f"{matched_count}/{comparisons_count} fields matched "
+                    f"({ratio_pct}%) = {doc_trust_points} pts"
+                )
+            elif match:
+                trust_calc = f"({trust}/100) × {round(trust_points_per_doc, 1)} pts = {doc_trust_points} pts"
             else:
-                trust_calc = f"Validation failed — no trust credit (raw OCR score: {trust})"
+                trust_calc = f"No comparisons emitted by validator (raw OCR score: {trust})"
             trust_breakdown = {
                 "raw_score": trust,
                 "max_possible": 100,
                 "points_earned": doc_trust_points,
+                "field_match_ratio": round(field_ratio, 3),
+                "fields_matched": matched_count,
+                "fields_total": comparisons_count,
                 "calculation": trust_calc,
             }
             

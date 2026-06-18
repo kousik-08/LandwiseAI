@@ -254,7 +254,7 @@ class ExtractionJob(Base):
     status = Column(
         String(20), nullable=False, default='queued'
     )  # queued, running, completed, failed
-    model_version = Column(String(50), nullable=False, default='gemini-2.5-flash')
+    model_version = Column(String(50), nullable=False, default='gemini-3.5-flash')
     ocr_engine = Column(String(50), nullable=False, default='gemini-vision')
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)

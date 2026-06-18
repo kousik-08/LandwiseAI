@@ -99,6 +99,22 @@
     background: #f8fafc !important;
 }
 
+/* Validation match status — tints a node GREEN when its document matched the
+   EC/registry and RED when it mismatched. Declared AFTER the deed-type rules
+   so it wins the equal-specificity !important tie-break and the match signal
+   takes visual priority over the deed-type tint for validated documents. */
+.node-matched .hierarchy-node-content {
+    border-color: #16a34a !important;
+    background: #ecfdf5 !important;
+    box-shadow: 0 0 0 2px rgba(22, 163, 74, 0.35), 0 6px 14px -4px rgba(22, 163, 74, 0.4) !important;
+}
+
+.node-mismatch .hierarchy-node-content {
+    border-color: #dc2626 !important;
+    background: #fef2f2 !important;
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.35), 0 6px 14px -4px rgba(220, 38, 38, 0.4) !important;
+}
+
 .react-flow__handle {
     width: 8px;
     height: 8px;

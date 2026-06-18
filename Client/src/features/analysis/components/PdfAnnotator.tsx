@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { landwiseApi } from "@/lib/landwise-api";
 import { toast } from "sonner";
 import {
@@ -42,7 +43,7 @@ interface PdfAnnotatorProps {
     onAnnotationChange?: (highlights: IHighlight[]) => void;
     /** Page-only navigation (no specific bbox). Used by chat citations. */
     scrollToPage?: { page: number; timestamp: number };
-    /** Highlight-precise navigation. Used by Notes Cockpit click-throughs.
+    /** Highlight-precise navigation. Used by Notes Hub click-throughs.
      *  When changed, the PDF scrolls to that highlight and flashes it. The
      *  optional `page` is a fallback hint: if the highlight id can't be
      *  resolved in time (cross-doc deep links, slow server loads), the
@@ -68,6 +69,21 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
     const [flashedId, setFlashedId] = useState<string | null>(null);
     const highlighterRef = useRef<any>(null);
     const scrollViewerRef = useRef<any>(null);
+    // Mirror of the latest highlights array so the focus effect's retry
+    // loop can read fresh values WITHOUT having to re-run (and re-cancel)
+    // every time React Query pushes a new annotation list. Re-running was
+    // causing the focus effect to fire `scrollTo()` repeatedly on the
+    // same target during a single click — each call retriggering the
+    // createRoot warning inside react-pdf-highlighter and racing the
+    // flash-animation class on/off so the user never saw it complete.
+    const highlightsRef = useRef<IHighlight[]>([]);
+    useEffect(() => {
+        highlightsRef.current = highlights;
+    }, [highlights]);
+    // Latches that scrollTo+flash already ran for a given focusHighlightId
+    // signature; prevents the duplicate calls that produced the warning
+    // and "highlight not visible" symptoms.
+    const lastFocusedSigRef = useRef<string>("");
     // Tracks whether the load effect has finished. The mirror-to-localStorage
     // effect must NOT run before this is true: on mount, `highlights` is
     // always [], and writing that empty array to localStorage immediately
@@ -76,12 +92,32 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
     // first real value (loaded or empty) is committed.
     const loadedRef = useRef(false);
 
-    // ── Load existing notes (DB only) ────────────────────────────────────
-    // Notes live in document_annotations on RDS; we no longer mirror to
-    // localStorage. If parcelId isn't provided (legacy embed), no notes
-    // load and saves are no-ops with a console warning.
+    // ── Load existing notes via React Query (DB only) ────────────────────
+    // Backed by the SAME query key the parent screens (LegalDashboard,
+    // AnalysisDashboard) can prefetch with — react-query dedupes the
+    // network call and serves a warm cache instantly when PdfAnnotator
+    // mounts, so highlights appear at the same time the PDF does instead
+    // of flashing in after a separate roundtrip.
+    const queryClient = useQueryClient();
+    const { data: annotationsResponse } = useQuery({
+        queryKey: ["annotations", parcelId],
+        queryFn: () => landwiseApi.getAnnotations(parcelId!),
+        enabled: !!parcelId,
+        staleTime: 60_000, // shared cache window for cockpit + analysis
+    });
+
+    // Invalidate this key after any mutation so a freshly created/deleted
+    // note shows up the next time another consumer of the same key reads.
+    // Without this the Notes Hub right-pane preview was reading stale
+    // emptiness even after the user marked notes in Document Analysis.
+    const invalidateAnnotationsCache = useCallback(() => {
+        if (parcelId) {
+            queryClient.invalidateQueries({ queryKey: ["annotations", parcelId] });
+            queryClient.invalidateQueries({ queryKey: ["annotations-summary", parcelId] });
+        }
+    }, [parcelId, queryClient]);
+
     useEffect(() => {
-        let cancelled = false;
         loadedRef.current = false;
 
         // 1×1 transparent PNG marker so react-pdf-highlighter picks the
@@ -94,60 +130,41 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
             return false;
         };
 
-        const loadAnnotations = async () => {
-            if (!parcelId) {
-                if (!cancelled) {
-                    setHighlights([]);
-                    loadedRef.current = true;
-                }
-                return;
-            }
-            try {
-                const data = await landwiseApi.getAnnotations(parcelId);
-                // Server returns doc_no as the original filename
-                // ("5548_2013.pdf"). The frontend passes docId as a raw doc
-                // number ("5548/2013", sometimes "5548_2013"). Normalize both
-                // sides to a slug (lowercase, slashes → underscores, .pdf
-                // stripped) before comparing.
-                const slug = (s: string) =>
-                    (s || "")
-                        .toLowerCase()
-                        .replace(/\.pdf$/i, "")
-                        .replace(/[\/\\]/g, "_");
-                const target = slug(docId);
-                const docAnnos: IHighlight[] = (data?.data || [])
-                    .filter((a: any) => {
-                        if (a.document_id === docId) return true;
-                        const docSlug = slug(a.doc_no || "");
-                        if (!target) return false;
-                        return docSlug === target || docSlug.includes(target);
-                    })
-                    .filter((a: any) => a.bounding_box)
-                    .map((a: any) => ({
-                        id: a.id,
-                        content: isAreaAnnotation(a)
-                            ? { text: a.selected_text || "", image: AREA_IMAGE_PLACEHOLDER }
-                            : { text: a.selected_text || "" },
-                        position: a.bounding_box,
-                        comment: { text: a.note || "", emoji: "" },
-                    }));
-                if (!cancelled) {
-                    setHighlights(docAnnos);
-                    loadedRef.current = true;
-                }
-            } catch (e) {
-                console.error("Failed to load annotations from server", e);
-                if (!cancelled) {
-                    setHighlights([]);
-                    loadedRef.current = true;
-                }
-            }
-        };
-        loadAnnotations();
-        return () => {
-            cancelled = true;
-        };
-    }, [docId, parcelId]);
+        if (!parcelId) {
+            setHighlights([]);
+            loadedRef.current = true;
+            return;
+        }
+
+        // Server returns doc_no as the original filename ("5548_2013.pdf").
+        // The frontend passes docId as a raw doc number ("5548/2013",
+        // sometimes "5548_2013"). Normalize both sides to a slug
+        // (lowercase, slashes → underscores, .pdf stripped) before comparing.
+        const slug = (s: string) =>
+            (s || "")
+                .toLowerCase()
+                .replace(/\.pdf$/i, "")
+                .replace(/[\/\\]/g, "_");
+        const target = slug(docId);
+        const docAnnos: IHighlight[] = (annotationsResponse?.data || [])
+            .filter((a: any) => {
+                if (a.document_id === docId) return true;
+                const docSlug = slug(a.doc_no || "");
+                if (!target) return false;
+                return docSlug === target || docSlug.includes(target);
+            })
+            .filter((a: any) => a.bounding_box)
+            .map((a: any) => ({
+                id: a.id,
+                content: isAreaAnnotation(a)
+                    ? { text: a.selected_text || "", image: AREA_IMAGE_PLACEHOLDER }
+                    : { text: a.selected_text || "" },
+                position: a.bounding_box,
+                comment: { text: a.note || "", emoji: "" },
+            }));
+        setHighlights(docAnnos);
+        loadedRef.current = true;
+    }, [docId, parcelId, annotationsResponse]);
 
     // Notify any parent that holds an in-memory view of the highlights. We no
     // longer mirror to localStorage — RDS is the only persistence layer.
@@ -192,7 +209,11 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                     prev.map((h) => (h.id === tempId ? { ...h, id: serverId } : h))
                 );
                 toast.success("Note saved");
-                // Tell the Notes Cockpit (and any other open observers) so the
+                // Cache bust: the cockpit's separate PdfAnnotator instance
+                // (and any future remount here) reads from this query key,
+                // so a stale cache would render this new note as missing.
+                invalidateAnnotationsCache();
+                // Tell the Notes Hub (and any other open observers) so the
                 // new note shows up in the list without a manual refresh.
                 window.dispatchEvent(
                     new CustomEvent("pdf-notes-changed", {
@@ -225,6 +246,7 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
             } catch (e) {
                 console.warn("Server delete failed (note removed from view)", e);
             }
+            invalidateAnnotationsCache();
         }
         window.dispatchEvent(
             new CustomEvent("pdf-notes-changed", {
@@ -240,7 +262,7 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
     };
 
     // ── Cross-component delete sync ──────────────────────────────────────
-    // When another component (typically the Notes Cockpit) deletes a note,
+    // When another component (typically the Notes Hub) deletes a note,
     // remove it from our local highlights state so the PDF overlay
     // disappears without waiting for a re-mount. Filtered by docId so
     // sibling PdfAnnotator instances don't drop unrelated notes.
@@ -260,12 +282,16 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
             // fall through (we already gated on docId).
             if (d.parcelId && parcelId && d.parcelId !== parcelId) return;
             setHighlights((prev) => prev.filter((h) => h.id !== d.noteId));
+            // Bust react-query cache too so a remount (or another consumer
+            // of the same key in the cockpit) doesn't render the deleted
+            // note again from stale cache.
+            invalidateAnnotationsCache();
         };
         window.addEventListener("pdf-notes-changed", handler);
         return () => window.removeEventListener("pdf-notes-changed", handler);
     }, [docId, parcelId]);
 
-    // ── Page-only scroll (chat citations + Notes Cockpit) ───────────────
+    // ── Page-only scroll (chat citations + Notes Hub) ───────────────
     // react-pdf-highlighter has no public "scroll to page top" API — only
     // scrollTo(highlight), which scrolls so the highlight's boundingRect
     // is near the viewport top. To navigate to a page without a real
@@ -289,7 +315,7 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
 
         let cancelled = false;
         let attempts = 0;
-        // The Notes Cockpit mounts a fresh PdfAnnotator on every note click,
+        // The Notes Hub mounts a fresh PdfAnnotator on every note click,
         // so highlighterRef is often still null on the first effect run while
         // PdfLoader fetches and parses the PDF. Without a retry the scroll
         // silently fails — user clicks a note and the viewer stays on page 1.
@@ -336,18 +362,32 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
         };
     }, [scrollToPage, focusHighlightId]);
 
-    // ── Highlight-precise scroll (Notes Cockpit click-through) ───────────
+    // ── Highlight-precise scroll (Notes Hub click-through) ───────────
     // When focusHighlightId changes, scroll to that real highlight and flash
     // its border for 1.5s so the eye can find it on the page.
     //
-    // Retry loop: in the cockpit's inline-preview case, PdfAnnotator is
-    // freshly mounted when the user clicks a note — highlights are still
-    // loading from the server when focusHighlightId fires for the first
-    // time. A single 200ms retry was too tight and the scroll silently
-    // failed. We now poll every 250ms for up to 2.5s, which covers a typical
-    // round-trip on a cold-cache load.
+    // Two correctness rules this effect now respects:
+    //
+    //  1. **Read highlights via a ref, not via the deps array.** When the
+    //     deps included `highlights`, every annotation list update (React
+    //     Query refetch, cache hit, mirror-from-localStorage) cancelled the
+    //     in-flight retry loop and started a fresh one. That meant
+    //     `scrollTo()` could fire MULTIPLE times for one click — each call
+    //     re-mounting react-pdf-highlighter's tip layer and triggering the
+    //     "createRoot() on a container that has already been passed to
+    //     createRoot()" warning. The flash-class toggle would also race
+    //     itself off, so the user never saw the amber pulse complete.
+    //
+    //  2. **Idempotency via a signature latch.** The same (id, page,
+    //     timestamp) tuple is treated as "already focused" so a stray
+    //     re-render can't re-trigger scrollTo. Click the same note twice
+    //     in a row → focusKey bumps in the parent → new timestamp → new
+    //     signature → we re-flash. That's the intended path.
     useEffect(() => {
         if (!focusHighlightId?.id) return;
+        const signature = `${focusHighlightId.id}|${focusHighlightId.page ?? ""}|${focusHighlightId.timestamp ?? ""}`;
+        if (signature === lastFocusedSigRef.current) return;
+
         let cancelled = false;
         let attempts = 0;
         const MAX_ATTEMPTS = 30;     // 30 × 250ms = 7.5s grace window — covers
@@ -355,6 +395,7 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                                       // still being fetched + parsed.
         const INTERVAL_MS = 250;
         let flashClear: ReturnType<typeof setTimeout> | undefined;
+        let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
         const fallbackToPage = () => {
             if (cancelled) return;
@@ -373,19 +414,34 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
             }
         };
 
+        const flashTarget = (id: string) => {
+            // Clear first → next-frame set → CSS animation restarts cleanly
+            // even on a same-note re-click. Without the null reset, the
+            // class is already on the wrapper and the animation does nothing.
+            setFlashedId(null);
+            requestAnimationFrame(() => {
+                if (cancelled) return;
+                setFlashedId(id);
+                flashClear = setTimeout(() => setFlashedId(null), 1500);
+            });
+        };
+
         const tryFocus = () => {
             if (cancelled) return;
             attempts += 1;
-            const target = highlights.find((h) => h.id === focusHighlightId.id);
+            // Read FRESH highlights via the ref so we don't have to be in
+            // the effect's deps. Highlights can arrive after this effect
+            // started; the retry loop keeps polling them.
+            const target = highlightsRef.current.find((h) => h.id === focusHighlightId.id);
             if (target && highlighterRef.current) {
                 try {
                     highlighterRef.current.scrollTo(target);
-                    setFlashedId(target.id);
-                    flashClear = setTimeout(() => setFlashedId(null), 1500);
+                    lastFocusedSigRef.current = signature;
+                    flashTarget(target.id);
                     return;
                 } catch (e) {
                     if (attempts < MAX_ATTEMPTS) {
-                        setTimeout(tryFocus, INTERVAL_MS);
+                        retryTimer = setTimeout(tryFocus, INTERVAL_MS);
                         return;
                     }
                     console.warn("focus scrollTo gave up after retries", e);
@@ -393,11 +449,12 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                 }
             }
             if (attempts < MAX_ATTEMPTS) {
-                setTimeout(tryFocus, INTERVAL_MS);
+                retryTimer = setTimeout(tryFocus, INTERVAL_MS);
             } else {
                 console.warn(
                     `focusHighlightId ${focusHighlightId.id} not found after ${MAX_ATTEMPTS} attempts; falling back to page scroll`,
                 );
+                lastFocusedSigRef.current = signature;
                 fallbackToPage();
             }
         };
@@ -405,8 +462,9 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
         return () => {
             cancelled = true;
             if (flashClear) clearTimeout(flashClear);
+            if (retryTimer) clearTimeout(retryTimer);
         };
-    }, [focusHighlightId, highlights]);
+    }, [focusHighlightId]);
 
     return (
         <div className={cn("pdf-annotator-wrapper relative", selectionMode === "area" && "draw-mode")}>

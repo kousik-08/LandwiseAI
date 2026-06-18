@@ -10,7 +10,7 @@ from prompts.supporting_prompts import SUPPORTING_DOC_VERIFICATION_PROMPT
 class SupportingVerifier:
     def __init__(self, output_dir: str):
         self.output_dir = output_dir
-        self.gemini = GeminiHelper(model_id="gemini-2.5-flash") # Use flash for vision
+        self.gemini = GeminiHelper(model_id="gemini-3.5-flash") # Use flash for vision
 
     def verify(self, deed_metadata: Dict[str, Any], supporting_pdf_path: str) -> Dict[str, Any]:
         """

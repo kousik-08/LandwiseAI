@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
@@ -6,6 +6,7 @@ import { FileDropZone } from "./FileDropZone";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { StreamingMessages, StreamLog, StreamStep } from "./StreamingMessages";
 import { ValidationResults } from "@/features/analysis/components/AnalysisDashboard";
+import LiveAnalysisProgress from "@/features/analysis/components/LiveAnalysisProgress";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,12 @@ export function UploadForm() {
   const [logs, setLogs] = useState<StreamLog[]>([]);
   const [steps, setSteps] = useState<StreamStep[]>(INITIAL_STEPS);
   const [resultData, setResultData] = useState<string>("");
+  // Engaging live-progress overlay shown during/after a run. Re-opens on each
+  // new run; the user can minimize it to the corner or dismiss it.
+  const [showOverlay, setShowOverlay] = useState(true);
+  useEffect(() => {
+    if (uploadState === "uploading") setShowOverlay(true);
+  }, [uploadState]);
 
   const addLog = useCallback((data: any) => {
     const log: StreamLog = {
@@ -383,6 +390,18 @@ export function UploadForm() {
     <div
       className={`w-full ${hasResultsOrHierarchy ? "" : "max-w-4xl"} mx-auto space-y-8`}
     >
+      {/* Engaging live-progress overlay — narrates each document and minimizes
+          to the corner after the first one finishes, revealing results below. */}
+      {(isProcessing || uploadState === "complete") && showOverlay && (
+        <LiveAnalysisProgress
+          open
+          steps={steps}
+          completed={parsedResults || []}
+          isComplete={uploadState === "complete"}
+          onClose={() => setShowOverlay(false)}
+        />
+      )}
+
       {/* Input Type Selection */}
       <div className="space-y-2">
         <Label htmlFor="input-type" className="text-base font-semibold">

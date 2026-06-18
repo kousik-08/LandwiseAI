@@ -24,7 +24,15 @@ if (("@127.0.0.1" in _lowered or "@localhost" in _lowered or "@::1" in _lowered)
         "this deployment is RDS-only. Override with ALLOW_LOCAL_DB=true if you really mean it."
     )
 
-engine = create_engine(DATABASE_URL)
+# pool_pre_ping: validate a pooled connection (lightweight SELECT 1) before
+# use, so connections RDS has closed are detected and transparently replaced
+# instead of raising "server closed the connection unexpectedly".
+# pool_recycle: proactively recycle connections before typical idle timeouts.
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=280,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

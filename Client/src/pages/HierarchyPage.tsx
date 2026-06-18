@@ -40,7 +40,7 @@ export default function HierarchyPage() {
     const parcelIdFromUrl = searchParams.get("parcelId");
     const [resolvedParcelId, setResolvedParcelId] = useState<string | null>(parcelIdFromUrl);
     const parcelId = resolvedParcelId;
-    // Deep-link params used by the Notes Cockpit (LegalDashboard) to land the
+    // Deep-link params used by the Notes Hub (LegalDashboard) to land the
     // user directly on a specific deed + highlight when they click a note.
     const deepLinkDocNo = searchParams.get("docNo");
     const deepLinkNoteId = searchParams.get("noteId");
@@ -85,7 +85,7 @@ export default function HierarchyPage() {
 
     // Auto-resolve parcelId from request_id when the URL didn't carry one.
     // Without this, opening /hierarchy from /verify would not have a parcel
-    // context and the Notes Cockpit + server-side note persistence would be
+    // context and the Notes Hub + server-side note persistence would be
     // unavailable.
     useEffect(() => {
         if (parcelIdFromUrl || !requestId) return;
@@ -183,7 +183,7 @@ export default function HierarchyPage() {
     }, [requestId, surveyNumber, limit]);
 
     // Deep-link landing: once the timeline data is loaded, if the URL points
-    // at a specific doc/note (from a Notes Cockpit click), open that deed in
+    // at a specific doc/note (from a Notes Hub click), open that deed in
     // the side panel and scroll to the highlight. We guard with a ref-style
     // boolean so this only fires once per page load.
     const [deepLinkApplied, setDeepLinkApplied] = useState(false);
@@ -394,7 +394,7 @@ export default function HierarchyPage() {
     }, []);
 
     /**
-     * Notes Cockpit click-through handler. Closes the cockpit, loads the right
+     * Notes Hub click-through handler. Closes the cockpit, loads the right
      * PDF if we're not already on it, then triggers PdfAnnotator's
      * focusHighlightId so the highlight scrolls into view. Lands on the
      * "annotations" tab so the user sees both the note + the PDF flash —
@@ -688,7 +688,7 @@ export default function HierarchyPage() {
                                 title="View every note across every PDF for this parcel"
                             >
                                 <StickyNote className="w-3.5 h-3.5" />
-                                Notes Cockpit
+                                Notes Hub
                             </Button>
                         )}
                         <Button
@@ -709,6 +709,7 @@ export default function HierarchyPage() {
                                     <ReactFlowHierarchy
                                         data={timeline.react_flow_data}
                                         onNodeClick={handleNodeClick}
+                                        validationResults={results}
                                     />
                                 )}
                             </div>
@@ -1181,14 +1182,14 @@ export default function HierarchyPage() {
                 </CardContent>
             </Card>
 
-            {/* Parcel-wide Notes Cockpit. Aggregates every note across every PDF
+            {/* Parcel-wide Notes Hub. Aggregates every note across every PDF
                 for this parcel; clicking a row opens the right deed and flashes
                 the highlight. Only available when the URL provides parcelId. */}
             {parcelId && (
                 <Dialog open={notesSummaryOpen} onOpenChange={setNotesSummaryOpen}>
                     <DialogContent className="max-w-6xl w-[min(95vw,1100px)] p-0 overflow-hidden h-[85vh] flex flex-col">
                         <DialogHeader className="sr-only">
-                            <DialogTitle>Notes Cockpit</DialogTitle>
+                            <DialogTitle>Notes Hub</DialogTitle>
                         </DialogHeader>
                         <NotesSummary
                             parcelId={parcelId}

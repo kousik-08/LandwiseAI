@@ -17,7 +17,29 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import PageTransition from "./components/PageTransition";
 import AppShell from "./components/AppShell";
 
-const queryClient = new QueryClient();
+// Global React Query defaults tuned for the LandwiseAI workspace.
+//
+// - staleTime 60s: most dashboard reads are safe to serve from cache for a
+//   minute; mutations already invalidate the relevant keys explicitly.
+// - gcTime 5m: keep recently-used data hot across tab switches without
+//   ballooning memory.
+// - refetchOnWindowFocus/Reconnect: OFF. The previous defaults fired a
+//   refetch storm of 5-8 parcel-scoped queries every time the user
+//   alt-tabbed back to the app, which was a major contributor to the
+//   ~10s perceived load on warm navigation.
+// - retry: 1. The old default (3 with exponential backoff) turned a single
+//   transient 5xx into a multi-second hang on first paint.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+  },
+});
 
 // Wrap protected routes in the persistent app shell so navigation, breadcrumbs
 // and the user menu remain visible across the workspace. Canvas-style pages

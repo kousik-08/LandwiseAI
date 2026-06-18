@@ -45,15 +45,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     checkSession();
   }, []);
 
+  // Backend error envelope is { statusCode, body: { responseMessage, ... } };
+  // older/raw errors use { detail }. Read both so real messages surface.
+  const errMessage = (error: any, fallback: string) =>
+    error.response?.data?.body?.responseMessage ||
+    error.response?.data?.detail ||
+    fallback;
+
   const login = async (email: string, password: string) => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/auth/login`, null, {
-        params: { email, password },
+      const response = await axios.post(`${API_BASE_URL}/auth/login`, {
+        email,
+        password,
       });
       setUser(response.data.user);
       toast.success("Welcome back, " + response.data.user.full_name);
     } catch (error: any) {
-      const message = error.response?.data?.detail || "Login failed";
+      const message = errMessage(error, "Login failed");
       toast.error(message);
       throw error;
     }
@@ -61,12 +69,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = async (fullName: string, email: string, password: string, roleName: string = "legal_advisor") => {
     try {
-      await axios.post(`${API_BASE_URL}/auth/signup`, null, {
-        params: { full_name: fullName, email, password, role_name: roleName },
+      await axios.post(`${API_BASE_URL}/auth/signup`, {
+        full_name: fullName,
+        email,
+        password,
+        role_name: roleName,
       });
       toast.success("Account created successfully. Please login.");
     } catch (error: any) {
-      const message = error.response?.data?.detail || "Signup failed";
+      const message = errMessage(error, "Signup failed");
       toast.error(message);
       throw error;
     }

@@ -14,7 +14,7 @@ class HierarchyGenerator:
         self.temp_tx_counter = 0
         self.current_x = 250
         self.current_y = 0
-        self.gemini = GeminiHelper(model_id=model_id or "gemini-2.5-flash")
+        self.gemini = GeminiHelper(model_id=model_id or "gemini-3.5-flash")
         if self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
 
@@ -473,6 +473,17 @@ class HierarchyGenerator:
             f.write(final_html)
 
     def _parse_date_for_sort(self, date_str: str):
+        # Multi-date column normalization: v6 EC RAW_PROMPT emits
+        # "20-Jul-2018 | 20-Jul-2018 | 31-Jul-2018" (execution / registration
+        # / completion). Anchor on the first token — that's the execution
+        # date and matches the deed's body narrative. Without this, the
+        # split('-') on the full string returns 7 parts (not 3), the sort
+        # collapses to "0000-00-00", and hierarchy ordering breaks.
+        if isinstance(date_str, str):
+            for sep in (' | ', '|', ' / '):
+                if sep in date_str:
+                    date_str = date_str.split(sep, 1)[0].strip()
+                    break
         try:
             if '-' in date_str:
                 parts = date_str.split('-')

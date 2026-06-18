@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy.exc import OperationalError
 import traceback
 from common.utils import Utils
 
@@ -60,6 +61,30 @@ def register_exception_handlers(app: FastAPI):
             status_code=422,
             content=content,
             headers={"X-Request-ID": getattr(request.state, "request_id", "")},
+        )
+
+    @app.exception_handler(OperationalError)
+    async def db_operational_error_handler(request: Request, exc: OperationalError):
+        # Transient DB connectivity (DNS hiccup, RDS failover, brief network
+        # flap, server-closed-connection). 503 + Retry-After lets the client
+        # distinguish "try again in a moment" from a real 500.
+        orig = getattr(exc, "orig", exc)
+        msg = f"DB OperationalError on {request.method} {request.url.path}: {orig}"
+        if hasattr(request.state, "logger"):
+            request.state.logger.log_error(msg)
+        print(f"[!] {msg}")
+
+        content = Utils.construct_output(
+            response=None, status_code=503,
+            message="Database temporarily unreachable. Please retry in a moment.",
+        )
+        return JSONResponse(
+            status_code=503,
+            content=content,
+            headers={
+                "X-Request-ID": getattr(request.state, "request_id", ""),
+                "Retry-After": "2",
+            },
         )
 
     @app.exception_handler(Exception)

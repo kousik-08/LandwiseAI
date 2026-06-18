@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import ReactMarkdown from 'react-markdown';
 import { useSearchParams } from "react-router-dom";
 import { 
@@ -56,9 +56,15 @@ import {
   ScrollText,
   Gavel,
   XCircle,
-  StickyNote
+  StickyNote,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Loader2,
+  Circle
 } from "lucide-react";
 import NotesSummary, { type NoteJumpTarget } from "@/features/notes/components/NotesSummary";
+import { useHeaderSlot } from "@/components/AppShell";
+import { useAuth } from "@/context/AuthContext";
 import { SurveyTimeline } from "@/features/timeline/components/SurveyTimeline";
 import { 
   ResizableHandle, 
@@ -68,6 +74,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import ParcelWorkspaceLayout from "@/components/ParcelWorkspaceLayout";
+import { DocumentAnalysisRevamp } from "@/features/analysis/components/DocumentAnalysisRevamp";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -79,8 +88,8 @@ import { Progress } from "@/components/ui/progress";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { format } from "date-fns";
-import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
+import { cn, coerceMatchCount } from "@/lib/utils";
+import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import { landwiseApi } from "@/lib/landwise-api";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
@@ -107,6 +116,8 @@ import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
 import DocChat from "@/features/analysis/components/DocChat";
 import { ValidationResults } from "@/features/analysis/components/AnalysisDashboard";
 import { RiskScoreCard } from "@/features/analysis/components/RiskScoreCard";
+import LiveAnalysisProgress, { type AnalysisStep } from "@/features/analysis/components/LiveAnalysisProgress";
+import { LANDWISE_CHECKS, ALL_CHECK_IDS, AUTOMATED_CHECK_IDS, CHECK_CATEGORIES, getSelectedChecks, hasSavedChecks, setSelectedChecks as persistSelectedChecks } from "@/lib/landwise-checks";
 import { getFileUrl, API_BASE_URL } from "@/lib/api";
 
 interface Project {
@@ -159,26 +170,60 @@ function useMediaQuery(query: string) {
   return matches;
 }
 
+// Pipeline stages streamed by the analyze workflow — used by the live progress
+// overlay. Ids match the backend `step` values in the ndjson event stream.
+const ANALYZE_STEPS: AnalysisStep[] = [
+  { id: "ec_extraction", label: "EC Extraction", status: "pending" },
+  { id: "matching", label: "Document Matching", status: "pending" },
+  { id: "sale_deed_extraction", label: "Sale Deed Extraction", status: "pending" },
+  { id: "hierarchy", label: "Hierarchy Generation", status: "pending" },
+  { id: "validation", label: "Validation", status: "pending" },
+];
+
 export default function LegalDashboard() {
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
+  // Seed all routable state from the URL so a hard reload lands the user
+  // exactly where they were. Previously only `projectId` was persisted, so
+  // reloading from Overview / Document Analysis / Hierarchy tabs reset
+  // `selectedParcelId` to null and dropped the user back to the parcel
+  // listing. Now `parcelId` and `tab` are also URL-backed.
   const urlProjectId = searchParams.get("projectId");
+  const urlParcelId = searchParams.get("parcelId");
+  const urlTab = searchParams.get("tab");
 
   const isDesktop = useMediaQuery("(min-width: 768px)");
 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(urlProjectId);
-  const [selectedParcelId, setSelectedParcelId] = useState<string | null>(null);
+  const [selectedParcelId, setSelectedParcelId] = useState<string | null>(urlParcelId);
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<string>("overview");
+  const [activeTab, setActiveTab] = useState<string>(urlTab || "overview");
+  // Document the Risk Score tab asked us to focus inside Document Analysis.
+  const [docAnalysisFocusDoc, setDocAnalysisFocusDoc] = useState<string | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isBatchAuditModalOpen, setIsBatchAuditModalOpen] = useState(false);
+  // Checklist popup shown after Batch Audit upload; on approve it starts the run.
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  // Files attached in Batch Audit, held until the user approves the checklist —
+  // only THEN are they uploaded and the analysis started.
+  const [pendingBatch, setPendingBatch] = useState<{ ec: File; zip: File; limit?: number } | null>(null);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [hierarchyPreview, setHierarchyPreview] = useState<any>(null);
-  // Parcel-wide Notes Cockpit. Aggregates every note across every PDF for the
+  // Parcel-wide Notes Hub. Aggregates every note across every PDF for the
   // selected parcel; clicking a note opens HierarchyPage at that document
   // with the highlight scrolled into view and flashed.
   const [notesSummaryOpen, setNotesSummaryOpen] = useState(false);
+  // Sidebar collapse — managed via ResizablePanel's imperative API so the
+  // resize handle stays consistent with the rest of the layout. `collapsed`
+  // mirrors panel state for rendering an expand button inside the strip.
+  const sidebarPanelRef = useRef<any>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // The parcel breadcrumb + tab strip + Notes Hub + user info are
+  // injected into AppShell's header so they share a row with the brand +
+  // logout button. Without this, two header rows stack vertically.
+  const { setHeaderSlot } = useHeaderSlot();
 
   // Auto-close mobile sidebar when a parcel is selected
   useEffect(() => {
@@ -187,12 +232,69 @@ export default function LegalDashboard() {
     }
   }, [selectedParcelId, isDesktop]);
 
-  // Sync selectedProjectId with URL if it changes via dropdown
+  // Reflect projectId / parcelId / tab back into the URL so refresh,
+  // browser-back, copy-link and external deep-link all behave correctly.
+  // `replace: true` keeps tab clicks out of browser history. We mutate a
+  // fresh URLSearchParams (rather than passing an object) so the three
+  // params don't clobber each other in the same render. `tab=overview` is
+  // the default and omitted to keep clean URLs on the landing view.
   useEffect(() => {
-    if (selectedProjectId && selectedProjectId !== searchParams.get("projectId")) {
-      setSearchParams({ projectId: selectedProjectId });
+    const next = new URLSearchParams(searchParams);
+    let changed = false;
+
+    if (selectedProjectId) {
+      if (next.get("projectId") !== selectedProjectId) {
+        next.set("projectId", selectedProjectId);
+        changed = true;
+      }
+    } else if (next.has("projectId")) {
+      next.delete("projectId");
+      changed = true;
     }
-  }, [selectedProjectId, searchParams, setSearchParams]);
+
+    if (selectedParcelId) {
+      if (next.get("parcelId") !== selectedParcelId) {
+        next.set("parcelId", selectedParcelId);
+        changed = true;
+      }
+    } else if (next.has("parcelId")) {
+      next.delete("parcelId");
+      changed = true;
+    }
+
+    if (activeTab && activeTab !== "overview") {
+      if (next.get("tab") !== activeTab) {
+        next.set("tab", activeTab);
+        changed = true;
+      }
+    } else if (next.has("tab")) {
+      next.delete("tab");
+      changed = true;
+    }
+
+    if (changed) {
+      setSearchParams(next, { replace: true });
+    }
+  }, [selectedProjectId, selectedParcelId, activeTab, searchParams, setSearchParams]);
+
+  // Unified parcel selector. Sets selectedParcelId AND synchronously clears
+  // the timeline-tab URL params (tlSurvey / tlLimit) in the same event so
+  // both state updates land in a single React batch — by the time
+  // SurveyTimeline remounts (it's keyed by parcelId) the URL is already
+  // clean, so its useState init reads tlSurvey="" and the auto-fire effect
+  // sees no query to run. A post-render useEffect can't help here because
+  // SurveyTimeline reads searchParams during its first render, before any
+  // effect would fire.
+  const handleSelectParcel = useCallback((id: string | null) => {
+    setSelectedParcelId(id);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      let dirty = false;
+      if (next.has("tlSurvey")) { next.delete("tlSurvey"); dirty = true; }
+      if (next.has("tlLimit")) { next.delete("tlLimit"); dirty = true; }
+      return dirty ? next : prev;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   // 1. Fetch Projects
   const { data: projectsData, isLoading: projectsLoading } = useQuery({
@@ -200,7 +302,7 @@ export default function LegalDashboard() {
     queryFn: landwiseApi.getProjects
   });
 
-  const projects: Project[] = projectsData?.data || [];
+  const projects: Project[] = (projectsData?.data || []).filter((p: Project | null | undefined): p is Project => !!p && !!p.id);
   
   // 1.5. Fetch Audit Data (Shared for Hierarchy, Timeline, etc.)
   const { data: auditData, isLoading: auditLoading } = useQuery({
@@ -211,6 +313,30 @@ export default function LegalDashboard() {
 
   const requestId = auditData?.request_id;
   const validationResults = auditData?.validation_results || [];
+
+  // Parcel's full document list — used by the Notes Hub's pdfUrlResolver
+  // as a fallback when validation hasn't been run yet (no validationResults).
+  // Without this, the cockpit shows "PDF unavailable for this deed" for every
+  // note even though we have a perfectly downloadable copy in S3.
+  const { data: parcelDocsData } = useQuery({
+    queryKey: ['documents', selectedParcelId],
+    queryFn: () => landwiseApi.listDocuments(selectedParcelId!),
+    enabled: !!selectedParcelId,
+  });
+  const parcelDocs: any[] = parcelDocsData?.data || [];
+
+  // Prefetch annotations the moment a parcel is selected, so when the user
+  // opens a PDF in Document Analysis / Notes Hub the highlights are already
+  // in react-query's cache and render at the same time as the PDF instead
+  // of flashing in late. PdfAnnotator reads the same query key so it gets
+  // an instant cache hit. staleTime matches PdfAnnotator's so all consumers
+  // share one cached result instead of triggering separate fetches.
+  useQuery({
+    queryKey: ['annotations', selectedParcelId],
+    queryFn: () => landwiseApi.getAnnotations(selectedParcelId!),
+    enabled: !!selectedParcelId,
+    staleTime: 60_000,
+  });
 
   // Set default project if none in URL
   useEffect(() => {
@@ -248,7 +374,7 @@ export default function LegalDashboard() {
   });
 
   // 5. Fetch Parcel Stats (Risk Score, Workflow Phase)
-  const { data: parcelStatsData } = useQuery({
+  const { data: parcelStatsData, isLoading: parcelStatsLoading, isFetching: parcelStatsFetching } = useQuery({
     queryKey: ['parcel-stats', selectedParcelId],
     queryFn: async () => {
       const res = await fetch(`${API_BASE_URL}/api/v1/landwise/parcels/${selectedParcelId}/stats`);
@@ -258,14 +384,156 @@ export default function LegalDashboard() {
     enabled: !!selectedParcelId
   });
 
-  const parcels: Parcel[] = parcelsData?.data || [];
+  const parcels: Parcel[] = (parcelsData?.data || []).filter((p: Parcel | null | undefined): p is Parcel => !!p && !!p.id);
   const risks = risksData?.data || [];
   const selectedProject = useMemo(() => projects.find(p => p.id === selectedProjectId), [projects, selectedProjectId]);
   const selectedParcel = useMemo(() => parcels.find(p => p.id === selectedParcelId), [parcels, selectedParcelId]);
 
+  // Auth — needed for the user pill we render into AppShell's header slot.
+  const { user } = useAuth();
+
+  // Inject the parcel breadcrumb + tabs + Notes Hub + user info into
+  // AppShell's center slot whenever the parcel or active tab changes, so
+  // everything sits in ONE top row with the brand and logout button.
+  // Cleanup on unmount clears the slot so other pages start with an empty bar.
+  useEffect(() => {
+    if (!selectedParcel) {
+      setHeaderSlot(null);
+      return;
+    }
+    const initials = user?.full_name
+      ? user.full_name.split(" ").map(p => p[0]).join("").slice(0, 2).toUpperCase()
+      : "AK";
+    const displayName = user?.full_name ? `Advs. ${user.full_name}` : "Advs. Kousik";
+
+    setHeaderSlot(
+      // New top bar: project dropdown + global search + parcel pills (left),
+      // register-survey + notes hub + bell + user (right). The workspace
+      // tab nav moved out of here into the new dark left sidebar
+      // (ParcelWorkspaceLayout). One row, no double headers.
+      <>
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          {/* Project dropdown trigger */}
+          <button
+            type="button"
+            className="hidden md:inline-flex shrink-0 items-center gap-1.5 px-2.5 h-8 rounded-lg bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700"
+            title="Project"
+          >
+            <span className="truncate max-w-[120px]">{selectedProject?.name || "Project"}</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          </button>
+
+          {/* Global search */}
+          <div className="relative flex-1 min-w-0 max-w-md">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search surveys..."
+              className="w-full h-8 pl-8 pr-3 rounded-lg bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-xs font-medium placeholder:text-slate-400 outline-none transition-all"
+            />
+          </div>
+
+          {/* Parcel pills */}
+          <div className="hidden md:flex items-center gap-1 min-w-0 overflow-x-auto custom-scrollbar py-0.5">
+            {parcels.map(p => {
+              const isActive = p.id === selectedParcelId;
+              return (
+                <div
+                  key={p.id}
+                  onClick={() => handleSelectParcel(p.id)}
+                  className={cn(
+                    "group inline-flex items-center gap-1.5 h-8 pl-2.5 pr-1 rounded-full cursor-pointer transition-all text-xs font-bold whitespace-nowrap shrink-0",
+                    isActive
+                      ? "bg-indigo-600 text-white shadow-sm shadow-indigo-500/30"
+                      : "bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200",
+                  )}
+                  title={`Open SN ${p.survey_number}`}
+                >
+                  <span className={cn("w-1.5 h-1.5 rounded-full", isActive ? "bg-white" : "bg-emerald-500")} />
+                  <span>SN {p.survey_number}</span>
+                  <button
+                    type="button"
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (isActive) handleSelectParcel(null);
+                    }}
+                    className={cn(
+                      "w-5 h-5 inline-flex items-center justify-center rounded-full transition-colors",
+                      isActive ? "hover:bg-white/20 text-white" : "hover:bg-slate-200 text-slate-400",
+                    )}
+                    aria-label={`Close ${p.survey_number}`}
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            size="sm"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold gap-1.5 h-8 px-3 rounded-lg hidden lg:inline-flex"
+            onClick={() => setIsUploadModalOpen(true)}
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Register Survey
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 hidden md:inline-flex"
+            onClick={() => setNotesSummaryOpen(true)}
+            title="View every note across every PDF for this parcel"
+          >
+            <StickyNote className="w-3.5 h-3.5" />
+            <span className="hidden lg:inline">Notes Hub</span>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 relative h-8 w-8"
+            aria-label="Notifications"
+          >
+            <Bell className="w-4 h-4" />
+            <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-indigo-600 rounded-full border-2 border-white" />
+          </Button>
+          <div className="h-5 w-[1px] bg-slate-200 hidden md:block" />
+          <div className="hidden md:flex items-center gap-2">
+            <div className="text-right hidden xl:block">
+              <p className="text-xs font-bold text-slate-900 leading-tight">{displayName}</p>
+              <p className="text-[9px] text-slate-500 uppercase font-bold tracking-[0.18em] leading-tight">Legal Advisor</p>
+            </div>
+            <div
+              className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-500 shadow-md shadow-indigo-500/30 flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white"
+              title={displayName}
+            >
+              {initials}
+            </div>
+          </div>
+        </div>
+      </>,
+    );
+
+    return () => setHeaderSlot(null);
+  }, [
+    setHeaderSlot,
+    selectedParcel,
+    selectedParcelId,
+    selectedProject,
+    activeTab,
+    user,
+    parcels,
+    searchQuery,
+    handleSelectParcel,
+  ]);
+
   // 6. Fetch Risk Score from dedicated endpoint
   const riskScoreRequestId = selectedParcel?.last_analysis_request_id;
-  const { data: riskScoreData } = useQuery({
+  const { data: riskScoreData, isLoading: riskScoreLoading, isFetching: riskScoreFetching } = useQuery({
     queryKey: ['risk-score', riskScoreRequestId],
     queryFn: async () => {
       const res = await fetch(`${API_BASE_URL}/api/v1/get-risk-score/${riskScoreRequestId}`);
@@ -276,31 +544,82 @@ export default function LegalDashboard() {
   });
   
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // Keeps the live-progress overlay in its "complete / reveal" state for a
+  // short window after the stream ends.
+  const [showAnalyzeComplete, setShowAnalyzeComplete] = useState(false);
+  // Real stage + per-document state fed by the analyze event stream.
+  const [analyzeSteps, setAnalyzeSteps] = useState<AnalysisStep[]>(() => ANALYZE_STEPS.map((s) => ({ ...s })));
+  const [analyzeCompleted, setAnalyzeCompleted] = useState<any[]>([]);
+  const [analyzeActivity, setAnalyzeActivity] = useState("");
 
-  const handleAnalyze = async () => {
-    if (!selectedParcelId) return;
+  // Run a parcel analyze as a LIVE stream: parse the ndjson workflow events and
+  // drive the progress overlay (EC extraction → matching → … and each finished
+  // document revealed as its `partial_result` arrives).
+  const runStreamingAnalyze = useCallback(async (pid: string, limit?: number) => {
+    setAnalyzeSteps(ANALYZE_STEPS.map((s) => ({ ...s, status: "pending" })));
+    setAnalyzeCompleted([]);
+    setAnalyzeActivity("");
+    setShowAnalyzeComplete(false);
     setIsAnalyzing(true);
     try {
-      await landwiseApi.analyzeParcel(selectedParcelId);
-      toast.success("Analysis triggered", {
-        description: "The AI is now auditing the title chain. Results will appear in the Timeline and Risk sections shortly.",
-        icon: <Zap className="w-4 h-4 text-indigo-500" />,
-      });
-      // Refresh relevant data
-      queryClient.invalidateQueries({ queryKey: ["parcels"] });
-      queryClient.invalidateQueries({ queryKey: ["parcel-stats", selectedParcelId] });
-      queryClient.invalidateQueries({ queryKey: ["documents", selectedParcelId] });
-      queryClient.invalidateQueries({ queryKey: ["hierarchy", selectedParcelId] });
-      queryClient.invalidateQueries({ queryKey: ["risks", selectedParcelId] });
-      queryClient.invalidateQueries({ queryKey: ["timeline", selectedParcelId] });
-      queryClient.invalidateQueries({ queryKey: ["checklist", selectedParcelId] });
+      const resp = await landwiseApi.analyzeParcelStream(pid, limit);
+      if (!resp.ok || !resp.body) throw new Error(`Analyze failed (${resp.status})`);
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line);
+            if (data.type === "step_start") {
+              setAnalyzeSteps((prev) => prev.map((s) => (s.id === data.step ? { ...s, status: "running" } : s)));
+            } else if (data.type === "step_complete") {
+              setAnalyzeSteps((prev) =>
+                prev.map((s) => (s.id === data.step ? { ...s, status: data.status === "success" ? "success" : "failed" } : s)),
+              );
+            } else if (data.type === "partial_result" && data.data) {
+              setAnalyzeCompleted((prev) =>
+                prev.some((r) => r.document_number === data.data.document_number) ? prev : [...prev, data.data],
+              );
+            } else if ((data.type === "log" || data.type === "sub_log") && data.message) {
+              // Surface the live backend activity (e.g. "Processing EC Chunk 2/7…").
+              setAnalyzeActivity(String(data.message));
+            }
+          } catch {
+            /* ignore a malformed/partial line */
+          }
+        }
+      }
+      setAnalyzeSteps((prev) => prev.map((s) => (s.status === "failed" ? s : { ...s, status: "success" })));
+      setShowAnalyzeComplete(true);
+      window.setTimeout(() => setShowAnalyzeComplete(false), 15000);
+      toast.success("Analysis complete", { icon: <Zap className="w-4 h-4 text-indigo-500" /> });
+      // The DB persist runs in a server BackgroundTask AFTER the stream ends, so
+      // wait briefly before refetching the DB-backed views (hierarchy/risk/etc.).
+      // The Document Analysis tab is unaffected — it reads the streamed results.
+      window.setTimeout(() => {
+        ["parcel-stats", "documents", "hierarchy", "risks", "timeline", "checklist"].forEach((k) =>
+          queryClient.invalidateQueries({ queryKey: [k, pid] }),
+        );
+        queryClient.invalidateQueries({ queryKey: ["parcels"] });
+      }, 2000);
     } catch (err: any) {
-      toast.error("Analysis failed", {
-        description: err.response?.data?.detail || "Could not start the analysis engine."
-      });
+      toast.error("Analysis failed", { description: err?.message || "Could not run the analysis stream." });
+      setShowAnalyzeComplete(false);
     } finally {
       setIsAnalyzing(false);
     }
+  }, [queryClient]);
+
+  const handleAnalyze = async () => {
+    if (!selectedParcelId) return;
+    await runStreamingAnalyze(selectedParcelId);
   };
 
   const handleDeleteParcel = async (e: React.MouseEvent, parcelId: string) => {
@@ -318,242 +637,291 @@ export default function LegalDashboard() {
 
   useEffect(() => {
     setHierarchyPreview(null);
+    // Drop streamed live-analysis results when switching parcels so they don't
+    // bleed into another parcel's Document Analysis view.
+    setAnalyzeCompleted([]);
   }, [selectedParcelId]);
 
 
-  // Filter parcels (Hide inactive by default)
-  const filteredParcels = useMemo(() => parcels.filter(p => 
-    p.status !== 'inactive' && (
-      p.survey_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      p.village.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  ), [parcels, searchQuery]);
+  // Filter parcels (Hide inactive by default). Coalesce nullable fields —
+  // a freshly-registered parcel can briefly have null village or
+  // survey_number before the form save completes, and calling .toLowerCase()
+  // on undefined crashed the whole sidebar render.
+  const filteredParcels = useMemo(() => {
+    const q = (searchQuery || "").toLowerCase();
+    return parcels.filter((p) => {
+      if (p.status === "inactive") return false;
+      if (!q) return true;
+      const sn = (p.survey_number || "").toLowerCase();
+      const village = (p.village || "").toLowerCase();
+      const taluk = (p.taluk || "").toLowerCase();
+      return sn.includes(q) || village.includes(q) || taluk.includes(q);
+    });
+  }, [parcels, searchQuery]);
+
+  // Tab content extracted into a const so it can render inside either the
+  // new ParcelWorkspaceLayout (when a parcel is selected) or the legacy
+  // ResizablePanelGroup (project view) without being duplicated. Includes
+  // both the parcel-selected branch (overview / documents / timeline / …)
+  // and the no-parcel fallback (project overview grid).
+  const tabContentNode = (
+    <ScrollArea className="flex-1">
+      <div className="p-3 sm:p-4 lg:p-6 max-w-7xl mx-auto space-y-4 lg:space-y-6">
+        {selectedParcelId ? (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+            {parcels.find(p => p.id === selectedParcelId)?.status === 'inactive' ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bg-white rounded-3xl border border-dashed border-slate-200">
+                <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2">
+                  <Trash2 className="w-8 h-8 text-red-500" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Survey Deleted</h2>
+                <p className="text-slate-500 max-w-sm text-sm font-medium italic">
+                  This survey record and its associated physical files have been deactivated. It is no longer available for active legal review.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => handleSelectParcel(null)}
+                  className="mt-4 border-slate-200 hover:bg-slate-50 font-bold px-8"
+                >
+                  Return to Project Overview
+                </Button>
+              </div>
+            ) : (
+              <>
+                {activeTab === "overview" && (
+                  <ParcelOverview
+                    parcel={parcels.find(p => p.id === selectedParcelId)}
+                    stats={parcelStatsData?.stats}
+                    workflow={parcelStatsData?.workflow}
+                    riskScore={riskScoreData?.data}
+                    validationResults={validationResults}
+                    isStatsLoading={parcelStatsLoading || (!parcelStatsData && parcelStatsFetching)}
+                    isRiskScoreLoading={!!riskScoreRequestId && (riskScoreLoading || (!riskScoreData && riskScoreFetching))}
+                    isAuditLoading={auditLoading}
+                    onActionOpinion={() => setActiveTab("opinion")}
+                    onUploadClick={() => setIsUploadModalOpen(true)}
+                    onAnalyze={handleAnalyze}
+                    isAnalyzing={isAnalyzing}
+                    onBatchAuditClick={() => setIsBatchAuditModalOpen(true)}
+                    onReviewFindings={() => setActiveTab("audit-value")}
+                  />
+                )}
+                {activeTab === "documents" && (() => {
+                  // Prefer LIVE streamed results (so documents appear in this tab
+                  // as they finish, before the post-run persist/refetch lands);
+                  // fall back to the persisted results for an already-analyzed parcel.
+                  const docResults = analyzeCompleted.length > 0 ? analyzeCompleted : validationResults;
+                  return docResults && docResults.length > 0 ? (
+                    <DocumentAnalysisRevamp
+                      results={docResults}
+                      requestId={requestId}
+                      parcelId={selectedParcelId || undefined}
+                      focusDocNo={docAnalysisFocusDoc || undefined}
+                      onOpenInMap={(docNo) => {
+                        setActiveTab("hierarchy");
+                        setHierarchyPreview({ docNo, data: docResults.find((r: any) => r.document_number === docNo)?.validation_result });
+                      }}
+                    />
+                  ) : (
+                    <DocumentsTab
+                      parcelId={selectedParcelId!}
+                      onUploadClick={() => setIsUploadModalOpen(true)}
+                    />
+                  );
+                })()}
+                {activeTab === "checklist" && (
+                  <ChecklistTab parcelId={selectedParcelId!} />
+                )}
+                {activeTab === "hierarchy" && (
+                  <HierarchyTab
+                    parcelId={selectedParcelId!}
+                    auditResults={auditData}
+                    isAuditLoading={auditLoading}
+                    hierarchyPreview={hierarchyPreview}
+                    setHierarchyPreview={setHierarchyPreview}
+                  />
+                )}
+                {activeTab === "timeline" && (
+                  <TimelineTab parcelId={selectedParcelId!} requestId={requestId} results={validationResults} onUploadClick={() => setIsUploadModalOpen(true)} />
+                )}
+                {activeTab === "ownership-audit" && (
+                  <OwnershipAuditTab parcelId={selectedParcelId!} auditResults={auditData} isAuditLoading={auditLoading} />
+                )}
+                {activeTab === "pdf-vault" && (
+                  <PdfVaultTab parcelId={selectedParcelId!} auditResults={auditData} />
+                )}
+                {activeTab === "risks" && (
+                  <RisksTab
+                    requestId={auditData?.request_id}
+                    onOpenDocAnalysis={(docNo) => { setDocAnalysisFocusDoc(docNo); setActiveTab("documents"); }}
+                  />
+                )}
+                {activeTab === "opinion" && (
+                  <OpinionTab parcelId={selectedParcelId!} />
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          <ProjectOverview
+            project={selectedProject}
+            parcels={parcels}
+            stats={dashboardStats}
+            onSelectParcel={(id) => handleSelectParcel(id)}
+          />
+        )}
+      </div>
+    </ScrollArea>
+  );
+
+  // When a parcel is selected, use the new ParcelWorkspaceLayout (dark
+  // workspace nav on the left, no parcel-list sidebar — parcels are now
+  // accessed via top-bar pills). Otherwise keep the legacy
+  // ResizablePanelGroup with the parcel-list sidebar for the project view.
+  // Both branches share `tabContentNode` so the tab JSX isn't duplicated.
+  const selectedParcelForLayout = parcels.find(p => p.id === selectedParcelId);
 
   return (
     <div className="h-screen w-full bg-[#F8FAFC] text-[#111827] overflow-hidden font-sans selection:bg-[#EBF1FF]">
-      {/* BACKGROUND GRADIENTS — navy brand palette */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#1A367E]/[0.06] blur-[120px] rounded-full animate-blob-slow" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#3B82F6]/[0.05] blur-[120px] rounded-full animate-blob" />
-        <div className="absolute top-[40%] left-[40%] w-[20%] h-[20%] bg-[#1A367E]/[0.04] blur-[100px] rounded-full animate-float-slow" />
-      </div>
+      {/* Engaging live analysis overlay — driven by the REAL analyze event
+          stream: stages light up as the backend reports them, and each finished
+          document is revealed as its result streams in. */}
+      {(isAnalyzing || showAnalyzeComplete) && (
+        <LiveAnalysisProgress
+          open
+          steps={analyzeSteps}
+          completed={analyzeCompleted}
+          activity={analyzeActivity}
+          isComplete={showAnalyzeComplete}
+          onClose={() => setShowAnalyzeComplete(false)}
+          onViewDoc={(docNo) => {
+            setDocAnalysisFocusDoc(docNo);
+            setActiveTab("documents");
+            setShowAnalyzeComplete(false);
+          }}
+        />
+      )}
 
+      {/* BACKGROUND GRADIENTS — navy brand palette. Only rendered for the
+          project view; ParcelWorkspaceLayout has its own background. */}
+      {!selectedParcelId && (
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-[#1A367E]/[0.06] blur-[120px] rounded-full animate-blob-slow" />
+          <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-[#3B82F6]/[0.05] blur-[120px] rounded-full animate-blob" />
+          <div className="absolute top-[40%] left-[40%] w-[20%] h-[20%] bg-[#1A367E]/[0.04] blur-[100px] rounded-full animate-float-slow" />
+        </div>
+      )}
+
+      {selectedParcelId ? (
+        <ParcelWorkspaceLayout
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          activeSurveyLabel={selectedParcelForLayout ? `SN ${selectedParcelForLayout.survey_number}` : undefined}
+          activeSurveySubtitle={
+            selectedParcelForLayout
+              ? [selectedParcelForLayout.village, selectedParcelForLayout.taluk]
+                  .filter(Boolean)
+                  .join(" · ") || undefined
+              : undefined
+          }
+        >
+          <div className="flex flex-col h-full">{tabContentNode}</div>
+        </ParcelWorkspaceLayout>
+      ) : (
       <ResizablePanelGroup direction="horizontal" key={isDesktop ? "desktop" : "mobile"} className="h-full">
 
         {/* COLUMN 1: NAVIGATION & PARCEL LIST (DESKTOP) */}
         {isDesktop && (
           <>
-            <ResizablePanel defaultSize={22} minSize={18} maxSize={32} className="border-r border-[#E2E8F0] bg-white/90 backdrop-blur-xl shadow-xl shadow-indigo-900/5 z-20">
-              <DashboardSidebar
-                selectedProject={selectedProject}
-                selectedProjectId={selectedProjectId}
-                setSelectedProjectId={setSelectedProjectId}
-                projects={projects}
-                setIsNewProjectModalOpen={setIsNewProjectModalOpen}
-                searchQuery={searchQuery}
-                setSearchQuery={setSearchQuery}
-                parcels={parcels}
-                filteredParcels={filteredParcels}
-                parcelsLoading={parcelsLoading}
-                selectedParcelId={selectedParcelId}
-                setSelectedParcelId={setSelectedParcelId}
-                handleDeleteParcel={handleDeleteParcel}
-              />
+            <ResizablePanel
+              ref={sidebarPanelRef}
+              defaultSize={22}
+              minSize={18}
+              maxSize={32}
+              collapsible
+              collapsedSize={3}
+              onCollapse={() => setSidebarCollapsed(true)}
+              onExpand={() => setSidebarCollapsed(false)}
+              className="border-r border-[#E2E8F0] bg-white/90 backdrop-blur-xl shadow-xl shadow-indigo-900/5 z-20"
+            >
+              {sidebarCollapsed ? (
+                // Thin strip with a single expand button. Keeps the
+                // ResizableHandle alive so the layout stays consistent.
+                <div className="flex flex-col items-center pt-4 h-full">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600"
+                    onClick={() => sidebarPanelRef.current?.expand?.()}
+                    title="Expand sidebar"
+                    aria-label="Expand sidebar"
+                  >
+                    <PanelLeftOpen className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <DashboardSidebar
+                  selectedProject={selectedProject}
+                  selectedProjectId={selectedProjectId}
+                  setSelectedProjectId={setSelectedProjectId}
+                  projects={projects}
+                  setIsNewProjectModalOpen={setIsNewProjectModalOpen}
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  parcels={parcels}
+                  filteredParcels={filteredParcels}
+                  parcelsLoading={parcelsLoading}
+                  selectedParcelId={selectedParcelId}
+                  setSelectedParcelId={handleSelectParcel}
+                  handleDeleteParcel={handleDeleteParcel}
+                  onCollapse={() => sidebarPanelRef.current?.collapse?.()}
+                />
+              )}
             </ResizablePanel>
             <ResizableHandle withHandle className="bg-[#E2E8F0]" />
           </>
         )}
 
-        {/* COLUMN 2: WORKSPACE */}
-        <ResizablePanel defaultSize={55} className="bg-transparent">
+        {/* COLUMN 2: WORKSPACE
+            defaultSize is computed so the two panels always sum to 100%:
+              - desktop: sidebar(22) + workspace(78) = 100
+              - mobile : workspace(100) alone (sidebar is not rendered)
+            The previous fixed value of 55 left 23% unaccounted for on
+            desktop and triggered react-resizable-panels' "Invalid layout
+            total size: 55%" warning at startup. */}
+        <ResizablePanel defaultSize={isDesktop ? 78 : 100} className="bg-transparent">
           <div className="flex flex-col h-full">
 
-            {/* WORKSPACE HEADER */}
-            <header className="border-b border-[#E2E8F0] px-3 sm:px-6 lg:px-8 py-3 flex items-center justify-between bg-white/80 backdrop-blur-xl sticky top-0 z-10 shadow-sm shadow-indigo-900/5 gap-3 sm:gap-6">
-              {/* Mobile sidebar trigger */}
+            {/* The workspace-column header (breadcrumb + tab strip + Notes
+                Cockpit + Advs. Kousik) used to live here. It now lives in
+                AppShell's top bar — see the useHeaderSlot() effect above
+                this component's return — so the parcel tabs share a single
+                row with the brand + logout button instead of stacking.
+
+                A small mobile-only sidebar trigger stays here because the
+                shell header is too cramped on phones. */}
+            <div className="md:hidden border-b border-[#E2E8F0] px-3 py-2 bg-white/80 backdrop-blur-xl sticky top-0 z-10">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden text-slate-600 hover:bg-indigo-50 hover:text-indigo-600 shrink-0"
+                className="text-slate-600 hover:bg-indigo-50 hover:text-indigo-600"
                 onClick={() => setMobileSidebarOpen(true)}
                 aria-label="Open sidebar"
               >
                 <Menu className="w-5 h-5" />
               </Button>
-              <div className="flex flex-col gap-2 min-w-0 flex-1">
-                {selectedParcel ? (
-                  <>
-                    <div className="flex items-center gap-2 pl-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.18em]">{selectedProject?.name}</span>
-                      <ChevronRight className="w-3 h-3 text-slate-300" />
-                      <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-[0.18em]">SN {selectedParcel.survey_number}</span>
-                    </div>
-                    <nav className="flex items-center gap-1 bg-slate-100/70 p-1 rounded-xl border border-slate-200/70 overflow-x-auto custom-scrollbar">
-                      <TabButton onClick={() => setActiveTab("overview")} active={activeTab === "overview"} label="Overview" icon={<LayoutDashboard className="w-3.5 h-3.5" />} />
-                      <TabButton onClick={() => setActiveTab("pdf-vault")} active={activeTab === "pdf-vault"} label="PDF Vault" icon={<FileText className="w-3.5 h-3.5" />} />
-                      <TabButton onClick={() => setActiveTab("documents")} active={activeTab === "documents"} label="Document Analysis" icon={<FileText className="w-3.5 h-3.5" />} />
-                      <TabButton onClick={() => setActiveTab("timeline")} active={activeTab === "timeline"} label="Timeline" icon={<Clock className="w-3.5 h-3.5" />} />
-                      <TabButton onClick={() => setActiveTab("ownership-audit")} active={activeTab === "ownership-audit"} label="Ownership Audit" icon={<Users className="w-3.5 h-3.5" />} />
-                      <TabButton onClick={() => setActiveTab("risks")} active={activeTab === "risks"} label="Risk Score" icon={<AlertTriangle className="w-3.5 h-3.5" />} />
-                      <TabButton onClick={() => setActiveTab("opinion")} active={activeTab === "opinion"} label="Legal Opinion" icon={<ShieldCheck className="w-3.5 h-3.5" />} />
-                    </nav>
-                  </>
-                ) : (
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-md shadow-indigo-500/20">
-                      <LayoutDashboard className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <h2 className="text-sm font-display font-extrabold text-slate-900">Project Dashboard</h2>
-                      <p className="text-[10px] text-slate-500 font-medium">Select a survey from the sidebar to begin analysis</p>
-                    </div>
-                  </div>
-                )}
-              </div>
+            </div>
 
-              <div className="flex items-center gap-3 shrink-0">
-                {selectedParcelId && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 border-amber-200 text-amber-700 hover:bg-amber-50 hover:text-amber-800 hidden md:inline-flex"
-                    onClick={() => setNotesSummaryOpen(true)}
-                    title="View every note across every PDF for this parcel"
-                  >
-                    <StickyNote className="w-3.5 h-3.5" />
-                    Notes Cockpit
-                  </Button>
-                )}
-                <div className="relative">
-                  <Button variant="ghost" size="icon" className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 relative transition-all hover:scale-105">
-                    <Bell className="w-5 h-5" />
-                    <span className="absolute top-2 right-2 w-2 h-2 bg-indigo-600 rounded-full border-2 border-white animate-pulse-glow" />
-                  </Button>
-                </div>
-                <div className="h-6 w-[1px] bg-slate-200" />
-                <div className="flex items-center gap-3">
-                  <div className="text-right hidden sm:block">
-                    <p className="text-xs font-bold text-slate-900">Advs. Kousik</p>
-                    <p className="text-[9px] text-slate-500 uppercase font-bold tracking-[0.18em]">Legal Advisor</p>
-                  </div>
-                  <motion.div
-                    whileHover={{ scale: 1.06 }}
-                    whileTap={{ scale: 0.97 }}
-                    className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-500 shadow-md shadow-indigo-500/30 flex items-center justify-center text-xs font-bold text-white ring-2 ring-white cursor-pointer"
-                  >
-                    AK
-                  </motion.div>
-                </div>
-              </div>
-            </header>
-
-            {/* WORKSPACE CONTENT */}
-            <ScrollArea className="flex-1">
-              <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-6 lg:space-y-8">
-                {selectedParcelId ? (
-                   <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                     {parcels.find(p => p.id === selectedParcelId)?.status === 'inactive' ? (
-                        <div className="flex flex-col items-center justify-center py-20 text-center space-y-4 bg-white rounded-3xl border border-dashed border-slate-200">
-                           <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center mb-2">
-                             <Trash2 className="w-8 h-8 text-red-500" />
-                           </div>
-                           <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tighter">Survey Deleted</h2>
-                           <p className="text-slate-500 max-w-sm text-sm font-medium italic">
-                             This survey record and its associated physical files have been deactivated. 
-                             It is no longer available for active legal review.
-                           </p>
-                           <Button 
-                             variant="outline" 
-                             onClick={() => setSelectedParcelId(null)}
-                             className="mt-4 border-slate-200 hover:bg-slate-50 font-bold px-8"
-                           >
-                             Return to Project Overview
-                           </Button>
-                        </div>
-                     ) : (
-                       <>
-                       {/* CONDITIONAL TAB RENDERING */}
-                      {activeTab === "overview" && (
-                        <ParcelOverview 
-                          parcel={parcels.find(p => p.id === selectedParcelId)} 
-                          stats={parcelStatsData?.stats}
-                          workflow={parcelStatsData?.workflow}
-                          riskScore={riskScoreData?.data}
-                          validationResults={validationResults}
-                          onActionOpinion={() => setActiveTab("opinion")}
-                          onUploadClick={() => setIsUploadModalOpen(true)}
-                          onAnalyze={handleAnalyze}
-                          isAnalyzing={isAnalyzing}
-                          onBatchAuditClick={() => setIsBatchAuditModalOpen(true)}
-                          onReviewFindings={() => setActiveTab("audit-value")}
-                        />
-                      )}
-
-                     {activeTab === "documents" && (
-                       validationResults && validationResults.length > 0 ? (
-                         <ValidationResults
-                           results={validationResults}
-                           requestId={requestId}
-                           parcelId={selectedParcelId || undefined}
-                           onOpenInMap={(docNo) => {
-                             setActiveTab("hierarchy");
-                             setHierarchyPreview({ docNo, data: validationResults.find((r: any) => r.document_number === docNo)?.validation_result });
-                           }}
-                         />
-                       ) : (
-                         <DocumentsTab 
-                           parcelId={selectedParcelId!} 
-                           onUploadClick={() => setIsUploadModalOpen(true)}
-                         />
-                       )
-                     )}
-                    {activeTab === "checklist" && (
-                       <ChecklistTab parcelId={selectedParcelId!} />
-                     )}
-
-                     {activeTab === "hierarchy" && (
-                       <HierarchyTab 
-                         parcelId={selectedParcelId!} 
-                         auditResults={auditData} 
-                         isAuditLoading={auditLoading}
-                         hierarchyPreview={hierarchyPreview}
-                         setHierarchyPreview={setHierarchyPreview}
-                       />
-                     )}
-
-                     {activeTab === "timeline" && (
-                       <TimelineTab parcelId={selectedParcelId!} requestId={requestId} results={validationResults} onUploadClick={() => setIsUploadModalOpen(true)} />
-                     )}
-
-                     {activeTab === "ownership-audit" && (
-                       <OwnershipAuditTab parcelId={selectedParcelId!} auditResults={auditData} isAuditLoading={auditLoading} />
-                     )}
-                     {activeTab === "pdf-vault" && (
-                       <PdfVaultTab parcelId={selectedParcelId!} auditResults={auditData} />
-                     )}
-                     {activeTab === "risks" && (
-                        <RisksTab requestId={auditData?.request_id} />
-                     )}
-                     {activeTab === "opinion" && (
-                        <OpinionTab parcelId={selectedParcelId!} />
-                     )}
-                     </>
-                     )}
-                   </div>
-                ) : (
-                  <ProjectOverview 
-                    project={selectedProject} 
-                    parcels={parcels} 
-                    stats={dashboardStats}
-                    onSelectParcel={(id) => setSelectedParcelId(id)}
-                  />
-                )}
-              </div>
-            </ScrollArea>
+            {/* WORKSPACE CONTENT — shared between the legacy ResizablePanelGroup
+                (this branch, used for the project view when no parcel is
+                selected) and the new ParcelWorkspaceLayout above. Single
+                source of truth = tabContentNode. */}
+            {tabContentNode}
           </div>
         </ResizablePanel>
 
       </ResizablePanelGroup>
+      )}
 
       {/* MODALS */}
       <NewProjectModal
@@ -569,6 +937,44 @@ export default function LegalDashboard() {
         isOpen={isBatchAuditModalOpen}
         onClose={() => setIsBatchAuditModalOpen(false)}
         parcelId={selectedParcelId!}
+        onUploaded={(ec, zip, limit) => { setPendingBatch({ ec, zip, limit }); setChecklistOpen(true); }}
+      />
+      <ChecklistModal
+        isOpen={checklistOpen}
+        onClose={() => setChecklistOpen(false)}
+        onApprove={async (ids) => {
+          if (!selectedParcelId || !pendingBatch) return;
+          persistSelectedChecks(selectedParcelId, ids);
+          setChecklistOpen(false);
+          // Show the progress overlay while we upload the held files, then stream.
+          setIsAnalyzing(true);
+          setAnalyzeSteps(ANALYZE_STEPS.map((s) => ({ ...s, status: "pending" })));
+          setAnalyzeCompleted([]);
+          setAnalyzeActivity("Uploading Encumbrance Certificate…");
+          try {
+            const ecFd = new FormData();
+            ecFd.append("file", pendingBatch.ec);
+            ecFd.append("document_type", "encumbrance_certificate");
+            ecFd.append("language", "tamil");
+            ecFd.append("source", "uploaded");
+            await landwiseApi.uploadDocument(selectedParcelId, ecFd);
+            setAnalyzeActivity("Uploading sale-deeds archive…");
+            const zipFd = new FormData();
+            zipFd.append("file", pendingBatch.zip);
+            zipFd.append("document_type", "sale_deed");
+            zipFd.append("language", "tamil");
+            zipFd.append("source", "uploaded");
+            await landwiseApi.uploadDocument(selectedParcelId, zipFd);
+            queryClient.invalidateQueries({ queryKey: ["documents", selectedParcelId] });
+          } catch (err: any) {
+            setIsAnalyzing(false);
+            toast.error("Upload failed", { description: err?.response?.data?.detail || "Could not upload the documents." });
+            return;
+          }
+          const limit = pendingBatch.limit;
+          setPendingBatch(null);
+          runStreamingAnalyze(selectedParcelId, limit);
+        }}
       />
 
       {/* PARCEL-WIDE NOTES COCKPIT
@@ -581,7 +987,7 @@ export default function LegalDashboard() {
               widen the dialog and give it most of the viewport height. */}
           <DialogContent className="max-w-6xl w-[min(95vw,1100px)] p-0 overflow-hidden h-[85vh] flex flex-col">
             <DialogHeader className="sr-only">
-              <DialogTitle>Notes Cockpit</DialogTitle>
+              <DialogTitle>Notes Hub</DialogTitle>
             </DialogHeader>
             <NotesSummary
               parcelId={selectedParcelId}
@@ -602,20 +1008,46 @@ export default function LegalDashboard() {
                 const norm = (s: string) =>
                   (s || "").replace(/\.pdf$/i, "").replace(/[^a-z0-9]/gi, "").toLowerCase();
                 const target = norm(docNo);
-                const match = (validationResults || []).find(
+
+                // 1) Best source: the validation result. Same PDF version that
+                //    Document Analysis and Hierarchy render — coordinates from
+                //    a saved note will line up exactly. CRITICAL: use
+                //    getFileUrl() so the "outputs/" prefix is stripped to
+                //    match the backend's static mount at /files/ (without
+                //    this the URL was 404'ing → "Failed to load PDF" in the
+                //    cockpit while Document Analysis worked fine).
+                const vrMatch = (validationResults || []).find(
                   (r: any) =>
                     norm(r.document_number) === target ||
                     norm(r.doc_no) === target ||
                     norm(r.file_path) === target,
                 );
-                if (match?.file_path) {
-                  return `${API_BASE_URL}/files/${match.file_path.replace(/\\/g, "/")}`;
+                if (vrMatch?.file_path) {
+                  return getFileUrl(vrMatch.file_path.replace(/\\/g, "/"));
                 }
-                // Previously fell back to /download-by-path with the raw doc_no
-                // as the file_path, which 404s for every doc the user hasn't
-                // validated. Returning null surfaces the cockpit's
-                // "PDF unavailable for this deed" empty state instead — a
-                // working signal that the user needs to run the analysis first.
+
+                // 2) Fallback: stream the doc straight from S3 by its
+                //    LandwiseDocument UUID. Works for parcels where the
+                //    note exists but analysis hasn't been run yet (so
+                //    validationResults is empty) — previously this case
+                //    surfaced "PDF unavailable for this deed".
+                //    Caveat: this serves the ORIGINAL PDF (without
+                //    visual-debugger red boxes). If the note was created
+                //    against the validation-marked PDF, highlight positions
+                //    are still saved in PDF-point space and align fine, but
+                //    the surrounding visual content will look different.
+                const docMatch = (parcelDocs || []).find(
+                  (d: any) =>
+                    norm(d.original_filename) === target ||
+                    norm(d.id) === target,
+                );
+                if (docMatch?.id) {
+                  return `${API_BASE_URL}/api/v1/landwise/documents/download/${docMatch.id}`;
+                }
+
+                // Nothing matched. NotesSummary still has its own document_id
+                // fallback (server-note rows carry the UUID), so returning
+                // null here is safe.
                 return null;
               }}
               onJumpToNote={(target: NoteJumpTarget) => {
@@ -657,7 +1089,7 @@ export default function LegalDashboard() {
             filteredParcels={filteredParcels}
             parcelsLoading={parcelsLoading}
             selectedParcelId={selectedParcelId}
-            setSelectedParcelId={setSelectedParcelId}
+            setSelectedParcelId={handleSelectParcel}
             handleDeleteParcel={handleDeleteParcel}
           />
         </SheetContent>
@@ -684,6 +1116,8 @@ interface DashboardSidebarProps {
   selectedParcelId: string | null;
   setSelectedParcelId: (id: string) => void;
   handleDeleteParcel: (e: React.MouseEvent, id: string) => void;
+  /** Desktop-only — when provided, a collapse button appears in the header. */
+  onCollapse?: () => void;
 }
 
 function DashboardSidebar({
@@ -700,52 +1134,69 @@ function DashboardSidebar({
   selectedParcelId,
   setSelectedParcelId,
   handleDeleteParcel,
+  onCollapse,
 }: DashboardSidebarProps) {
   return (
     <div className="flex flex-col h-full">
       {/* BRAND & PROJECT SELECTOR */}
-      <div className="p-5 sm:p-6 space-y-5 sm:space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="p-3 sm:p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2">
           <motion.div
             initial={{ opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="flex items-center gap-3 min-w-0"
+            className="flex items-center gap-2 min-w-0"
           >
             <div className="relative shrink-0">
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl blur-lg opacity-40 -z-10 animate-pulse-glow" />
-              <div className="w-10 h-10 bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 ring-1 ring-white/30">
-                <ShieldCheck className="w-5 h-5 text-white" strokeWidth={2.5} />
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-lg blur opacity-40 -z-10 animate-pulse-glow" />
+              <div className="w-7 h-7 bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-600 rounded-lg flex items-center justify-center shadow-sm shadow-indigo-500/30 ring-1 ring-white/30">
+                <ShieldCheck className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
               </div>
             </div>
-            <div className="min-w-0">
-              <h1 className="font-display font-extrabold text-lg tracking-tight leading-none truncate">
+            <div className="min-w-0 leading-tight">
+              <h1 className="font-display font-extrabold text-sm tracking-tight leading-none truncate">
                 <span className="text-slate-900">Land</span>
                 <span className="text-gradient-primary">wiseAI</span>
               </h1>
-              <span className="text-[9px] uppercase tracking-[0.22em] text-slate-500 font-bold mt-1 inline-block">Legal Intelligence</span>
+              <span className="text-[8px] uppercase tracking-[0.18em] text-slate-500 font-bold mt-0.5 inline-block">Legal Intelligence</span>
             </div>
           </motion.div>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-all hover:scale-105 shrink-0"
-            onClick={() => window.location.href = "/"}
-          >
-            <LayoutDashboard className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            {onCollapse && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+                onClick={onCollapse}
+                title="Collapse sidebar"
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeftClose className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 hover:bg-indigo-50 text-slate-400 hover:text-indigo-600 transition-colors"
+              onClick={() => window.location.href = "/"}
+              title="Home"
+              aria-label="Home"
+            >
+              <LayoutDashboard className="w-3.5 h-3.5" />
+            </Button>
+          </div>
         </div>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="w-full justify-between bg-gradient-to-r from-slate-50 to-white border-slate-200 hover:bg-indigo-50/40 hover:border-indigo-200 text-slate-700 h-12 shadow-sm transition-all group">
+            <Button variant="outline" className="w-full justify-between bg-gradient-to-r from-slate-50 to-white border-slate-200 hover:bg-indigo-50/40 hover:border-indigo-200 text-slate-700 h-9 px-2.5 shadow-sm transition-all group">
               <div className="flex items-center gap-2 truncate min-w-0">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-sm shadow-indigo-500/20 shrink-0">
-                  <Layers className="w-3.5 h-3.5 text-white" />
+                <div className="w-5 h-5 rounded-md bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center shadow-sm shrink-0">
+                  <Layers className="w-3 h-3 text-white" />
                 </div>
-                <span className="truncate font-bold tracking-tight">{selectedProject?.name || "Select Project"}</span>
+                <span className="truncate text-xs font-bold tracking-tight">{selectedProject?.name || "Select Project"}</span>
               </div>
-              <ChevronDown className="w-4 h-4 text-slate-400 group-hover:text-indigo-500 transition-transform group-data-[state=open]:rotate-180 shrink-0" />
+              <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 transition-transform group-data-[state=open]:rotate-180 shrink-0" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-[calc(var(--radix-dropdown-menu-trigger-width))] bg-white border-slate-200 text-slate-700">
@@ -769,20 +1220,22 @@ function DashboardSidebar({
       </div>
 
       {/* PARCEL SEARCH & LIST */}
-      <div className="px-5 sm:px-6 space-y-4 flex flex-col flex-1 pb-6 overflow-hidden">
+      <div className="px-3 sm:px-4 space-y-2.5 flex flex-col flex-1 pb-4 overflow-hidden">
         <div className="relative group focus-glow rounded-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 transition-colors group-focus-within:text-indigo-600" />
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 transition-colors group-focus-within:text-indigo-600" />
           <Input
             placeholder="Search survey..."
-            className="pl-10 bg-slate-50/80 border-slate-200 focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/40 transition-all"
+            className="pl-8 h-8 text-xs bg-slate-50/80 border-slate-200 focus-visible:ring-2 focus-visible:ring-indigo-500/50 focus-visible:border-indigo-500/40 transition-all"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
 
-        <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-slate-400 font-bold px-1">
-          <span>Parcels ({parcels.length})</span>
-          <div className="flex gap-1">
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <span className="text-[9px] uppercase tracking-[0.16em] text-slate-400 font-bold shrink-0">
+            Parcels ({parcels.length})
+          </span>
+          <div className="flex gap-1 items-center">
             {selectedProjectId && <RegisterParcelDialog projectId={selectedProjectId} />}
             <Button variant="ghost" size="icon" className="h-6 w-6 hover:bg-indigo-50 hover:text-indigo-600 transition-all">
               <Filter className="w-3 h-3" />
@@ -790,9 +1243,9 @@ function DashboardSidebar({
           </div>
         </div>
 
-        <ScrollArea className="flex-1 -mx-2 px-2">
+        <ScrollArea className="flex-1 -mx-1.5 px-1.5">
           <motion.div
-            className="space-y-1.5"
+            className="space-y-1"
             initial="hidden"
             animate="visible"
             variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.04 } } }}
@@ -801,51 +1254,51 @@ function DashboardSidebar({
               <motion.div
                 key={parcel.id}
                 variants={{ hidden: { opacity: 0, x: -10 }, visible: { opacity: 1, x: 0 } }}
-                whileHover={{ x: 4 }}
+                whileHover={{ x: 3 }}
                 onClick={() => setSelectedParcelId(parcel.id)}
                 className={cn(
-                  "p-3.5 sm:p-4 rounded-xl cursor-pointer transition-all border group relative overflow-hidden",
+                  "p-2 rounded-lg cursor-pointer transition-all border group relative overflow-hidden",
                   selectedParcelId === parcel.id
-                    ? "bg-gradient-to-br from-indigo-50 via-blue-50/50 to-indigo-50 border-indigo-200 shadow-md shadow-indigo-500/10"
+                    ? "bg-gradient-to-br from-indigo-50 via-blue-50/50 to-indigo-50 border-indigo-200 shadow-sm shadow-indigo-500/10"
                     : "border-transparent hover:bg-slate-50 hover:border-slate-200"
                 )}
               >
                 {selectedParcelId === parcel.id && (
                   <motion.div
                     layoutId="active-indicator"
-                    className="absolute left-0 top-0 bottom-0 w-[3px] bg-gradient-to-b from-indigo-500 to-blue-600 rounded-r"
+                    className="absolute left-0 top-0 bottom-0 w-[2px] bg-gradient-to-b from-indigo-500 to-blue-600 rounded-r"
                   />
                 )}
 
-                <div className="flex justify-between items-start mb-2 gap-2">
-                  <div className="space-y-0.5 min-w-0">
-                    <p className="font-display font-extrabold text-sm text-slate-900 tracking-tight truncate">
+                <div className="flex justify-between items-start mb-1 gap-2">
+                  <div className="min-w-0">
+                    <p className="font-display font-extrabold text-xs text-slate-900 tracking-tight truncate leading-tight">
                       SN {parcel.survey_number}{parcel.subdivision ? `/${parcel.subdivision}` : ''}
                     </p>
-                    <p className="text-[11px] text-slate-500 font-medium truncate flex items-center gap-1">
+                    <p className="text-[10px] text-slate-500 font-medium truncate flex items-center gap-1 mt-0.5">
                       <MapPin className="w-2.5 h-2.5 text-slate-400 shrink-0" />
                       <span className="truncate">{parcel.village}, {parcel.taluk}</span>
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
+                  <div className="flex items-center gap-0.5 shrink-0">
                     <button
                       onClick={(e) => handleDeleteParcel(e, parcel.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all opacity-0 group-hover:opacity-100 hover:scale-110"
+                      className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded transition-all opacity-0 group-hover:opacity-100"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3 h-3" />
                     </button>
                     <StatusBadge status={parcel.status} />
                   </div>
                 </div>
 
-                <div className="space-y-1.5 mt-3">
-                  <div className="flex justify-between text-[10px] text-slate-500">
-                    <span className="flex items-center gap-1 font-bold"><Activity className="w-3 h-3 text-indigo-600" /> Completion</span>
+                <div className="space-y-1 mt-1.5">
+                  <div className="flex justify-between text-[9px] text-slate-500">
+                    <span className="flex items-center gap-1 font-bold"><Activity className="w-2.5 h-2.5 text-indigo-600" /> Completion</span>
                     <span className="font-bold tabular-nums text-indigo-600">{parcel.completion_score}%</span>
                   </div>
                   <Progress
                     value={parcel.completion_score}
-                    className="h-1.5 bg-slate-100"
+                    className="h-1 bg-slate-100"
                     indicatorClassName="bg-gradient-to-r from-indigo-500 to-blue-500"
                   />
                 </div>
@@ -853,18 +1306,18 @@ function DashboardSidebar({
             ))}
 
             {filteredParcels.length === 0 && !parcelsLoading && (
-              <div className="text-center py-12 opacity-50">
-                <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3">
-                  <Search className="w-6 h-6 text-slate-400" />
+              <div className="text-center py-8 opacity-50">
+                <div className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-2">
+                  <Search className="w-4 h-4 text-slate-400" />
                 </div>
-                <p className="text-xs font-bold text-slate-500">No parcels found</p>
+                <p className="text-[11px] font-bold text-slate-500">No parcels found</p>
               </div>
             )}
 
             {parcelsLoading && (
-              <div className="space-y-3 py-2">
+              <div className="space-y-2 py-1">
                 {[1,2,3,4].map(i => (
-                  <div key={i} className="h-24 rounded-xl animate-skeleton" style={{ animationDelay: `${i * 0.08}s` }} />
+                  <div key={i} className="h-16 rounded-lg animate-skeleton" style={{ animationDelay: `${i * 0.08}s` }} />
                 ))}
               </div>
             )}
@@ -876,33 +1329,182 @@ function DashboardSidebar({
 }
 
 function ParcelOverview({
-  parcel, 
+  parcel,
   stats,
   workflow,
   riskScore: riskScoreData,
   validationResults,
-  onActionOpinion, 
-  onUploadClick, 
+  isStatsLoading = false,
+  isRiskScoreLoading = false,
+  isAuditLoading = false,
+  onActionOpinion,
+  onUploadClick,
   onAnalyze,
   isAnalyzing,
   onBatchAuditClick,
   onReviewFindings
-}: { 
-  parcel: Parcel | undefined, 
+}: {
+  parcel: Parcel | undefined,
   stats?: any,
   workflow?: any[],
   riskScore?: any,
   validationResults?: any[],
-  onActionOpinion: () => void, 
+  isStatsLoading?: boolean,
+  isRiskScoreLoading?: boolean,
+  isAuditLoading?: boolean,
+  onActionOpinion: () => void,
   onUploadClick: () => void,
   onAnalyze: () => void,
   isAnalyzing: boolean,
   onBatchAuditClick: () => void,
   onReviewFindings: () => void
 }) {
-  if (!parcel) return null;
-  
   const [scoreBreakdownExpanded, setScoreBreakdownExpanded] = React.useState(false);
+
+  // Mismatch Issues Hub state — relocated here from the Timeline tab. The
+  // hub flattens every non-MATCHED comparison across all validated documents
+  // in this parcel. Clicking a row opens a floating popup with the marked
+  // PDF (the server's box-annotated artifact at matched_docs/<docNo>.pdf,
+  // referenced by validationResult.file_path) scrolled to the cited page.
+  // scrollToPage is captured into state (not derived in JSX) so the
+  // timestamp is stable across re-renders. Otherwise Date.now() in JSX
+  // would re-fire PdfAnnotator's scroll effect on every render.
+  const [hubPreview, setHubPreview] = useState<{
+    docNo: string;
+    url: string;
+    page?: number;
+    scrollToPage?: { page: number; timestamp: number };
+  } | null>(null);
+  const hubPopupDragControls = useDragControls();
+
+  const mismatchIssues = useMemo(() => {
+    const list: Array<{
+      docNo: string;
+      field: string;
+      status: string;
+      reason: string;
+      page?: string | number;
+      file_path?: string;
+      ec_value?: string;
+      metadata_value?: string;
+    }> = [];
+    (validationResults || []).forEach((r: any) => {
+      const comps = r?.validation_result?.comparisons || [];
+      comps.forEach((c: any) => {
+        const status = String(c?.status || "").toUpperCase();
+        // Clean MATCH = contains "MATCHED" AND not "NOT MATCHED"
+        const clean = status.includes("MATCHED") && !status.includes("NOT");
+        if (clean) return;
+        list.push({
+          docNo: r.document_number,
+          field: c.field,
+          status: c.status,
+          reason: c.reason,
+          page: c.page_number,
+          file_path: r.file_path,
+          ec_value: c.ec_value,
+          metadata_value: c.metadata_value,
+        });
+      });
+    });
+    return list;
+  }, [validationResults]);
+
+  // Guard AFTER all hooks (Rules of Hooks). Previously this was at the top of
+  // the component, before the useState/useMemo/useDragControls above — so when
+  // `parcel` toggled defined/undefined across re-renders the hook COUNT changed
+  // and React crashed ParcelOverview to a blank screen.
+  if (!parcel) {
+    // Show a loader rather than a blank screen while the parcel record loads
+    // (or briefly toggles undefined during a refetch).
+    return (
+      <div className="flex flex-col items-center justify-center py-24 text-center gap-3">
+        <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+        <p className="text-sm text-slate-500 font-medium">Loading parcel…</p>
+      </div>
+    );
+  }
+
+  // Build the download URL for a server-side artifact path. Mirrors the
+  // helper in SurveyTimeline.getPdfUrl — kept inline because the
+  // ParcelOverview is the only consumer here.
+  const getPdfUrlFromPath = (relPath: string | undefined) => {
+    if (!relPath) return undefined;
+    if (relPath.startsWith('http')) return relPath;
+    const cleaned = relPath.replace(/\\/g, "/").replace(/^(\.\.\/)+/, "").replace(/^\/+/, "");
+    return `${API_BASE_URL}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(cleaned)}`;
+  };
+
+  const handleHubIssueClick = (issue: { docNo: string; file_path?: string; page?: string | number }) => {
+    const url = getPdfUrlFromPath(issue.file_path);
+    if (!url) {
+      toast.error(`No PDF artifact recorded for ${issue.docNo}`);
+      return;
+    }
+    let pg: number | undefined;
+    if (issue.page !== undefined && issue.page !== null) {
+      const m = String(issue.page).match(/\d+/);
+      if (m) pg = parseInt(m[0]);
+    }
+    setHubPreview({
+      docNo: issue.docNo,
+      url,
+      page: pg,
+      scrollToPage: pg ? { page: pg, timestamp: Date.now() } : undefined,
+    });
+  };
+
+  // First-load skeleton: render only when NONE of the data has arrived yet
+  // (no stats AND no risk score AND no validation results). Once any of
+  // them lands the user sees the real layout; the slim refresh indicator
+  // (below the header) tells them a background refetch is still running.
+  const hasAnyData = !!stats || !!riskScoreData || (validationResults && validationResults.length > 0);
+  const isInitialLoading = (isStatsLoading || isRiskScoreLoading || isAuditLoading) && !hasAnyData;
+  const isBackgroundRefreshing = (isStatsLoading || isRiskScoreLoading || isAuditLoading) && hasAnyData;
+
+  if (isInitialLoading) {
+    return (
+      <div className="space-y-4 animate-in fade-in duration-300">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200">
+          <div className="space-y-2 flex-1">
+            <div className="h-5 w-56 rounded animate-skeleton" />
+            <div className="h-3 w-40 rounded animate-skeleton" style={{ animationDelay: "0.08s" }} />
+          </div>
+          <Loader2 className="w-5 h-5 text-indigo-500 animate-spin shrink-0" />
+        </div>
+        {/* Risk-score + workflow row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {[0, 1, 2].map(i => (
+            <div
+              key={i}
+              className="h-32 rounded-2xl bg-white border border-slate-200 animate-skeleton"
+              style={{ animationDelay: `${0.1 + i * 0.08}s` }}
+            />
+          ))}
+        </div>
+        {/* KPI tiles */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map(i => (
+            <div
+              key={i}
+              className="h-20 rounded-2xl bg-white border border-slate-200 animate-skeleton"
+              style={{ animationDelay: `${0.3 + i * 0.06}s` }}
+            />
+          ))}
+        </div>
+        {/* Sections body */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <div className="lg:col-span-2 h-64 rounded-2xl bg-white border border-slate-200 animate-skeleton" style={{ animationDelay: "0.5s" }} />
+          <div className="h-64 rounded-2xl bg-white border border-slate-200 animate-skeleton" style={{ animationDelay: "0.55s" }} />
+        </div>
+        <p className="text-[11px] text-slate-400 font-medium text-center pt-1 flex items-center justify-center gap-1.5">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          Loading overview data — backend response can take a few seconds on cold cache…
+        </p>
+      </div>
+    );
+  }
   
   // Use dedicated risk score endpoint data when available, fall back to stats
   const riskScore = riskScoreData?.score ?? stats?.risk_score ?? 0;
@@ -914,8 +1516,8 @@ function ParcelOverview({
   const auditedDocs = stats?.audited_docs_count ?? 0;
   const pendingDocs = Math.max(0, docCount - auditedDocs);
   const chainYears = stats?.chain_length_years ?? 0;
-  const activeEncumbrances = stats?.active_encumbrances ?? 0;
-  
+
+
   // Determine trend based on risk score
   const getTrend = (score: number) => {
     if (score >= 80) return { label: 'SAFE', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' };
@@ -926,20 +1528,20 @@ function ParcelOverview({
   const trend = getTrend(riskScore);
   
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="flex items-center justify-between flex-wrap gap-4"
+        className="flex items-center justify-between flex-wrap gap-3"
       >
         <div>
-          <div className="flex items-center gap-3 mb-2 flex-wrap">
-            <h2 className="text-2xl sm:text-3xl lg:text-4xl font-display font-extrabold tracking-tight text-slate-900 flex items-center gap-3">
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <h2 className="text-lg sm:text-xl lg:text-2xl font-display font-extrabold tracking-tight text-slate-900 flex items-center gap-2">
               Parcel <span className="text-gradient-primary">SN {parcel.survey_number}</span>
             </h2>
             <Badge className={cn(
-              "text-[10px] uppercase font-bold tracking-[0.16em] h-6 flex items-center px-3 gap-1.5 rounded-full border",
+              "text-[9px] uppercase font-bold tracking-[0.14em] h-5 flex items-center px-2.5 gap-1.5 rounded-full border",
               parcel.status === 'pending'
                 ? "bg-amber-50 text-amber-700 border-amber-200"
                 : "bg-emerald-50 text-emerald-700 border-emerald-200"
@@ -950,9 +1552,22 @@ function ParcelOverview({
               )} />
               {parcel.status === 'pending' ? 'Documents Required' : 'Ready for Audit'}
             </Badge>
+            {/* Background-refresh pill: visible only when stats/risk-score/audit
+                queries are revalidating with stale data already on screen. Keeps
+                the user informed without unmounting the layout — the values
+                they're looking at will swap in once the fetch resolves. */}
+            {isBackgroundRefreshing && (
+              <span
+                className="text-[9px] uppercase font-bold tracking-[0.14em] h-5 inline-flex items-center px-2.5 gap-1.5 rounded-full border bg-indigo-50 text-indigo-700 border-indigo-200 animate-in fade-in"
+                title="Pulling latest stats / risk score / audit results from the server"
+              >
+                <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                Refreshing
+              </span>
+            )}
           </div>
-          <p className="text-slate-500 font-medium flex items-center gap-2 text-sm">
-            <MapPin className="w-4 h-4 text-indigo-500" />
+          <p className="text-slate-500 font-medium flex items-center gap-1.5 text-xs">
+            <MapPin className="w-3.5 h-3.5 text-indigo-500" />
             <span className="font-bold text-slate-700">{parcel.village}</span>
             <span className="text-slate-300">·</span>
             <span>{parcel.taluk}</span>
@@ -960,32 +1575,37 @@ function ParcelOverview({
             <span>Tamil Nadu</span>
           </p>
         </div>
-        <div className="flex gap-3 items-center">
+        <div className="flex gap-2 items-center">
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button
               onClick={onBatchAuditClick}
-              className="bg-[#1A367E] hover:bg-[#152b66] text-white shadow-lg shadow-[#1A367E]/20 hover:shadow-xl hover:shadow-[#1A367E]/30 font-bold gap-2 px-6 h-11 rounded-xl shine-sweep transition-all"
+              className="bg-[#1A367E] hover:bg-[#152b66] text-white text-xs shadow-md shadow-[#1A367E]/20 hover:shadow-lg hover:shadow-[#1A367E]/30 font-bold gap-1.5 px-3.5 h-9 rounded-lg shine-sweep transition-all"
             >
-              <Zap className="w-4 h-4" />
+              <Zap className="w-3.5 h-3.5" />
               Launch Smart Analysis
             </Button>
           </motion.div>
           <Button
             onClick={onActionOpinion}
             variant="ghost"
-            className="text-slate-600 hover:bg-slate-100 hover:text-indigo-600 font-bold gap-2 h-11 px-4 rounded-xl transition-all"
+            className="text-slate-600 hover:bg-slate-100 hover:text-indigo-600 text-xs font-bold gap-1.5 h-9 px-3 rounded-lg transition-all"
           >
-            <FileSignature className="w-4 h-4" />
+            <FileSignature className="w-3.5 h-3.5" />
             Opinion Builder
           </Button>
         </div>
       </motion.div>
 
-      {/* STAT CARDS - Real Time Data */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
-        <StatCard 
-          label="Risk Score" 
-          value={riskScore} 
+      {/* STAT CARDS - Real Time Data
+          Encumbrances tile intentionally removed (per product call): the
+          stats endpoint over-counted historical mortgages whose discharge
+          receipts weren't recognized. Open-encumbrance status is still
+          surfaced authoritatively in the Survey Ownership Audit verdict
+          ("ENCUMBERED" badge), which is the safer single source of truth. */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
+        <StatCard
+          label="Risk Score"
+          value={riskScore}
           unit="/ 100"
           trend={riskStatus}
           trendColor={trend.color}
@@ -1012,28 +1632,174 @@ function ParcelOverview({
           trend={chainYears > 0 ? `${chainYears} Years` : 'N/A'}
           trendColor={chainYears > 0 ? 'text-emerald-600' : 'text-slate-400'}
         />
-        <StatCard
-          label="Encumbrances"
-          value={activeEncumbrances}
-          unit=""
-          trend={activeEncumbrances === 0 ? 'Clear' : `${activeEncumbrances} Active`}
-          trendColor={activeEncumbrances === 0 ? 'text-emerald-600' : 'text-red-600'}
-          alert={activeEncumbrances > 0}
-        />
       </div>
 
+      {/* CHECKS SELECTED — reflects the user's pre-analysis selection EXACTLY:
+          every check the user kept ticked (AI and Manual), nothing more,
+          nothing less. AI items are run by LandwiseAI; Manual items are
+          flagged for the user's offline verification. */}
+      {(() => {
+        // Only after an analysis has actually completed (produced results /
+        // a risk score) AND the user approved a check selection. Hidden for
+        // un-analysed parcels.
+        const analysed = (validationResults && validationResults.length > 0) || !!riskScoreData;
+        if (!analysed || !hasSavedChecks(parcel.id)) return null;
+        const ids = getSelectedChecks(parcel.id);
+        // Exactly what the user ticked — preserve checklist order, keep BOTH
+        // AI and Manual. No filtering to automated, no fixed-universe framing.
+        const chosen = LANDWISE_CHECKS.filter((c) => ids.includes(c.id));
+        if (chosen.length === 0) return null;
+        const aiCount = chosen.filter((c) => c.automated).length;
+        const manualCount = chosen.length - aiCount;
+        return (
+          <Card className="border-slate-200 overflow-hidden">
+            <CardHeader className="py-2.5 px-3 flex flex-row items-center gap-2.5 space-y-0 bg-slate-50/60">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-sm shrink-0">
+                <CheckCircle2 className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">Checks Selected</CardTitle>
+                <p className="text-[10px] text-slate-500 mt-0.5 font-medium">
+                  {chosen.length} selected · {aiCount} AI{manualCount > 0 ? ` · ${manualCount} manual` : ""}
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-3 flex flex-wrap gap-1.5">
+              {chosen.map((c) => (
+                <span
+                  key={c.id}
+                  className={cn(
+                    "inline-flex items-center gap-1 text-[10px] font-semibold border rounded-full px-2 py-0.5",
+                    c.automated
+                      ? "text-emerald-800 bg-emerald-50 border-emerald-100"
+                      : "text-slate-600 bg-slate-50 border-slate-200",
+                  )}
+                >
+                  {c.automated
+                    ? <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                    : <Circle className="w-2.5 h-2.5 text-slate-400" />}
+                  {c.label}
+                  <span
+                    className={cn(
+                      "ml-0.5 text-[8px] font-bold uppercase tracking-wide px-1 py-0 rounded border",
+                      c.automated ? "bg-indigo-50 text-indigo-700 border-indigo-100" : "bg-slate-100 text-slate-500 border-slate-200",
+                    )}
+                  >
+                    {c.automated ? "AI" : "Manual"}
+                  </span>
+                </span>
+              ))}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* MISMATCH ISSUES HUB — surfaces every non-MATCHED comparison
+          across all validated docs in this parcel. Click any row to
+          open the Visual Debugger's marked PDF (the artifact the
+          server emits at outputs/validate/<reqId>/matched_docs/<docNo>.pdf
+          with the per-field bounding boxes drawn). */}
+      {mismatchIssues.length > 0 && (
+        <Card className="relative border-red-200 bg-gradient-to-br from-red-50/60 via-rose-50/30 to-red-50/30 overflow-hidden">
+          <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-red-500 via-rose-500 to-red-500" />
+          <CardHeader className="py-2.5 px-3 flex flex-row items-center gap-2.5 space-y-0">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-500 to-rose-500 flex items-center justify-center shadow-sm shadow-red-500/30 shrink-0">
+              <AlertCircle className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-red-800">
+                Mismatch Issues Hub
+              </CardTitle>
+              <p className="text-[10px] text-red-700/80 mt-0.5 font-medium">
+                {mismatchIssues.length} issue{mismatchIssues.length !== 1 ? "s" : ""} across {new Set(mismatchIssues.map(i => i.docNo)).size} document{new Set(mismatchIssues.map(i => i.docNo)).size !== 1 ? "s" : ""} — click any row to open the marked PDF at the cited page
+              </p>
+            </div>
+            <Badge className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 shrink-0">
+              {mismatchIssues.length}
+            </Badge>
+          </CardHeader>
+          <CardContent className="px-3 pb-3 max-h-[320px] overflow-y-auto custom-scrollbar">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+              {mismatchIssues.map((issue, idx) => {
+                const pageMatch = issue.page !== undefined && issue.page !== null
+                  ? String(issue.page).match(/\d+/)
+                  : null;
+                const pageLabel = pageMatch ? pageMatch[0] : null;
+                return (
+                  <button
+                    key={`${issue.docNo}-${issue.field}-${idx}`}
+                    onClick={() => handleHubIssueClick(issue)}
+                    className="text-left bg-white border border-red-100 hover:border-red-300 hover:shadow-md rounded-lg px-2.5 py-2 transition-all group focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-[11px] font-bold text-slate-900 tabular-nums truncate">
+                        {issue.docNo}
+                      </span>
+                      <Badge variant="outline" className="text-[8px] font-bold uppercase shrink-0 border-red-200 bg-red-50 text-red-700 px-1.5 py-0 h-4 whitespace-nowrap">
+                        {issue.status}
+                      </Badge>
+                    </div>
+                    <div className="text-[10px] font-bold text-slate-800 truncate" title={issue.field}>
+                      {issue.field}
+                    </div>
+                    {/* Side-by-side EC vs Deed values so the lawyer can see
+                        the actual mismatch at a glance without opening the
+                        PDF. Label column is fixed-width; value uses font-mono
+                        with break-all so long Tamil/multi-line strings wrap
+                        cleanly inside the narrow card. Falls back to "—" when
+                        the validator emitted no value for one side. */}
+                    {(issue.ec_value || issue.metadata_value) && (
+                      <div className="mt-1 space-y-0.5 bg-slate-50/60 rounded p-1.5 border border-slate-100">
+                        <div className="grid grid-cols-[40px_1fr] gap-1 items-baseline">
+                          <span className="text-[8px] font-bold uppercase tracking-wider text-red-700 text-right">EC:</span>
+                          <span className="text-[9px] font-mono text-slate-800 break-all line-clamp-2" title={String(issue.ec_value || "—")}>
+                            {issue.ec_value || "—"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-[40px_1fr] gap-1 items-baseline">
+                          <span className="text-[8px] font-bold uppercase tracking-wider text-red-700 text-right">Deed:</span>
+                          <span className="text-[9px] font-mono text-slate-800 break-all line-clamp-2" title={String(issue.metadata_value || "—")}>
+                            {issue.metadata_value || "—"}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    {issue.reason && (
+                      <div className="text-[9px] text-slate-500 italic line-clamp-2 mt-1" title={issue.reason}>
+                        {issue.reason}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-red-100/60">
+                      <span className="text-[8px] uppercase tracking-wider font-bold text-red-600 opacity-0 group-hover:opacity-100 transition-opacity inline-flex items-center gap-1">
+                        <Eye className="w-2.5 h-2.5" />
+                        Open marked PDF
+                      </span>
+                      {pageLabel && (
+                        <span className="text-[8px] font-bold text-slate-400 uppercase whitespace-nowrap">
+                          Page {pageLabel}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* MAIN ANALYTICS ROW */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 lg:gap-8">
-        <div className="xl:col-span-2 space-y-6 lg:space-y-8 min-w-0">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 lg:gap-5">
+        <div className="xl:col-span-2 space-y-4 lg:space-y-5 min-w-0">
           {/* AI Title Health Score Section */}
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
-                <Sparkles className="w-5 h-5 text-white" />
+          <div className="space-y-3">
+            <div className="flex items-start gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md shadow-blue-500/20 shrink-0">
+                <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div className="min-w-0">
-                <h2 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight">AI Title Health Score</h2>
-                <p className="text-xs sm:text-sm text-slate-500 mt-0.5 font-medium">Automated risk assessment of the property title chain — designed for legal professionals and banks.</p>
+                <h2 className="text-base sm:text-lg font-display font-extrabold text-slate-900 tracking-tight leading-tight">AI Title Health Score</h2>
+                <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium">Automated risk assessment of the property title chain — designed for legal professionals and banks.</p>
               </div>
             </div>
 
@@ -1041,7 +1807,7 @@ function ParcelOverview({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-              className="relative bg-white border border-blue-200 rounded-2xl sm:rounded-3xl p-5 sm:p-7 lg:p-8 shadow-sm shadow-blue-100 min-h-[360px] sm:min-h-[400px] flex flex-col items-center justify-center overflow-hidden"
+              className="relative bg-white border border-blue-200 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 shadow-sm shadow-blue-100 min-h-[280px] sm:min-h-[320px] flex flex-col items-center justify-center overflow-hidden"
             >
               {/* Animated background flourish */}
               <div className="pointer-events-none absolute inset-0 opacity-60">
@@ -1053,31 +1819,31 @@ function ParcelOverview({
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                  className="relative text-center space-y-5 max-w-md mx-auto"
+                  className="relative text-center space-y-3 max-w-md mx-auto"
                 >
-                  <div className="relative w-24 h-24 mx-auto">
+                  <div className="relative w-16 h-16 mx-auto">
                     <div className="absolute inset-0 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 blur-2xl opacity-40 animate-pulse-glow" />
-                    <div className="relative w-24 h-24 bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-full flex items-center justify-center mx-auto shadow-inner border border-blue-100 ring-4 ring-white animate-float">
-                      <ShieldCheck className="w-12 h-12 text-blue-400" strokeWidth={1.8} />
+                    <div className="relative w-16 h-16 bg-gradient-to-br from-blue-50 via-white to-indigo-50 rounded-full flex items-center justify-center mx-auto shadow-inner border border-blue-100 ring-4 ring-white animate-float">
+                      <ShieldCheck className="w-8 h-8 text-blue-400" strokeWidth={1.8} />
                     </div>
                   </div>
                   <div>
-                    <h3 className="text-2xl font-display font-extrabold text-slate-900 tracking-tight">Health Analysis Pending</h3>
-                    <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed">
+                    <h3 className="text-base sm:text-lg font-display font-extrabold text-slate-900 tracking-tight">Health Analysis Pending</h3>
+                    <p className="text-xs text-slate-500 mt-1 font-medium leading-relaxed">
                       Upload land documents to the PDF Vault and click
                       <span className="text-indigo-600 font-bold mx-1">Launch Smart Analysis</span>
                       to generate your AI Title Health Score and risk assessment.
                     </p>
                   </div>
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.97 }} className="inline-block">
                       <Button
                         variant="outline"
-                        className="rounded-full border-[#1A367E]/20 bg-[#EBF1FF] text-[#1A367E] font-bold hover:bg-[#1A367E] hover:border-[#1A367E] hover:text-white shine-sweep transition-all px-6 h-10"
+                        className="rounded-full border-[#1A367E]/20 bg-[#EBF1FF] text-[#1A367E] text-xs font-bold hover:bg-[#1A367E] hover:border-[#1A367E] hover:text-white shine-sweep transition-all px-4 h-9"
                         onClick={() => document.getElementById('documents-tab-trigger')?.click()}
                       >
                         Go to PDF Vault
-                        <ArrowRight className="w-4 h-4 ml-1.5" />
+                        <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
                       </Button>
                     </motion.div>
                   </div>
@@ -1238,22 +2004,22 @@ function ParcelOverview({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="relative bg-white border border-slate-200 rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+            className="relative bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:shadow-md transition-shadow overflow-hidden"
           >
             {/* Subtle gradient header strip */}
-            <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-indigo-500 via-blue-500 to-violet-500" />
-            <h3 className="text-sm font-display font-bold text-slate-900 mb-6 flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <GanttChart className="w-4 h-4 text-indigo-500" />
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-indigo-500 via-blue-500 to-violet-500" />
+            <h3 className="text-xs font-display font-bold text-slate-900 mb-4 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <GanttChart className="w-3.5 h-3.5 text-indigo-500" />
                 Workflow Phase
               </span>
-              <span className="text-[9px] text-indigo-600 font-bold uppercase tracking-[0.2em] inline-flex items-center gap-1.5 bg-indigo-50 px-2 py-1 rounded-full border border-indigo-100">
+              <span className="text-[9px] text-indigo-600 font-bold uppercase tracking-[0.18em] inline-flex items-center gap-1.5 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
                 <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse-glow" />
                 Active
               </span>
             </h3>
-            <div className="space-y-7 relative">
-              <div className="absolute left-[13px] top-6 bottom-6 w-[2px] bg-gradient-to-b from-slate-100 via-slate-200 to-slate-100" />
+            <div className="space-y-4 relative">
+              <div className="absolute left-[11px] top-5 bottom-5 w-[2px] bg-gradient-to-b from-slate-100 via-slate-200 to-slate-100" />
               {workflow?.map((phase: any) => (
                 <PhaseItem
                   key={phase.num}
@@ -1264,7 +2030,7 @@ function ParcelOverview({
                   current={phase.state === 'in_progress'}
                 />
               )) || (
-                <div className="space-y-7">
+                <div className="space-y-4">
                   <PhaseItem active current num={1} label="Document Ingestion" status="Pending" />
                   <PhaseItem num={2} label="Data Extraction & NER" status="Pending" />
                   <PhaseItem num={3} label="Chain Verification" status="Not Started" />
@@ -1277,6 +2043,63 @@ function ParcelOverview({
 
         </div>
       </div>
+
+      {/* Floating draggable PDF popup for the Mismatch Issues Hub.
+          Renders the Visual Debugger's marked PDF (box-annotated for the
+          mismatch) scrolled to the cited page. Same architecture as the
+          Timeline tab and HierarchyTab popups: fixed positioning, header
+          drag handle (dragListener=false + onPointerDown), z-[200] to sit
+          above all other dashboard chrome. */}
+      <AnimatePresence>
+        {hubPreview && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+            drag
+            dragControls={hubPopupDragControls}
+            dragListener={false}
+            dragMomentum={false}
+            dragElastic={0}
+            className="fixed top-20 right-8 w-[680px] max-w-[92vw] h-[82vh] bg-white border border-slate-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[200]"
+          >
+            <div
+              onPointerDown={(e) => hubPopupDragControls.start(e)}
+              className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-600 text-white cursor-grab active:cursor-grabbing select-none"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[9px] font-bold uppercase tracking-[0.18em] opacity-80 leading-none">Marked PDF</div>
+                  <div className="text-sm font-bold truncate flex items-center gap-2">
+                    {hubPreview.docNo}
+                    {hubPreview.page && (
+                      <span className="text-[10px] font-bold bg-white/20 px-1.5 py-0.5 rounded">
+                        Page {hubPreview.page}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setHubPreview(null)}
+                className="p-1.5 hover:bg-white/20 rounded-lg transition-all text-white shrink-0"
+                title="Close preview"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-900 relative">
+              <PdfAnnotator
+                url={hubPreview.url}
+                docId={hubPreview.docNo}
+                scrollToPage={hubPreview.scrollToPage}
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -1540,7 +2363,7 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
 
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar List - grouped by category */}
-        <div className="w-2/5 min-w-[280px] border-r border-slate-100 flex flex-col bg-gradient-to-b from-white to-slate-50/50">
+        <div className="w-[300px] shrink-0 border-r border-slate-100 flex flex-col bg-gradient-to-b from-white to-slate-50/50">
           <ScrollArea className="flex-1">
             <div className="p-4 sm:p-5 space-y-6">
               {DOC_CATEGORIES.map((cat) => {
@@ -1641,11 +2464,11 @@ function PdfVaultTab({ parcelId, auditResults }: { parcelId: string; auditResult
                   </Button>
                 </div>
               </div>
-              <div className="flex-1 flex items-center justify-center overflow-hidden p-3 sm:p-4">
+              <div className="flex-1 flex items-center justify-center overflow-hidden">
                 {selectedDoc.original_filename.toLowerCase().endsWith('.pdf') ? (
                   <iframe
-                    src={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}#toolbar=0`}
-                    className="w-full h-full rounded-2xl border border-slate-200 shadow-2xl bg-white"
+                    src={`${API_BASE_URL}/api/v1/landwise/documents/download/${selectedDoc.id}#toolbar=1&view=FitH`}
+                    className="w-full h-full bg-white"
                     title="PDF Preview"
                   />
                 ) : (
@@ -1857,7 +2680,7 @@ function DocumentVaultCard({
   const source = (doc.source || doc.registry || "").toString().toLowerCase();
   const metaParts = [source, yearLabel, pages ? `${pages}p` : null, sizeStr].filter(Boolean);
   const fields = validationResult?.match_count
-    ? `${validationResult.match_count}/${validationResult.comparisons?.length || 0}`
+    ? `${coerceMatchCount(validationResult.match_count, validationResult.comparisons)}/${validationResult.comparisons?.length || 0}`
     : null;
 
   return (
@@ -2095,25 +2918,50 @@ function UploadDocumentModal({ isOpen, onClose, parcelId }: { isOpen: boolean, o
         setUploadProgress(prev => Math.min(prev + 10, 90));
       }, 500);
 
-      // Call API
-      const result = await landwiseApi.uploadDocument(parcelId, formData);
-      
+      // 1) Upload the document.
+      await landwiseApi.uploadDocument(parcelId, formData);
+
       clearInterval(interval);
       setUploadProgress(100);
-      
-      setTimeout(() => {
-        toast.success("Document uploaded successfully. AI extraction queued.", {
-          description: `Extracted data will be available shortly for ${file.name}.`,
-          icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+      queryClient.invalidateQueries({ queryKey: ['documents', parcelId] });
+
+      toast.success("Document uploaded. Starting analysis…", {
+        description: `Running the AI pipeline for ${file.name}.`,
+        icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+      });
+      onClose();
+      reset();
+
+      // 2) Auto-start the workflow. Uploading alone triggers nothing
+      //    server-side, so kick off analyze here. Run it in the background
+      //    (the pipeline can take a while) and refresh the parcel views when it
+      //    finishes. A missing EC makes analyze return 400 — surface that
+      //    without flagging the upload itself as failed.
+      landwiseApi.analyzeParcel(parcelId)
+        .then(() => {
+          ["parcels", "parcel-stats", "documents", "hierarchy", "risks", "timeline", "checklist"].forEach((k) =>
+            queryClient.invalidateQueries({
+              queryKey: k === "parcels" ? ["parcels"] : [k, parcelId],
+            })
+          );
+          toast.success("Analysis complete", {
+            icon: <CheckCircle2 className="w-4 h-4 text-green-500" />,
+          });
+        })
+        .catch((analyzeErr: any) => {
+          const msg =
+            analyzeErr.response?.data?.body?.responseMessage ||
+            analyzeErr.response?.data?.detail ||
+            "Analysis could not start.";
+          toast.info("Uploaded, but analysis didn't run", { description: msg });
         });
-        queryClient.invalidateQueries({ queryKey: ['documents', parcelId] });
-        onClose();
-        reset();
-      }, 500);
 
     } catch (error: any) {
       toast.error("Upload failed", {
-        description: error.response?.data?.detail || "An unexpected error occurred."
+        description:
+          error.response?.data?.body?.responseMessage ||
+          error.response?.data?.detail ||
+          "An unexpected error occurred.",
       });
       setIsUploading(false);
     }
@@ -2241,7 +3089,7 @@ function UploadDocumentModal({ isOpen, onClose, parcelId }: { isOpen: boolean, o
   );
 }
 
-function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClose: () => void, parcelId: string }) {
+function BatchAuditModal({ isOpen, onClose, parcelId, onUploaded }: { isOpen: boolean, onClose: () => void, parcelId: string, onUploaded?: (ec: File, zip: File, limit?: number) => void }) {
   const queryClient = useQueryClient();
   const [ecFile, setEcFile] = useState<File | null>(null);
   const [zipFile, setZipFile] = useState<File | null>(null);
@@ -2249,62 +3097,22 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
   const [isUploading, setIsUploading] = useState(false);
   const [progressLabel, setProgressLabel] = useState("");
   const [visualDebugEnabled, setVisualDebugEnabled] = useState(true);
-
-
-  const handleBatchAudit = async () => {
+  // "Upload & Continue" hands the attached files + limit to the checklist step.
+  // NOTHING is uploaded yet — the actual upload + analysis only happen after the
+  // user approves the checklist (see the dashboard's ChecklistModal onApprove).
+  const handleBatchAudit = () => {
     if (!ecFile || !zipFile) {
-        toast.error("Missing files", {
-            description: "Please attach both the Encumbrance Certificate and the Sale Deeds ZIP."
-        });
-        return;
-    }
-    
-    setIsUploading(true);
-    
-    try {
-      setProgressLabel("Uploading EC PDF...");
-      const ecFormData = new FormData();
-      ecFormData.append("file", ecFile);
-      ecFormData.append("document_type", "encumbrance_certificate");
-      ecFormData.append("language", "tamil");
-      ecFormData.append("source", "uploaded");
-      await landwiseApi.uploadDocument(parcelId, ecFormData);
-
-      setProgressLabel("Uploading Deeds ZIP...");
-      const zipFormData = new FormData();
-      zipFormData.append("file", zipFile);
-      zipFormData.append("document_type", "sale_deed");
-      zipFormData.append("language", "tamil");
-      zipFormData.append("source", "uploaded");
-      await landwiseApi.uploadDocument(parcelId, zipFormData);
-
-      setProgressLabel("Triggering Legacy AI Pipeline...");
-      await landwiseApi.analyzeParcel(parcelId, transactionLimit === "all" ? undefined : parseInt(transactionLimit));
-
-      toast.success("Batch Upload Successful & Pipeline Triggered!!", {
-        description: `Successfully transmitted EC and ZIP archives.`,
-        icon: <Zap className="w-4 h-4 text-purple-500" />,
+      toast.error("Missing files", {
+        description: "Please attach both the Encumbrance Certificate and the Sale Deeds ZIP.",
       });
-      
-      queryClient.invalidateQueries({ queryKey: ['documents', parcelId] });
-      queryClient.invalidateQueries({ queryKey: ["parcels"] });
-      queryClient.invalidateQueries({ queryKey: ["parcel-stats", parcelId] });
-      queryClient.invalidateQueries({ queryKey: ["hierarchy", parcelId] });
-      queryClient.invalidateQueries({ queryKey: ["risks", parcelId] });
-      queryClient.invalidateQueries({ queryKey: ["timeline", parcelId] });
-      queryClient.invalidateQueries({ queryKey: ["checklist", parcelId] });
-
-      onClose();
-      reset();
-
-    } catch (error: any) {
-      toast.error("Batch Audit failed", {
-        description: error.response?.data?.detail || "An unexpected error occurred during batch process."
-      });
-    } finally {
-        setIsUploading(false);
-        setProgressLabel("");
+      return;
     }
+    const limitVal = transactionLimit === "all" ? undefined : parseInt(transactionLimit);
+    const ec = ecFile;
+    const zip = zipFile;
+    onClose();
+    reset();
+    onUploaded?.(ec, zip, limitVal);
   };
 
   const reset = () => {
@@ -2319,55 +3127,47 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isUploading && onClose()}>
-      <DialogContent className="sm:max-w-[720px] bg-white border-slate-200 text-slate-900 shadow-2xl rounded-2xl sm:rounded-3xl overflow-hidden p-0 max-h-[92vh]">
+      <DialogContent className="sm:max-w-[600px] bg-white border-slate-200 text-slate-900 shadow-2xl rounded-2xl overflow-hidden p-0 max-h-[90vh]">
         {/* Top accent strip */}
-        <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-10" />
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-10" />
         {/* Background flourish */}
-        <div className="pointer-events-none absolute inset-0 opacity-50">
-          <div className="absolute -top-32 -right-32 w-72 h-72 rounded-full bg-gradient-to-br from-violet-200/40 to-indigo-200/40 blur-3xl animate-blob-slow" />
-          <div className="absolute -bottom-32 -left-32 w-72 h-72 rounded-full bg-gradient-to-br from-blue-200/30 to-indigo-200/30 blur-3xl animate-blob" />
+        <div className="pointer-events-none absolute inset-0 opacity-40">
+          <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-violet-200/40 to-indigo-200/40 blur-3xl animate-blob-slow" />
+          <div className="absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-gradient-to-br from-blue-200/30 to-indigo-200/30 blur-3xl animate-blob" />
         </div>
 
-        <div className="relative px-6 sm:px-8 py-6 overflow-y-auto custom-scrollbar max-h-[92vh]">
+        <div className="relative px-4 py-4 overflow-y-auto custom-scrollbar max-h-[90vh]">
         <DialogHeader>
           <DialogTitle asChild>
-            <div className="flex items-center gap-3 tracking-tight">
-              <motion.div
-                initial={{ scale: 0.6, rotate: -20, opacity: 0 }}
-                animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-                className="relative shrink-0"
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl blur-md opacity-50 -z-10 animate-pulse-glow" />
-                <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 flex items-center justify-center shadow-lg shadow-indigo-500/30 ring-1 ring-white/30">
-                  <Zap className="w-5 h-5 text-white" strokeWidth={2.5} />
-                </div>
-              </motion.div>
-              <h2 className="text-xl sm:text-2xl font-display font-extrabold leading-tight">
+            <div className="flex items-center gap-2 tracking-tight">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-600 via-indigo-600 to-blue-600 flex items-center justify-center shadow-sm shadow-indigo-500/30 shrink-0">
+                <Zap className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+              </div>
+              <h2 className="text-base sm:text-lg font-display font-extrabold leading-tight">
                 Trigger <span className="text-gradient-primary">Batch Audit</span>
               </h2>
             </div>
           </DialogTitle>
           <DialogDescription asChild>
-            <p className="text-slate-500 font-medium pt-1.5 text-sm leading-relaxed">
+            <p className="text-slate-500 font-medium pt-0.5 text-xs leading-snug">
               Replicates the legacy workflow perfectly. Upload EC and Deeds at the same time to trigger immediate verification flow.
             </p>
           </DialogDescription>
         </DialogHeader>
 
         <motion.div
-          className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5 py-5"
+          className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-3"
           initial="hidden"
           animate="visible"
           variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } } }}
         >
           {/* EC FILE SLOT */}
           <motion.div
-            variants={{ hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } } }}
-            className="space-y-2.5"
+            variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } } }}
+            className="space-y-1.5"
           >
-            <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-md bg-gradient-to-br from-indigo-500 to-blue-600 text-white text-[9px] font-bold flex items-center justify-center">1</span>
+            <Label className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 rounded bg-gradient-to-br from-indigo-500 to-blue-600 text-white text-[8px] font-bold flex items-center justify-center">1</span>
               Encumbrance Certificate
             </Label>
             <AnimatePresence mode="wait" initial={false}>
@@ -2377,58 +3177,41 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.25 }}
-                  className="relative flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white rounded-2xl cursor-pointer hover:border-indigo-300 hover:bg-gradient-to-br hover:from-indigo-50/40 hover:to-white transition-all group overflow-hidden"
+                  transition={{ duration: 0.2 }}
+                  className="relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white rounded-lg cursor-pointer hover:border-indigo-300 hover:bg-indigo-50/30 transition-all group"
                 >
-                  <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-100/30 via-transparent to-blue-100/30" />
-                  </div>
-                  <div className="relative flex flex-col items-center justify-center pt-4 pb-5">
-                    <div className="relative w-14 h-14 mb-3">
-                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-indigo-400 to-blue-500 blur-xl opacity-0 group-hover:opacity-30 transition-opacity" />
-                      <div className="relative w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-200 group-hover:scale-110 group-hover:rotate-3 group-hover:border-indigo-200 transition-all duration-500">
-                        <FileText className="w-6 h-6 text-indigo-500" strokeWidth={2} />
-                      </div>
+                  <div className="relative flex flex-col items-center justify-center">
+                    <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center shadow-sm border border-slate-200 group-hover:border-indigo-200 transition-all">
+                      <FileText className="w-4 h-4 text-indigo-500" strokeWidth={2} />
                     </div>
-                    <p className="text-[10px] text-slate-500 group-hover:text-indigo-600 uppercase font-bold tracking-[0.18em] transition-colors">Attach .PDF</p>
-                    <p className="text-[9px] text-slate-400 font-medium mt-1">Click or drop file</p>
+                    <p className="text-[9px] text-slate-500 group-hover:text-indigo-600 uppercase font-bold tracking-[0.14em] mt-1.5 transition-colors">Attach .PDF</p>
                   </div>
                   <input type="file" className="hidden" accept=".pdf" onChange={(e) => setEcFile(e.target.files?.[0] || null)} />
                 </motion.label>
               ) : (
                 <motion.div
                   key="filled-ec"
-                  initial={{ opacity: 0, scale: 0.92, y: 8 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.92 }}
-                  transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
-                  className="relative flex items-center justify-between p-4 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-blue-50/40 rounded-2xl border border-indigo-200 shadow-md shadow-indigo-500/10 h-40 overflow-hidden"
+                  initial={{ opacity: 0, scale: 0.94 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.94 }}
+                  transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
+                  className="relative flex items-center gap-2 p-2.5 bg-gradient-to-br from-indigo-50 to-blue-50/40 rounded-lg border border-indigo-200 shadow-sm h-24"
                 >
-                  <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500" />
-                  <div className="flex flex-col h-full justify-between w-full relative">
-                    <div className="flex items-start justify-between">
-                      <motion.div
-                        initial={{ scale: 0, rotate: -90 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }}
-                        className="relative w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-sm border border-indigo-100"
-                      >
-                        <FileText className="w-5 h-5 text-indigo-600" />
-                        <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-sm ring-2 ring-white">
-                          <CheckCircle2 className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-                        </span>
-                      </motion.div>
-                      <Button variant="ghost" size="icon" onClick={() => setEcFile(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-red-500 hover:bg-white hover:scale-110 transition-all">
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <div className="w-full min-w-0">
-                      <p className="text-sm font-display font-extrabold text-slate-900 truncate" title={ecFile.name}>{ecFile.name}</p>
-                      <p className="text-[10px] uppercase font-bold tracking-[0.16em] text-indigo-600/80 mt-1 tabular-nums">
-                        {(ecFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
+                  <div className="relative w-9 h-9 rounded-lg bg-white flex items-center justify-center shadow-sm border border-indigo-100 shrink-0">
+                    <FileText className="w-4 h-4 text-indigo-600" />
+                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-white">
+                      <CheckCircle2 className="w-2 h-2 text-white" strokeWidth={3} />
+                    </span>
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-display font-extrabold text-slate-900 truncate" title={ecFile.name}>{ecFile.name}</p>
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-indigo-600/80 mt-0.5 tabular-nums">
+                      {(ecFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => setEcFile(null)} className="h-6 w-6 rounded-md text-slate-400 hover:text-red-500 hover:bg-white shrink-0">
+                    <X className="w-3 h-3" />
+                  </Button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -2436,11 +3219,11 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
 
           {/* ZIP FILE SLOT */}
           <motion.div
-            variants={{ hidden: { opacity: 0, y: 14 }, visible: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } } }}
-            className="space-y-2.5"
+            variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: [0.16, 1, 0.3, 1] } } }}
+            className="space-y-1.5"
           >
-            <Label className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500 flex items-center gap-1.5">
-              <span className="w-4 h-4 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-[9px] font-bold flex items-center justify-center">2</span>
+            <Label className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-500 flex items-center gap-1.5">
+              <span className="w-3.5 h-3.5 rounded bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-[8px] font-bold flex items-center justify-center">2</span>
               Sale Deeds Archive
             </Label>
             <AnimatePresence mode="wait" initial={false}>
@@ -2450,58 +3233,41 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
                   initial={{ opacity: 0, scale: 0.97 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.97 }}
-                  transition={{ duration: 0.25 }}
-                  className="relative flex flex-col items-center justify-center w-full h-40 border-2 border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white rounded-2xl cursor-pointer hover:border-violet-300 hover:bg-gradient-to-br hover:from-violet-50/40 hover:to-white transition-all group overflow-hidden"
+                  transition={{ duration: 0.2 }}
+                  className="relative flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-slate-200 bg-gradient-to-br from-slate-50 to-white rounded-lg cursor-pointer hover:border-violet-300 hover:bg-violet-50/30 transition-all group"
                 >
-                  <div className="pointer-events-none absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <div className="absolute inset-0 bg-gradient-to-br from-violet-100/30 via-transparent to-indigo-100/30" />
-                  </div>
-                  <div className="relative flex flex-col items-center justify-center pt-4 pb-5">
-                    <div className="relative w-14 h-14 mb-3">
-                      <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-violet-400 to-indigo-500 blur-xl opacity-0 group-hover:opacity-30 transition-opacity" />
-                      <div className="relative w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-sm border border-slate-200 group-hover:scale-110 group-hover:-rotate-3 group-hover:border-violet-200 transition-all duration-500">
-                        <FolderArchive className="w-6 h-6 text-violet-500" strokeWidth={2} />
-                      </div>
+                  <div className="relative flex flex-col items-center justify-center">
+                    <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center shadow-sm border border-slate-200 group-hover:border-violet-200 transition-all">
+                      <FolderArchive className="w-4 h-4 text-violet-500" strokeWidth={2} />
                     </div>
-                    <p className="text-[10px] text-slate-500 group-hover:text-violet-600 uppercase font-bold tracking-[0.18em] transition-colors">Attach .ZIP</p>
-                    <p className="text-[9px] text-slate-400 font-medium mt-1">Click or drop file</p>
+                    <p className="text-[9px] text-slate-500 group-hover:text-violet-600 uppercase font-bold tracking-[0.14em] mt-1.5 transition-colors">Attach .ZIP</p>
                   </div>
                   <input type="file" className="hidden" accept=".zip" onChange={(e) => setZipFile(e.target.files?.[0] || null)} />
                 </motion.label>
               ) : (
                 <motion.div
                   key="filled-zip"
-                  initial={{ opacity: 0, scale: 0.92, y: 8 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.92 }}
-                  transition={{ duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
-                  className="relative flex items-center justify-between p-4 bg-gradient-to-br from-violet-50 via-indigo-50/40 to-blue-50/40 rounded-2xl border border-violet-200 shadow-md shadow-violet-500/10 h-40 overflow-hidden"
+                  initial={{ opacity: 0, scale: 0.94 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.94 }}
+                  transition={{ duration: 0.3, ease: [0.34, 1.56, 0.64, 1] }}
+                  className="relative flex items-center gap-2 p-2.5 bg-gradient-to-br from-violet-50 to-indigo-50/40 rounded-lg border border-violet-200 shadow-sm h-24"
                 >
-                  <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500" />
-                  <div className="flex flex-col h-full justify-between w-full relative">
-                    <div className="flex items-start justify-between">
-                      <motion.div
-                        initial={{ scale: 0, rotate: 90 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                        transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1], delay: 0.05 }}
-                        className="relative w-11 h-11 rounded-xl bg-white flex items-center justify-center shadow-sm border border-violet-100"
-                      >
-                        <FolderArchive className="w-5 h-5 text-violet-600" />
-                        <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 flex items-center justify-center shadow-sm ring-2 ring-white">
-                          <CheckCircle2 className="w-2.5 h-2.5 text-white" strokeWidth={3} />
-                        </span>
-                      </motion.div>
-                      <Button variant="ghost" size="icon" onClick={() => setZipFile(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-red-500 hover:bg-white hover:scale-110 transition-all">
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    <div className="w-full min-w-0">
-                      <p className="text-sm font-display font-extrabold text-slate-900 truncate" title={zipFile.name}>{zipFile.name}</p>
-                      <p className="text-[10px] uppercase font-bold tracking-[0.16em] text-violet-600/80 mt-1 tabular-nums">
-                        {(zipFile.size / 1024 / 1024).toFixed(2)} MB
-                      </p>
-                    </div>
+                  <div className="relative w-9 h-9 rounded-lg bg-white flex items-center justify-center shadow-sm border border-violet-100 shrink-0">
+                    <FolderArchive className="w-4 h-4 text-violet-600" />
+                    <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-white">
+                      <CheckCircle2 className="w-2 h-2 text-white" strokeWidth={3} />
+                    </span>
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-display font-extrabold text-slate-900 truncate" title={zipFile.name}>{zipFile.name}</p>
+                    <p className="text-[9px] uppercase font-bold tracking-wider text-violet-600/80 mt-0.5 tabular-nums">
+                      {(zipFile.size / 1024 / 1024).toFixed(2)} MB
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => setZipFile(null)} className="h-6 w-6 rounded-md text-slate-400 hover:text-red-500 hover:bg-white shrink-0">
+                    <X className="w-3 h-3" />
+                  </Button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -2509,30 +3275,22 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
         </motion.div>
 
         {/* Visual Debugger Toggle */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.25, duration: 0.4 }}
-          className="py-4 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap"
-        >
-          <div className="flex items-center gap-3 cursor-pointer min-w-0 flex-1" onClick={() => setVisualDebugEnabled(!visualDebugEnabled)}>
+        <div className="py-2.5 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 cursor-pointer min-w-0 flex-1" onClick={() => setVisualDebugEnabled(!visualDebugEnabled)}>
             <motion.div
               animate={{
                 background: visualDebugEnabled
                   ? "linear-gradient(135deg, #7c3aed, #4f46e5)"
                   : "#f1f5f9",
-                boxShadow: visualDebugEnabled
-                  ? "0 10px 24px -8px rgba(99, 102, 241, 0.4), 0 0 0 1px rgba(255,255,255,0.3) inset"
-                  : "0 0 0 0 rgba(0,0,0,0)",
               }}
-              transition={{ duration: 0.3 }}
-              className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+              transition={{ duration: 0.25 }}
+              className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
             >
-              <SearchCode className={cn("w-5 h-5 transition-colors", visualDebugEnabled ? "text-white" : "text-slate-400")} />
+              <SearchCode className={cn("w-3.5 h-3.5 transition-colors", visualDebugEnabled ? "text-white" : "text-slate-400")} />
             </motion.div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-900 uppercase tracking-[0.14em]">Enable Visual Debugger</p>
-              <p className="text-[10px] text-slate-500 font-medium leading-tight mt-0.5">Generates forensic PDF proofs for field mismatches.</p>
+            <div className="min-w-0 leading-tight">
+              <p className="text-[11px] font-bold text-slate-900 uppercase tracking-[0.12em]">Enable Visual Debugger</p>
+              <p className="text-[9px] text-slate-500 font-medium leading-tight mt-0.5">Generates forensic PDF proofs for field mismatches.</p>
             </div>
           </div>
           <button
@@ -2541,9 +3299,9 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
             aria-checked={visualDebugEnabled}
             onClick={() => setVisualDebugEnabled(!visualDebugEnabled)}
             className={cn(
-              "w-12 h-6 rounded-full p-0.5 transition-all relative shrink-0",
+              "w-9 h-5 rounded-full p-0.5 transition-all relative shrink-0",
               visualDebugEnabled
-                ? "bg-gradient-to-r from-violet-600 to-indigo-600 shadow-md shadow-indigo-500/30"
+                ? "bg-gradient-to-r from-violet-600 to-indigo-600"
                 : "bg-slate-200"
             )}
           >
@@ -2551,85 +3309,176 @@ function BatchAuditModal({ isOpen, onClose, parcelId }: { isOpen: boolean, onClo
               layout
               transition={{ type: "spring", stiffness: 500, damping: 30 }}
               className={cn(
-                "w-5 h-5 bg-white rounded-full shadow-md flex items-center justify-center",
+                "w-4 h-4 bg-white rounded-full shadow flex items-center justify-center",
                 visualDebugEnabled ? "ml-auto" : ""
               )}
-            >
-              {visualDebugEnabled && (
-                <motion.div
-                  initial={{ scale: 0, opacity: 0 }}
-                  animate={{ scale: 1, opacity: 1 }}
-                  transition={{ delay: 0.1 }}
-                  className="w-1.5 h-1.5 rounded-full bg-gradient-to-br from-violet-500 to-indigo-600"
-                />
-              )}
-            </motion.div>
+            />
           </button>
-        </motion.div>
+        </div>
 
         {/* Transaction Scope */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.32, duration: 0.4 }}
-          className="py-4 border-t border-slate-100 flex items-center justify-between gap-4 flex-wrap"
-        >
-          <div className="flex items-center gap-3 min-w-0 flex-1">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
-              <Filter className="w-4 h-4 text-indigo-600" />
+        <div className="py-2.5 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="w-7 h-7 rounded-md bg-gradient-to-br from-blue-50 to-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+              <Filter className="w-3.5 h-3.5 text-indigo-600" />
             </div>
-            <div className="min-w-0">
-              <Label className="text-xs font-bold uppercase tracking-[0.14em] text-slate-700 block">Transaction Scope</Label>
-              <p className="text-[10px] text-slate-400 font-medium mt-0.5">Limit the audit depth for faster processing</p>
+            <div className="min-w-0 leading-tight">
+              <Label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-700 block">Transaction Scope</Label>
+              <p className="text-[9px] text-slate-400 font-medium mt-0.5">Limit the audit depth for faster processing</p>
             </div>
           </div>
           <Select value={transactionLimit} onValueChange={setTransactionLimit}>
-            <SelectTrigger className="w-full sm:w-[220px] border-slate-200 bg-gradient-to-r from-slate-50 to-white hover:border-indigo-300 hover:bg-indigo-50/30 font-bold transition-all rounded-xl h-11 focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500/40">
+            <SelectTrigger className="w-full sm:w-[180px] border-slate-200 bg-slate-50 hover:border-indigo-300 hover:bg-indigo-50/30 text-xs font-bold transition-all rounded-md h-8 focus:ring-2 focus:ring-indigo-500/40">
               <SelectValue placeholder="All Transactions" />
             </SelectTrigger>
-            <SelectContent className="border-slate-200 rounded-xl">
+            <SelectContent className="border-slate-200 rounded-md text-xs">
               <SelectItem value="5" className="font-bold">Last 5 Transactions</SelectItem>
               <SelectItem value="10" className="font-bold">Last 10 Transactions</SelectItem>
               <SelectItem value="20" className="font-bold">Last 20 Transactions</SelectItem>
               <SelectItem value="all" className="font-bold text-indigo-600">Entire Legal History</SelectItem>
             </SelectContent>
           </Select>
-        </motion.div>
+        </div>
 
-        <DialogFooter className="pt-5 mt-2 border-t border-slate-100 gap-2 sm:gap-3 flex-wrap">
+        <DialogFooter className="pt-3 mt-1 border-t border-slate-100 gap-2 flex-wrap">
           <Button
             variant="ghost"
+            size="sm"
             onClick={onClose}
             disabled={isUploading}
-            className="text-slate-500 hover:bg-slate-100 hover:text-slate-700 font-bold h-11 px-5 rounded-xl transition-all"
+            className="text-slate-500 hover:bg-slate-100 hover:text-slate-700 text-xs font-bold h-8 px-3 rounded-md"
           >
             Cancel
           </Button>
-          <motion.div whileHover={!isUploading && bothFilesReady ? { scale: 1.03 } : {}} whileTap={!isUploading && bothFilesReady ? { scale: 0.97 } : {}}>
-            <Button
-              onClick={handleBatchAudit}
-              disabled={!ecFile || !zipFile || isUploading}
-              className={cn(
-                "min-w-[220px] font-bold h-11 px-6 rounded-xl gap-2 text-white transition-all shine-sweep",
-                bothFilesReady && !isUploading
-                  ? "bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:from-violet-700 hover:via-indigo-700 hover:to-blue-700 shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40"
-                  : "bg-slate-300 hover:bg-slate-300 cursor-not-allowed"
-              )}
-            >
-              {isUploading ? (
-                <>
-                  <RefreshCcw className="w-4 h-4 animate-spin" />
-                  <span className="truncate">{progressLabel}</span>
-                </>
-              ) : (
-                <>
-                  Execute Audit Sequence
-                  <Zap className="w-4 h-4 ml-1" />
-                </>
-              )}
-            </Button>
-          </motion.div>
+          <Button
+            size="sm"
+            onClick={handleBatchAudit}
+            disabled={!ecFile || !zipFile || isUploading}
+            className={cn(
+              "min-w-[180px] text-xs font-bold h-8 px-4 rounded-md gap-1.5 text-white transition-all shine-sweep",
+              bothFilesReady && !isUploading
+                ? "bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 hover:from-violet-700 hover:via-indigo-700 hover:to-blue-700 shadow-md shadow-indigo-500/30"
+                : "bg-slate-300 hover:bg-slate-300 cursor-not-allowed"
+            )}
+          >
+            {isUploading ? (
+              <>
+                <RefreshCcw className="w-3 h-3 animate-spin" />
+                <span className="truncate">{progressLabel}</span>
+              </>
+            ) : (
+              <>
+                Upload &amp; Continue
+                <ChevronRight className="w-3 h-3" />
+              </>
+            )}
+          </Button>
         </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ChecklistModal({ isOpen, onClose, onApprove }: { isOpen: boolean; onClose: () => void; onApprove: (ids: string[]) => void }) {
+  const [selectedChecks, setSelectedChecks] = useState<string[]>(AUTOMATED_CHECK_IDS);
+  // Reset each time the modal opens: AI-automatable checks pre-selected (the
+  // ones that actually run), manual ones shown but unticked.
+  useEffect(() => {
+    if (isOpen) setSelectedChecks([...AUTOMATED_CHECK_IDS]);
+  }, [isOpen]);
+  const toggleCheck = (id: string) =>
+    setSelectedChecks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  return (
+    <Dialog open={isOpen} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-[640px] bg-white border-slate-200 text-slate-900 shadow-2xl rounded-2xl overflow-hidden p-0 max-h-[90vh]">
+        <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 z-10" />
+        <div className="relative px-5 py-4 overflow-y-auto custom-scrollbar max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle asChild>
+              <div className="flex items-center gap-2 tracking-tight">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-emerald-500 to-green-600 flex items-center justify-center shadow-sm shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
+                </div>
+                <h2 className="text-base sm:text-lg font-display font-extrabold leading-tight">Checks to <span className="text-gradient-primary">Run</span></h2>
+              </div>
+            </DialogTitle>
+            <DialogDescription asChild>
+              <p className="text-slate-500 font-medium pt-0.5 text-xs leading-snug">
+                Documents uploaded. The full property checklist is shown — items marked <b>AI</b> are run automatically by LandwiseAI (pre-selected); <b>Manual</b> items are for your offline verification. Untick anything you don't want in the report.
+              </p>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex items-center justify-end gap-2 mt-3 mb-2">
+            <span className="text-[10px] font-bold text-emerald-700 tabular-nums">{selectedChecks.length}/{LANDWISE_CHECKS.length} selected</span>
+            <button
+              type="button"
+              onClick={() => setSelectedChecks(selectedChecks.length === LANDWISE_CHECKS.length ? [] : [...ALL_CHECK_IDS])}
+              className="text-[9px] font-bold uppercase tracking-wide text-indigo-600 hover:text-indigo-700"
+            >
+              {selectedChecks.length === LANDWISE_CHECKS.length ? "Clear all" : "Select all"}
+            </button>
+          </div>
+
+          {/* All sections on one scrollable page — every category shown with a
+              sticky section header (no tabs). */}
+          <div className="max-h-[440px] overflow-y-auto custom-scrollbar rounded-xl border border-slate-100">
+            {CHECK_CATEGORIES.map((cat) => {
+              const catChecks = LANDWISE_CHECKS.filter((c) => c.category === cat);
+              const catSel = catChecks.filter((c) => selectedChecks.includes(c.id)).length;
+              return (
+                <div key={cat}>
+                  <div className="sticky top-0 z-10 flex items-center justify-between gap-2 px-3 py-1.5 bg-slate-50 border-y border-slate-100">
+                    <span className="text-[10px] font-extra-bold uppercase tracking-[0.12em] text-slate-500">{cat}</span>
+                    <span className="text-[9px] font-bold text-slate-400 tabular-nums">{catSel}/{catChecks.length}</span>
+                  </div>
+                  <div className="divide-y divide-slate-50">
+                    {catChecks.map((chk) => {
+                      const on = selectedChecks.includes(chk.id);
+                      return (
+                        <button
+                          key={chk.id}
+                          type="button"
+                          onClick={() => toggleCheck(chk.id)}
+                          className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover:bg-slate-50 transition-colors"
+                        >
+                          <span className={cn("w-5 h-5 rounded-md border flex items-center justify-center shrink-0 transition-colors", on ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-300")}>
+                            {on && <CheckCircle2 className="w-3.5 h-3.5 text-white" strokeWidth={3} />}
+                          </span>
+                          <span className={cn("text-sm font-semibold truncate flex-1 min-w-0", on ? "text-slate-800" : "text-slate-400 line-through")}>{chk.label}</span>
+                          <span
+                            className={cn(
+                              "text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0",
+                              chk.automated ? "bg-indigo-50 text-indigo-700 border-indigo-100" : "bg-slate-100 text-slate-500 border-slate-200",
+                            )}
+                            title={chk.automated ? "Performed automatically by LandwiseAI" : "Verify manually — not automated"}
+                          >
+                            {chk.automated ? "AI" : "Manual"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="pt-4 mt-1 border-t border-slate-100 gap-2 flex-wrap">
+            <Button variant="ghost" size="sm" onClick={onClose} className="text-slate-500 hover:bg-slate-100 hover:text-slate-700 text-xs font-bold h-9 px-3 rounded-md">
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => onApprove(selectedChecks)}
+              className="min-w-[200px] text-xs font-bold h-9 px-4 rounded-md gap-1.5 text-white bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 hover:from-emerald-700 hover:via-green-700 hover:to-teal-700 shadow-md shadow-emerald-500/30 shine-sweep transition-all"
+            >
+              Approve &amp; Start Analysis
+              <Zap className="w-3.5 h-3.5" />
+            </Button>
+          </DialogFooter>
         </div>
       </DialogContent>
     </Dialog>
@@ -2672,8 +3521,12 @@ function StatusBadge({ status }: { status: string }) {
     inactive:  { wrap: "bg-slate-50 text-slate-400 border-slate-100 italic opacity-60", dot: "bg-slate-300" },
   };
 
-  const label = status === 'in_review' ? 'Reviewing' : status.charAt(0).toUpperCase() + status.slice(1);
-  const cfg = styles[status] || styles.pending;
+  // Coalesce — a freshly-registered parcel can briefly have null/undefined
+  // status before the row is persisted, and StatusBadge mounted before the
+  // value arrived crashed the whole sidebar render.
+  const safeStatus = status || 'pending';
+  const label = safeStatus === 'in_review' ? 'Reviewing' : safeStatus.charAt(0).toUpperCase() + safeStatus.slice(1);
+  const cfg = styles[safeStatus] || styles.pending;
 
   return (
     <Badge variant="outline" className={cn("text-[9px] font-bold uppercase px-2 h-5 border leading-none tracking-wider gap-1.5 inline-flex items-center", cfg.wrap)}>
@@ -2772,51 +3625,47 @@ function StatCard({ label, value, unit, trend, trendColor, isRisk, alert }: { la
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-      whileHover={{ y: -4 }}
+      transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+      whileHover={{ y: -2 }}
       className={cn(
-        "relative bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-4 sm:p-5 lg:p-6 shadow-sm transition-all overflow-hidden group hover:shadow-xl",
+        "relative bg-white border border-slate-200 rounded-lg p-2.5 shadow-sm transition-all overflow-hidden group hover:shadow-md",
         theme.border, theme.shadow
       )}
     >
-      {/* Gradient corner glow */}
+      {/* Top accent ribbon */}
       <div className={cn(
-        "absolute -top-12 -right-12 w-40 h-40 rounded-full opacity-10 blur-2xl transition-all duration-700 group-hover:opacity-25 group-hover:scale-110 bg-gradient-to-br",
-        theme.ring
-      )} />
-      {/* Top accent ribbon — always visible per brand spec */}
-      <div className={cn(
-        "absolute inset-x-0 top-0 h-[3px] transition-opacity duration-500",
+        "absolute inset-x-0 top-0 h-[2px]",
         theme.topAccent
       )} />
 
-      <div className="relative flex items-start justify-between mb-3 sm:mb-4 gap-2">
-        <p className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-[0.16em] sm:tracking-[0.18em] flex items-center gap-2 leading-tight">
+      {/* Row 1: tiny label + icon */}
+      <div className="relative flex items-center justify-between gap-2 mb-1">
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em] leading-none truncate">
           {label}
         </p>
         <div className={cn(
-          "w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl flex items-center justify-center border border-white shadow-sm transition-transform duration-500 group-hover:rotate-6 group-hover:scale-110 bg-gradient-to-br text-white shrink-0",
+          "w-5 h-5 rounded-md flex items-center justify-center bg-gradient-to-br text-white shrink-0",
           theme.ring
         )}>
-          <StatIcon className="w-4 h-4" />
+          <StatIcon className="w-3 h-3" />
         </div>
       </div>
 
-      <div className="relative flex items-baseline gap-1.5 flex-wrap">
-        <h4 className={cn(
-          "text-3xl sm:text-4xl font-display font-extrabold tabular-nums tracking-tight",
-          isRisk ? "text-rose-600" : "text-slate-900"
-        )}>
-          {displayValue}
-        </h4>
-        {unit && <span className="text-[10px] sm:text-xs font-bold text-slate-400">{unit}</span>}
-      </div>
-
-      <div className="relative mt-4 flex items-center justify-between">
+      {/* Row 2: big number + unit + trend pill side-by-side */}
+      <div className="relative flex items-baseline justify-between gap-2">
+        <div className="flex items-baseline gap-1 min-w-0">
+          <h4 className={cn(
+            "text-xl sm:text-2xl font-display font-extrabold tabular-nums tracking-tight leading-none",
+            isRisk ? "text-rose-600" : "text-slate-900"
+          )}>
+            {displayValue}
+          </h4>
+          {unit && <span className="text-[9px] font-bold text-slate-400 leading-none">{unit}</span>}
+        </div>
         <span className={cn(
-          "text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider inline-flex items-center gap-1.5 border",
+          "text-[8px] font-bold px-1.5 py-0.5 rounded-full uppercase tracking-wider inline-flex items-center gap-1 border shrink-0",
           (isRisk || alert)
             ? "bg-rose-50 text-rose-700 border-rose-200"
             : trendColor && trendColor.includes("emerald")
@@ -2825,7 +3674,7 @@ function StatCard({ label, value, unit, trend, trendColor, isRisk, alert }: { la
                 ? "bg-amber-50 text-amber-700 border-amber-200"
                 : cn(theme.soft, theme.text, "border-transparent")
         )}>
-          <span className={cn("w-1.5 h-1.5 rounded-full", (isRisk || alert) ? "bg-rose-500 animate-pulse-glow" : theme.dot)} />
+          <span className={cn("w-1 h-1 rounded-full", (isRisk || alert) ? "bg-rose-500" : theme.dot)} />
           {trend}
         </span>
       </div>
@@ -2912,58 +3761,58 @@ function ProjectOverview({ project, parcels, stats, onSelectParcel }: { project:
   if (!project) return null;
   
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex items-center justify-between">
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="text-4xl font-black tracking-tight text-slate-900 mb-2">{project.name}</h2>
-          <p className="text-slate-500 font-bold tracking-tight flex items-center gap-2">
-             <MapPin className="w-4 h-4 text-indigo-500" />
+          <h2 className="text-lg sm:text-xl font-display font-extrabold tracking-tight text-slate-900 mb-0.5">{project.name}</h2>
+          <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+             <MapPin className="w-3.5 h-3.5 text-indigo-500" />
              Project Command Center • {project.district}
           </p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex gap-2">
           <RegisterParcelDialog projectId={project.id} />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 sm:gap-3 lg:gap-4">
         <StatCard label="Live Surveys" value={parcels.length} trend="+2 this week" />
         <StatCard label="Avg Risk" value={stats?.avg_risk || "0"} unit="/ 100" trend={stats?.avg_risk > 30 ? "High" : "Optimal"} isRisk />
         <StatCard label="Avg Completion" value={stats?.avg_completion || "0"} unit="%" trend="Real-time" />
       </div>
 
-      <div className="space-y-6">
-        <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Survey Numbers ({parcels.length})</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="space-y-3">
+        <h3 className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-500">Survey Numbers ({parcels.length})</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-3">
           {parcels.map(parcel => (
-            <div 
-              key={parcel.id} 
-              className="bg-white border border-slate-200 rounded-2xl p-5 hover:border-indigo-600 transition-all cursor-pointer group shadow-sm"
+            <div
+              key={parcel.id}
+              className="bg-white border border-slate-200 rounded-xl p-3 hover:border-indigo-600 hover:shadow-md transition-all cursor-pointer group shadow-sm"
               onClick={() => onSelectParcel(parcel.id)}
             >
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-10 h-10 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100 group-hover:bg-indigo-50 transition-colors">
-                  <MapPin className="w-5 h-5 text-indigo-600" />
+              <div className="flex justify-between items-start mb-2">
+                <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100 group-hover:bg-indigo-50 transition-colors">
+                  <MapPin className="w-4 h-4 text-indigo-600" />
                 </div>
                 <StatusBadge status={parcel.status} />
               </div>
-              <h4 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors">SN {parcel.survey_number}</h4>
-              <p className="text-xs text-slate-500 mb-4">{parcel.village}, {parcel.taluk}</p>
+              <h4 className="text-sm font-display font-extrabold text-slate-900 group-hover:text-indigo-600 transition-colors leading-tight">SN {parcel.survey_number}</h4>
+              <p className="text-[10px] text-slate-500 mb-2 mt-0.5">{parcel.village}, {parcel.taluk}</p>
               <div className="flex items-center justify-between mt-auto">
-                 <div className="flex items-center gap-2">
+                 <div className="flex items-center gap-1.5">
                     <Activity className="w-3 h-3 text-indigo-600" />
-                    <span className="text-[10px] font-black text-slate-900">{parcel.completion_score}% Complete</span>
+                    <span className="text-[10px] font-bold text-slate-900">{parcel.completion_score}% Complete</span>
                  </div>
-                 <ArrowRight className="w-4 h-4 text-indigo-600 opacity-0 group-hover:opacity-100 transition-all" />
+                 <ArrowRight className="w-3.5 h-3.5 text-indigo-600 opacity-0 group-hover:opacity-100 transition-all" />
               </div>
             </div>
           ))}
 
           {parcels.length === 0 && (
-            <div className="col-span-full py-20 text-center border-2 border-dashed border-slate-200 rounded-3xl">
-               <LayoutDashboard className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-               <h3 className="text-lg font-bold text-slate-400">No survey numbers registered</h3>
-               <p className="text-sm text-slate-500 mb-6">Begin by registering the first survey number for this project.</p>
+            <div className="col-span-full py-12 text-center border-2 border-dashed border-slate-200 rounded-2xl">
+               <LayoutDashboard className="w-9 h-9 text-slate-200 mx-auto mb-2" />
+               <h3 className="text-sm font-bold text-slate-400">No survey numbers registered</h3>
+               <p className="text-xs text-slate-500 mb-4">Begin by registering the first survey number for this project.</p>
                <RegisterParcelDialog projectId={project.id} />
             </div>
           )}
@@ -3252,8 +4101,11 @@ function RegisterParcelDialog({ projectId }: { projectId: string }) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2 font-bold shadow-lg shadow-indigo-600/20">
-          <Plus className="w-4 h-4" /> Register Survey
+        <Button
+          size="sm"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white gap-1 font-bold text-[11px] h-7 px-2.5 shadow-sm shadow-indigo-600/20"
+        >
+          <Plus className="w-3 h-3" /> Register Survey
         </Button>
       </DialogTrigger>
       <DialogContent className="bg-white border-slate-200 text-slate-900">
@@ -3404,7 +4256,12 @@ function ChecklistTab({ parcelId }: { parcelId: string }) {
 function TimelineTab({ parcelId, requestId, results, onUploadClick }: { parcelId: string, requestId?: string, results?: any[], onUploadClick: () => void }) {
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-       <SurveyTimeline requestId={requestId || ""} results={results} parcelId={parcelId} />
+       {/* Keying by parcelId forces a fresh SurveyTimeline mount per parcel
+           so the search input, timeline result, validation cache, preview
+           popup and auto-fire ref all reset cleanly. Without the key, the
+           previous parcel's "86 nodes found" graph + cached search query
+           would carry over into the next parcel's view. */}
+       <SurveyTimeline key={parcelId} requestId={requestId || ""} results={results} parcelId={parcelId} />
     </div>
   );
 }
@@ -3421,11 +4278,15 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
     retry: false
   });
 
-  // Fetch parsed report sections whenever the opinion is loaded.
-  // Endpoint reads legal_opinion_report.md directly from the analysis output
-  // dir, so it works even if `report_storage_key` isn't set on the opinion.
+  // Fetch parsed report sections only AFTER the AI report has been generated.
+  // Previously this ran whenever `data.status !== "not_started"`, which fired
+  // a 404 for every freshly-initialized draft (no .md file yet). Gating on
+  // `report_storage_key` (set by the backend when /generate-report writes
+  // legal_opinion_report.md) eliminates the false 404 noise without removing
+  // any of the existing follow-up logic.
   useEffect(() => {
     if (!parcelId || !data || data.status === "not_started") return;
+    if (!data.report_storage_key) return;  // report not generated yet
     if (reportSections.length > 0) return;
     fetch(`${API_BASE_URL}/api/v1/landwise/parcels/${parcelId}/report-sections`)
       .then(r => (r.ok ? r.json() : null))
@@ -3547,36 +4408,36 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
   };
 
   return (
-    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-2 duration-500">
-       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm">
+    <div className="space-y-5 animate-in fade-in slide-in-from-bottom-2 duration-500">
+       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
           <div>
-            <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-1">Legal Opinion Workspace</h3>
-            <p className="text-sm text-slate-500 font-medium italic">Review AI-suggested sections and accept for final digital signing.</p>
+            <h3 className="text-base font-black text-slate-900 tracking-tight">Legal Opinion Workspace</h3>
+            <p className="text-[11px] text-slate-500 font-medium italic">Review AI-suggested sections and accept for final digital signing.</p>
           </div>
-          <div className="flex gap-3">
-            <Button 
+          <div className="flex gap-2">
+            <Button
               variant="outline"
               className={cn(
-                "h-14 px-8 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] transition-all",
+                "h-9 px-4 rounded-xl border font-black uppercase tracking-wider text-[9px] transition-all",
                 reportUrl ? "border-indigo-600 bg-indigo-50 text-indigo-700" : "border-slate-200 hover:border-indigo-500 hover:text-indigo-600"
               )}
               onClick={handleViewReport}
               disabled={generateReport.isPending}
             >
-              <FileText className="w-4 h-4 mr-2" />
+              <FileText className="w-3 h-3 mr-1.5" />
               {data.report_storage_key ? (reportUrl ? "CLOSE PREVIEW" : "PREVIEW AI REPORT") : (generateReport.isPending ? "GENERATING..." : "GENERATE AI REPORT")}
             </Button>
-            <Button 
-              disabled={!data.can_sign} 
+            <Button
+              disabled={!data.can_sign}
               className={cn(
-                "h-14 px-10 rounded-2xl font-black uppercase tracking-[0.15em] text-xs shadow-xl transition-all",
-                data.can_sign 
-                  ? "bg-green-600 hover:bg-green-700 text-white shadow-green-100" 
+                "h-9 px-5 rounded-xl font-black uppercase tracking-wider text-[9px] shadow-md transition-all",
+                data.can_sign
+                  ? "bg-green-600 hover:bg-green-700 text-white shadow-green-100"
                   : "bg-slate-100 text-slate-400 shadow-none border border-slate-200"
               )}
               onClick={() => data.can_sign && landwiseApi.signOpinion(parcelId).then(() => queryClient.invalidateQueries({ queryKey: ["opinion", parcelId] }))}
              >
-              <ShieldCheck className="w-4 h-4 mr-2" /> 
+              <ShieldCheck className="w-3 h-3 mr-1.5" />
               {data.status === 'signed' ? 'VIEW SIGNED OPINION' : 'AUTHORIZE & SIGN'}
             </Button>
           </div>
@@ -3663,22 +4524,22 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
        )}
 
 
-       <div className="space-y-6">
+       <div className="space-y-3">
           {data.sections?.map((section: any) => {
              const reportSection = findReportSectionForType(section.type, reportSections);
              const hasManualContent = !!(section.final_content && section.final_content.trim() && section.final_content !== section.ai_draft);
              return (
-             <div key={section.id} className="bg-white border border-slate-200 rounded-[2rem] overflow-hidden shadow-sm hover:shadow-xl transition-all group">
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 group-hover:bg-white transition-colors">
-                   <div className="flex items-center gap-4">
-                      <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-lg shadow-indigo-100">
+             <div key={section.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-all group">
+                <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50 group-hover:bg-white transition-colors">
+                   <div className="flex items-center gap-2.5">
+                      <div className="w-6 h-6 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-[10px] font-black shadow shadow-indigo-100">
                         {section.order}
                       </div>
                       <div>
-                        <h4 className="text-xs font-black text-slate-900 uppercase tracking-[0.1em]">
+                        <h4 className="text-[11px] font-black text-slate-900 uppercase tracking-[0.08em] leading-tight">
                           {section.type.replace(/_/g, " ")}
                         </h4>
-                        <p className="text-[9px] text-slate-400 mt-0.5 font-medium">
+                        <p className="text-[9px] text-slate-400 mt-0.5 font-medium leading-tight">
                           {section.type?.includes("possession") && "Analysis of current possession status, Patta, Chitta"}
                           {section.type?.includes("land_nature") && "Classification (Wet/Dry), land use, physical description"}
                           {section.type?.includes("tn_land") && "Ceiling limits, tenancy, assigned lands, Schedule VI/VII"}
@@ -3692,18 +4553,18 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
                       </div>
                    </div>
                    {section.is_accepted ? (
-                      <Badge className="bg-green-50 text-green-700 border-green-200 font-black text-[9px] px-3 h-6 uppercase tracking-widest">VERIFIED & ACCEPTED</Badge>
+                      <Badge className="bg-green-50 text-green-700 border-green-200 font-black text-[8px] px-2 h-5 uppercase tracking-widest">VERIFIED & ACCEPTED</Badge>
                    ) : (
-                      <Badge variant="outline" className="text-slate-400 font-black text-[9px] px-3 h-6 uppercase tracking-widest bg-slate-50">PENDING REVIEW</Badge>
+                      <Badge variant="outline" className="text-slate-400 font-black text-[8px] px-2 h-5 uppercase tracking-widest bg-slate-50">PENDING REVIEW</Badge>
                    )}
                 </div>
-                <div className="p-8">
+                <div className="px-4 py-4">
                    {/* Manual / final content (if the advisor wrote one) */}
                    {hasManualContent && (
-                     <div className="relative mb-6">
-                       <div className="absolute -left-4 top-0 bottom-0 w-1 bg-amber-100 rounded-full" />
-                       <p className="text-[10px] font-black uppercase tracking-widest text-amber-700 mb-2">Legal Advisor Note</p>
-                       <p className="text-sm text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
+                     <div className="relative mb-3">
+                       <div className="absolute -left-2 top-0 bottom-0 w-0.5 bg-amber-100 rounded-full" />
+                       <p className="text-[9px] font-black uppercase tracking-widest text-amber-700 mb-1.5">Legal Advisor Note</p>
+                       <p className="text-xs text-slate-700 leading-relaxed font-medium whitespace-pre-wrap">
                          {section.final_content}
                        </p>
                      </div>
@@ -3717,9 +4578,9 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
 
                      if (isRichDb) {
                        return (
-                         <div className="relative mb-6">
-                           <div className="absolute -left-4 top-0 bottom-0 w-1 bg-indigo-100 rounded-full" />
-                           <div className="rounded-xl bg-slate-50 border border-slate-100 p-5 text-sm text-slate-700 leading-relaxed prose prose-slate prose-sm max-w-none prose-p:my-2 prose-strong:text-slate-900 prose-li:my-1 prose-headings:text-slate-900">
+                         <div className="relative mb-3">
+                           <div className="absolute -left-2 top-0 bottom-0 w-0.5 bg-indigo-100 rounded-full" />
+                           <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 text-xs text-slate-700 leading-relaxed prose prose-slate prose-xs max-w-none prose-p:my-1.5 prose-strong:text-slate-900 prose-li:my-0.5 prose-headings:text-slate-900 prose-headings:text-xs">
                              <ReactMarkdown>{dbDraft}</ReactMarkdown>
                            </div>
                          </div>
@@ -3729,29 +4590,29 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
                      // Fallback: parsed sections fetched from /report-sections
                      if (reportSection) {
                        return (
-                         <div className="relative mb-6">
-                           <div className="absolute -left-4 top-0 bottom-0 w-1 bg-indigo-100 rounded-full" />
-                           <p className="text-[10px] font-black uppercase tracking-widest text-indigo-700 mb-3">
+                         <div className="relative mb-3">
+                           <div className="absolute -left-2 top-0 bottom-0 w-0.5 bg-indigo-100 rounded-full" />
+                           <p className="text-[9px] font-black uppercase tracking-widest text-indigo-700 mb-2">
                              {reportSection.number !== "F" ? `Section ${reportSection.number} · ` : ""}{reportSection.title}
                            </p>
-                           <div className="space-y-3">
+                           <div className="space-y-2">
                              {reportSection.subtitles?.length > 0 ? (
                                reportSection.subtitles.map((sub: any, sidx: number) => (
-                                 <div key={sidx} className="rounded-xl bg-slate-50 border border-slate-100 p-4">
-                                   <h6 className="text-[11px] font-black text-slate-800 mb-1.5 uppercase tracking-wider">
+                                 <div key={sidx} className="rounded-lg bg-slate-50 border border-slate-100 p-2.5">
+                                   <h6 className="text-[10px] font-black text-slate-800 mb-1 uppercase tracking-wider">
                                      {sub.letter}. {sub.title}
                                    </h6>
-                                   <div className="text-sm text-slate-600 leading-relaxed prose prose-slate prose-sm max-w-none prose-p:my-1.5 prose-strong:text-slate-900">
+                                   <div className="text-xs text-slate-600 leading-relaxed prose prose-slate prose-xs max-w-none prose-p:my-1 prose-strong:text-slate-900">
                                      <ReactMarkdown>{sub.content || "—"}</ReactMarkdown>
                                    </div>
                                  </div>
                                ))
                              ) : reportSection.content ? (
-                               <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 text-sm text-slate-600 leading-relaxed prose prose-slate prose-sm max-w-none prose-p:my-1.5 prose-strong:text-slate-900 prose-li:my-0.5">
+                               <div className="rounded-lg bg-slate-50 border border-slate-100 p-2.5 text-xs text-slate-600 leading-relaxed prose prose-slate prose-xs max-w-none prose-p:my-1 prose-strong:text-slate-900 prose-li:my-0.5">
                                  <ReactMarkdown>{reportSection.content}</ReactMarkdown>
                                </div>
                              ) : (
-                               <p className="text-xs text-slate-400 italic">No detail extracted for this section.</p>
+                               <p className="text-[11px] text-slate-400 italic">No detail extracted for this section.</p>
                              )}
                            </div>
                          </div>
@@ -3761,9 +4622,9 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
                      // Final fallback: stub from initialize
                      if (!hasManualContent) {
                        return (
-                         <div className="relative mb-6">
-                           <div className="absolute -left-4 top-0 bottom-0 w-1 bg-indigo-50 rounded-full" />
-                           <p className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">
+                         <div className="relative mb-3">
+                           <div className="absolute -left-2 top-0 bottom-0 w-0.5 bg-indigo-50 rounded-full" />
+                           <p className="text-xs text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">
                              {dbDraft || "Generate the AI report to populate this section."}
                            </p>
                          </div>
@@ -3806,11 +4667,11 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
                      </div>
                    ) : null}
 
-                   <div className="flex justify-end gap-3">
+                   <div className="flex justify-end gap-2">
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-[10px] h-9 px-4 font-bold uppercase tracking-wider rounded-xl border-amber-200 text-amber-700 hover:bg-amber-50"
+                        className="text-[9px] h-7 px-3 font-bold uppercase tracking-wider rounded-lg border-amber-200 text-amber-700 hover:bg-amber-50"
                         onClick={() => setEditingSection(section.id)}
                       >
                         + Legal Advisor Note
@@ -3819,10 +4680,10 @@ function OpinionTab({ parcelId }: { parcelId: string }) {
                         variant={section.is_accepted ? "outline" : "default"}
                         size="sm"
                         className={cn(
-                          "text-[10px] h-9 px-6 font-black uppercase tracking-widest rounded-xl transition-all",
+                          "text-[9px] h-7 px-4 font-black uppercase tracking-widest rounded-lg transition-all",
                           section.is_accepted
                             ? "border-green-200 text-green-700 hover:bg-green-50"
-                            : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+                            : "bg-indigo-600 text-white hover:bg-indigo-700 shadow shadow-indigo-100"
                         )}
                         onClick={() => updateSection.mutate({
                           sectionId: section.id,
@@ -3888,6 +4749,22 @@ function HierarchyTab({ parcelId, auditResults, isAuditLoading, hierarchyPreview
   const [hierarchySearch, setHierarchySearch] = useState("");
   const [activeSideTab, setActiveSideTab] = useState<"summary" | "notes" | "chat">("summary");
   const [scrollToPage, setScrollToPage] = useState<{ page: number; timestamp: number } | undefined>(undefined);
+  // Replaces the inline 550px-tall PDF iframe that was embedded directly in
+  // the Summary tab. The deed PDF now lives in a draggable floating popup
+  // so the right-side card stays compact and the user can move the document
+  // anywhere on screen while reading the summary metadata next to it.
+  const [isPdfPopupOpen, setIsPdfPopupOpen] = useState(false);
+  const pdfPopupDragControls = useDragControls();
+
+  // Auto-close the floating PDF popup whenever the user:
+  //   - selects a different node (hierarchyPreview.docNo changes), OR
+  //   - closes the entire side panel (hierarchyPreview becomes null).
+  // Without this the popup would keep showing the old doc's PDF while the
+  // side panel's metadata updated to the new doc — confusing and easy to
+  // miss-read.
+  useEffect(() => {
+    setIsPdfPopupOpen(false);
+  }, [hierarchyPreview?.docNo]);
   
 
   const requestId = auditResults?.request_id;
@@ -4062,25 +4939,33 @@ function HierarchyTab({ parcelId, auditResults, isAuditLoading, hierarchyPreview
                                     </div>
                                 </div>
                                 
-                                {/* PDF Preview Section in Summary Tab */}
+                                {/* Preview Document button — replaces the inline 550px
+                                    iframe that used to live here. Opens a draggable
+                                    floating popup so the metadata stays visible while
+                                    the user reads the source PDF. */}
                                 <div className="px-6 pb-8">
-                                    <div className="bg-slate-900 rounded-[2rem] h-[550px] overflow-hidden shadow-2xl relative">
-                                        {selectedDocInfo?.file_path ? (
-                                            <PdfAnnotator 
-                                                url={getFileUrl(selectedDocInfo.file_path)} 
-                                                docId={hierarchyPreview.docNo}
-                                                parcelId={parcelId}
-                                                scrollToPage={scrollToPage}
-                                            />
-                                        ) : (
-                                            <div className="h-full flex flex-col items-center justify-center text-slate-500 p-8 text-center italic space-y-4">
-                                                <div className="p-6 bg-slate-800 rounded-full">
-                                                  <FileText className="w-10 h-10 opacity-20" />
-                                                </div>
-                                                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Forensic proof not available for this legacy record</p>
+                                    {selectedDocInfo?.file_path ? (
+                                        <button
+                                            onClick={() => setIsPdfPopupOpen(true)}
+                                            className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 via-violet-600 to-blue-600 text-white font-black text-[11px] uppercase tracking-widest py-3 rounded-xl shadow-lg shadow-indigo-600/20 hover:shadow-xl hover:shadow-indigo-600/30 transition-all hover:-translate-y-0.5 active:translate-y-0"
+                                            title="Open the source document in a draggable preview window"
+                                        >
+                                            <Eye className="w-4 h-4" />
+                                            Preview Document
+                                            <span className="text-[9px] font-bold opacity-70 ml-1">
+                                                ({hierarchyPreview.docNo})
+                                            </span>
+                                        </button>
+                                    ) : (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center space-y-3">
+                                            <div className="w-10 h-10 mx-auto rounded-full bg-slate-100 flex items-center justify-center">
+                                                <FileText className="w-5 h-5 text-slate-300" />
                                             </div>
-                                        )}
-                                    </div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                Forensic proof not available for this legacy record
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -4129,6 +5014,65 @@ function HierarchyTab({ parcelId, auditResults, isAuditLoading, hierarchyPreview
             </ResizablePanel>
             )}
         </ResizablePanelGroup>
+
+        {/* ─── Floating draggable PDF preview ───────────────────────────────
+            Mounted at the tab root, not inside the ResizablePanel, so it
+            floats above the layout and the user can drag it anywhere on
+            screen. Same pattern as the floating annotations panel in
+            AnalysisDashboard.tsx. Only renders when the user explicitly
+            opens it via the "Preview Document" button. */}
+        <AnimatePresence>
+          {isPdfPopupOpen && selectedDocInfo?.file_path && hierarchyPreview && (
+            <motion.div
+              drag
+              dragControls={pdfPopupDragControls}
+              dragListener={false}
+              dragMomentum={false}
+              dragElastic={0}
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="fixed top-24 right-12 z-[100] w-[640px] max-w-[92vw] h-[80vh] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/30 overflow-hidden flex flex-col select-none"
+            >
+              {/* Drag handle — only this strip initiates a drag (dragListener={false}) */}
+              <div
+                onPointerDown={(e) => pdfPopupDragControls.start(e)}
+                className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-white to-violet-50/70 cursor-move"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shrink-0 shadow-sm">
+                    <FileText className="w-3.5 h-3.5 text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-700 leading-none">
+                      Document Preview
+                    </p>
+                    <p className="text-xs font-black text-slate-900 truncate">
+                      {hierarchyPreview.docNo}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsPdfPopupOpen(false)}
+                  className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-400 hover:text-indigo-600 shrink-0"
+                  title="Close preview"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {/* PDF body fills the remaining vertical space */}
+              <div className="flex-1 min-h-0 bg-slate-900 relative">
+                <PdfAnnotator
+                  url={getFileUrl(selectedDocInfo.file_path)}
+                  docId={hierarchyPreview.docNo}
+                  parcelId={parcelId}
+                  scrollToPage={scrollToPage}
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
     </div>
   );
 }
@@ -4143,6 +5087,90 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
 
   // Group by Survey Number
   const surveyGroups = React.useMemo(() => {
+    // ─── helpers (fix the three audit bugs from the previous turn) ───────
+
+    // 1) Multi-date EC strings like "27-Feb-2008 | 27-Feb-2008 | 27-Feb-2008"
+    //    break native `new Date(...)` → Invalid Date. Take the FIRST token
+    //    (execution date) — that's what the EC's "Date of Registration"
+    //    column anchors against and what the rest of the app sorts by.
+    const parseEcDateMs = (raw: any): number => {
+      if (!raw) return 0;
+      const s = String(raw).split(/\s*\|\s*/)[0].trim();
+      if (!s) return 0;
+      // Native Date handles "27-Feb-2008", "27 Feb 2008", "2008-02-27" cleanly
+      const t = Date.parse(s);
+      if (!Number.isNaN(t)) return t;
+      // DD/MM/YYYY or DD-MM-YYYY day-first fallback
+      const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+      if (m) {
+        const [, dd, mm, yy] = m;
+        const yyyy = yy.length === 2 ? `20${yy}` : yy;
+        const t2 = Date.parse(`${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`);
+        if (!Number.isNaN(t2)) return t2;
+      }
+      return 0;
+    };
+
+    // 2) Only TRANSFER-type natures actually change ownership. Mortgages,
+    //    receipts, POAs, attachments, lis-pendens etc. must NOT hijack the
+    //    "current owner" pointer just because they have a later date.
+    const TRANSFER_PATTERNS = [
+      "sale", "conveyance", "settlement", "partition", "gift",
+      "release deed", "exchange", "absolute sale",
+      "சத்த விக்கிரய", "விற்பனை", "தான பத்திர", "செட்டில்மெண்ட்",
+      "பாகப்பிரிவின",
+    ];
+    const isTransfer = (rec: any): boolean => {
+      const n = String(rec.nature_of_document || rec.nature || "").toLowerCase();
+      if (!n) return false;
+      return TRANSFER_PATTERNS.some(p => n.includes(p));
+    };
+
+    // 3) Name normalization + multi-person splitting. Stops `262 "unique
+    //    entities"` from being an artefact of formatting noise — same
+    //    person written as "A. ராஜகோபால் (முதல்வர்)", "A. ராஜகோபால்",
+    //    or as an array item collapses to a single key. AND a single
+    //    string with multiple names ("A, B" / "A & B" / "A / B") gets
+    //    split into individual persons.
+    const HONORIFIC_RE = /(?:^|\s)(மரபு|திரு|திருமதி|Mr\.?|Mrs\.?|Smt\.?|Sri\.?)(?=\s|\.|$)/gi;
+    const normalizeOnePerson = (raw: string): string =>
+      String(raw)
+        .replace(/\([^)]*\)/g, " ")                 // strip role tags: (முதல்வர்), (முகவர்), (POA), etc.
+        .replace(HONORIFIC_RE, " ")                 // strip honorifics — works for Tamil chars (no \b)
+        .replace(/[.,;:'"`]/g, " ")                 // strip punctuation
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+    // Person-level splitter: handles arrays, comma-separated strings,
+    // "A and B", "A & B", "A / B", pipe-separated multi-name fields,
+    // AND the EC's "NAME1 (role) NAME2 (role)" pattern where the role
+    // parenthetical is itself the boundary between two people. The
+    // splitter consumes role tags as separators BEFORE the normalizer
+    // strips them; the normalizer is left only with single-person text.
+    const splitToPersons = (raw: any): string[] => {
+      if (!raw) return [];
+      const parts = Array.isArray(raw) ? raw : [raw];
+      const flat: string[] = [];
+      const SENTINEL = ""; // any char unlikely to appear in real names
+      parts.forEach((p: any) => {
+        if (p === null || p === undefined) return;
+        // Replace every parenthetical role tag with the sentinel — the
+        // tag is consumed as the boundary, not kept inside the name.
+        const withBoundaries = String(p).replace(/\s*\([^)]*\)\s*/g, SENTINEL);
+        // Now split on the sentinel + every conventional list separator.
+        withBoundaries
+          .split(new RegExp(`${SENTINEL}|\\s*[,&/|]\\s*|\\s+(?:and|மற்றும்)\\s+`, "i"))
+          .forEach((piece) => {
+            const n = normalizeOnePerson(piece);
+            if (n) flat.push(n);
+          });
+      });
+      return flat;
+    };
+    const addPersons = (set: Set<string>, raw: any) => {
+      for (const p of splitToPersons(raw)) set.add(p);
+    };
+
     const groups: Record<string, any> = {};
     ecData.forEach((rec: any) => {
       const sn = rec.survey_number || "Unknown";
@@ -4150,49 +5178,78 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
         groups[sn] = {
           survey_no: sn,
           records: [],
-          unique_owners: new Set(),
-          last_transfer: null
+          unique_owners: new Set<string>(),  // every distinct person ever (normalized)
+          unique_buyers: new Set<string>(),  // distinct buyers in TRANSFER txs only — better proxy for "owners over time"
+          last_transfer: null,                // latest TRANSFER (not encumbrance)
+          last_any: null,                     // latest of any kind (for display when no transfer exists)
+          transfer_count: 0,
+          encumbrance_count: 0,
         };
       }
-      groups[sn].records.push(rec);
-      if (rec.buyers) groups[sn].unique_owners.add(rec.buyers);
-      if (rec.sellers) groups[sn].unique_owners.add(rec.sellers);
-      
-      const date = rec.date ? new Date(rec.date) : new Date(0);
-      if (!groups[sn].last_transfer || date > new Date(groups[sn].last_transfer.date)) {
-        groups[sn].last_transfer = rec;
+      const g = groups[sn];
+      g.records.push(rec);
+
+      // Normalized name set: never lumps a person's name variants twice.
+      addPersons(g.unique_owners, rec.buyers);
+      addPersons(g.unique_owners, rec.sellers);
+      if (isTransfer(rec)) addPersons(g.unique_buyers, rec.buyers);
+
+      const t = parseEcDateMs(rec.date);
+      // Latest of ANY kind (display fallback for surveys with zero transfers)
+      const tAny = g.last_any ? parseEcDateMs(g.last_any.date) : 0;
+      if (!g.last_any || t > tAny) g.last_any = rec;
+
+      // Latest TRANSFER only (the legally correct "current owner" anchor)
+      if (isTransfer(rec)) {
+        g.transfer_count += 1;
+        const tTr = g.last_transfer ? parseEcDateMs(g.last_transfer.date) : 0;
+        if (!g.last_transfer || t > tTr) g.last_transfer = rec;
+      } else {
+        g.encumbrance_count += 1;
       }
     });
 
-    // Sort records within each group by date
+    // Sort records within each group by execution date (asc)
     Object.values(groups).forEach((g: any) => {
-      g.records.sort((a: any, b: any) => {
-        const da = a.date ? new Date(a.date).getTime() : 0;
-        const db = b.date ? new Date(b.date).getTime() : 0;
-        return da - db;
-      });
+      g.records.sort((a: any, b: any) => parseEcDateMs(a.date) - parseEcDateMs(b.date));
+      // If no transfer ever happened, fall back to last_any so the row
+      // still shows something — but the UI badge below labels this case.
+      if (!g.last_transfer) g.last_transfer = g.last_any;
     });
 
     return Object.values(groups).sort((a: any, b: any) => a.survey_no.localeCompare(b.survey_no));
   }, [ecData]);
 
+  // Defensive stringifier — EC entries store `buyers` and `sellers` as
+  // ARRAYS (e.g. ["Vajjiram", "Jeganathan"]), not strings, so the previous
+  // `(r.buyers || "").toLowerCase()` crashed the component the moment the
+  // user typed anything into the search box: a non-empty array falls
+  // through the `||`, then `.toLowerCase()` doesn't exist on arrays.
+  // Treat array / string / null / number all uniformly as one lowercase
+  // search-target string.
+  const toSearchString = (v: any): string => {
+    if (v === null || v === undefined) return "";
+    if (Array.isArray(v)) return v.filter(Boolean).join(" ").toLowerCase();
+    return String(v).toLowerCase();
+  };
+
   const filteredGroups = surveyGroups.filter((g: any) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase();
-    if (filterMode === "survey") return g.survey_no.toLowerCase().includes(term);
+    if (filterMode === "survey") return toSearchString(g.survey_no).includes(term);
     if (filterMode === "owner") {
       return g.records.some((r: any) =>
-        (r.buyers || "").toLowerCase().includes(term) ||
-        (r.sellers || "").toLowerCase().includes(term)
+        toSearchString(r.buyers).includes(term) ||
+        toSearchString(r.sellers).includes(term)
       );
     }
     // "all" mode
     return (
-      g.survey_no.toLowerCase().includes(term) ||
+      toSearchString(g.survey_no).includes(term) ||
       g.records.some((r: any) =>
-        (r.buyers || "").toLowerCase().includes(term) ||
-        (r.sellers || "").toLowerCase().includes(term) ||
-        (r.document_number || "").toLowerCase().includes(term)
+        toSearchString(r.buyers).includes(term) ||
+        toSearchString(r.sellers).includes(term) ||
+        toSearchString(r.document_number).includes(term)
       )
     );
   });
@@ -4206,7 +5263,7 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="relative rounded-2xl sm:rounded-[2rem] lg:rounded-[2.5rem] p-5 sm:p-7 lg:p-10 text-white overflow-hidden shadow-2xl shadow-indigo-900/30"
+        className="relative rounded-2xl p-3 sm:p-4 text-white overflow-hidden shadow-lg shadow-indigo-900/20"
       >
         {/* Layered gradient background */}
         <div className="absolute inset-0 bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900" />
@@ -4226,44 +5283,42 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
         />
 
         <div className="relative z-10">
-          <div className="flex items-center gap-4 mb-6 flex-wrap">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <div className="relative shrink-0">
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl blur-xl opacity-50 -z-10 animate-pulse-glow" />
-              <div className="w-12 h-12 bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/40 ring-1 ring-white/20">
-                <Users className="w-6 h-6 text-white" strokeWidth={2.5} />
+              <div className="w-8 h-8 bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-600 rounded-lg flex items-center justify-center shadow shadow-indigo-500/40 ring-1 ring-white/20">
+                <Users className="w-4 h-4 text-white" strokeWidth={2.5} />
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight leading-tight">
+              <h3 className="text-base sm:text-lg font-display font-extrabold tracking-tight leading-tight">
                 Ownership <span className="bg-gradient-to-r from-indigo-300 via-blue-200 to-violet-300 bg-clip-text text-transparent">Distribution Audit</span>
               </h3>
-              <p className="text-indigo-200/70 text-xs sm:text-sm font-medium mt-1">Consolidated unique owner statistics per survey number (EC Extract)</p>
+              <p className="text-indigo-200/70 text-[10px] font-medium">Unique owner statistics per survey number (EC Extract)</p>
             </div>
-            <Badge className="bg-indigo-500/20 text-indigo-200 border-indigo-400/40 hover:bg-indigo-500/30 uppercase font-bold text-[10px] tracking-[0.22em] px-3 h-7 inline-flex items-center gap-1.5 backdrop-blur-sm shrink-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-pulse-glow" />
-              {surveyGroups.length} Parcels Identified
+            <Badge className="bg-indigo-500/20 text-indigo-200 border-indigo-400/40 uppercase font-bold text-[9px] tracking-[0.18em] px-2 h-5 inline-flex items-center gap-1 shrink-0">
+              <span className="w-1 h-1 rounded-full bg-indigo-300 animate-pulse-glow" />
+              {surveyGroups.length} Parcels
             </Badge>
           </div>
 
-          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center">
-            <div className="relative flex-1 max-w-3xl group">
-              <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/0 via-violet-500/15 to-indigo-500/0 rounded-2xl blur-md opacity-0 group-focus-within:opacity-100 transition-opacity" />
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-300/60 group-focus-within:text-indigo-300 transition-colors z-10" />
+          <div className="flex flex-col md:flex-row gap-2 items-stretch md:items-center">
+            <div className="relative flex-1 max-w-2xl group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-indigo-300/60 group-focus-within:text-indigo-300 transition-colors z-10" />
               <input
                 type="text"
-                placeholder="Search by survey number, owner name, or doc no..."
-                className="relative w-full bg-indigo-950/60 backdrop-blur-md border border-indigo-400/20 rounded-2xl py-3.5 pl-12 pr-6 text-white placeholder:text-indigo-300/40 focus:ring-2 focus:ring-indigo-400/40 focus:border-indigo-400/60 outline-none transition-all"
+                placeholder="Search survey, owner, or doc no..."
+                className="relative w-full bg-indigo-950/60 backdrop-blur-md border border-indigo-400/20 rounded-lg py-1.5 pl-9 pr-3 text-xs text-white placeholder:text-indigo-300/40 focus:ring-1 focus:ring-indigo-400/40 focus:border-indigo-400/60 outline-none transition-all"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
-            <div className="flex items-center bg-indigo-950/70 backdrop-blur-md rounded-xl border border-indigo-400/20 p-1 shrink-0 self-start md:self-auto">
+            <div className="flex items-center bg-indigo-950/70 backdrop-blur-md rounded-lg border border-indigo-400/20 p-0.5 shrink-0 self-start md:self-auto">
               {(["all", "survey", "owner"] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => setFilterMode(mode)}
                   className={cn(
-                    "relative px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-[0.18em] transition-colors",
+                    "relative px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors",
                     filterMode === mode
                       ? "text-white"
                       : "text-indigo-300/70 hover:text-indigo-100"
@@ -4273,7 +5328,7 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
                     <motion.span
                       layoutId="ownership-filter-active"
                       transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                      className="absolute inset-0 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 shadow-lg shadow-indigo-500/40"
+                      className="absolute inset-0 rounded-md bg-gradient-to-br from-indigo-500 to-violet-600 shadow shadow-indigo-500/40"
                     />
                   )}
                   <span className="relative z-10">{mode}</span>
@@ -4289,7 +5344,7 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1, duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="relative bg-white border border-slate-200 rounded-2xl sm:rounded-[2rem] lg:rounded-[2.5rem] shadow-sm overflow-hidden"
+        className="relative bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden"
       >
         {/* Top accent strip */}
         <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500" />
@@ -4297,11 +5352,11 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
         <table className="w-full text-sm min-w-[680px]">
           <thead>
             <tr className="bg-gradient-to-r from-slate-50 via-indigo-50/30 to-slate-50 text-left border-b border-slate-100">
-              <th className="px-5 sm:px-8 py-5 text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em]">Survey No</th>
-              <th className="px-5 sm:px-8 py-5 text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em]">Current Owner (Latest EC)</th>
-              <th className="px-5 sm:px-8 py-5 text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] text-center">Audit Points</th>
-              <th className="px-5 sm:px-8 py-5 text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] text-center">Total Owners</th>
-              <th className="px-5 sm:px-8 py-5 text-[10px] font-bold text-slate-500 uppercase tracking-[0.18em] text-right">Last Transfer</th>
+              <th className="px-3 sm:px-4 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Survey No</th>
+              <th className="px-3 sm:px-4 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider">Current Owner (Latest EC)</th>
+              <th className="px-3 sm:px-4 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">Transactions</th>
+              <th className="px-3 sm:px-4 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center">Total Owners</th>
+              <th className="px-3 sm:px-4 py-2.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-right">Last Transfer</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -4316,39 +5371,46 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
                     )}
                     onClick={() => setExpandedRow(isExpanded ? null : group.survey_no)}
                   >
-                    <td className="px-8 py-5 font-black text-slate-900 text-lg">{group.survey_no}</td>
-                    <td className="px-8 py-5">
-                       <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-green-50 flex items-center justify-center border border-green-100 group-hover:scale-110 transition-transform">
-                             <Users className="w-4 h-4 text-green-600" />
+                    <td className="px-3 sm:px-4 py-2.5 font-black text-slate-900 text-sm">{group.survey_no}</td>
+                    <td className="px-3 sm:px-4 py-2.5">
+                       <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-green-50 flex items-center justify-center border border-green-100 shrink-0">
+                             <Users className="w-3 h-3 text-green-600" />
                           </div>
-                          <div>
-                             <p className="font-bold text-slate-900 leading-tight">{group.last_transfer?.buyers || "N/A"}</p>
-                             <p className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Verified via Registration Records</p>
+                          <div className="min-w-0">
+                             <p className="font-bold text-xs text-slate-900 leading-tight truncate">{group.last_transfer?.buyers || "N/A"}</p>
+                             <p className="text-[8px] text-slate-400 uppercase font-bold tracking-wider">Latest EC entry · not chain-verified</p>
                           </div>
                        </div>
                     </td>
-                    <td className="px-8 py-5 text-center">
-                       <Badge className="bg-indigo-50 text-indigo-700 border-indigo-100 font-black text-[10px] px-2 h-6">
-                          {group.records.length} TX
-                       </Badge>
-                    </td>
-                    <td className="px-8 py-5 text-center">
-                       <div className="flex flex-col items-center">
-                          <span className="text-sm font-black text-slate-900">{group.unique_owners.size}</span>
-                          <span className="text-[9px] text-slate-400 font-black uppercase tracking-tighter">Unique Entities</span>
+                    <td className="px-3 sm:px-4 py-2.5 text-center">
+                       <div className="inline-flex flex-col items-center leading-tight">
+                          <Badge className="bg-emerald-50 text-emerald-700 border-emerald-100 font-black text-[9px] px-1.5 h-4">
+                             {group.transfer_count} transfers
+                          </Badge>
+                          <span className="text-[8px] text-slate-400 font-medium tracking-tight mt-0.5">
+                             + {group.encumbrance_count} encumbr.
+                          </span>
                        </div>
                     </td>
-                    <td className="px-8 py-5 text-right">
-                       <div className="flex items-center justify-end gap-2">
-                         <div>
-                           <p className="text-sm font-black text-slate-900">{group.last_transfer?.date || "N/A"}</p>
+                    <td className="px-3 sm:px-4 py-2.5 text-center">
+                       <div className="flex flex-col items-center leading-tight" title={`${group.unique_buyers.size} distinct buyer(s) in transfer deeds; ${group.unique_owners.size} distinct person(s) across every role`}>
+                          <span className="text-xs font-black text-slate-900">{group.unique_buyers.size || group.unique_owners.size}</span>
+                          <span className="text-[8px] text-slate-400 font-black uppercase tracking-tight">
+                             {group.unique_buyers.size ? "Owners (hist.)" : "Persons"}
+                          </span>
+                       </div>
+                    </td>
+                    <td className="px-3 sm:px-4 py-2.5 text-right">
+                       <div className="flex items-center justify-end gap-1.5">
+                         <div className="leading-tight">
+                           <p className="text-[10px] font-black text-slate-900 tabular-nums">{group.last_transfer?.date || "N/A"}</p>
                            {group.last_transfer?.document_number && (
-                             <p className="text-[10px] text-indigo-600 font-bold">Doc: {group.last_transfer.document_number}</p>
+                             <p className="text-[9px] text-indigo-600 font-bold">Doc: {group.last_transfer.document_number}</p>
                            )}
                          </div>
                          <ChevronDown className={cn(
-                           "w-5 h-5 text-slate-400 transition-transform duration-300 shrink-0",
+                           "w-3.5 h-3.5 text-slate-400 transition-transform duration-300 shrink-0",
                            isExpanded && "rotate-180 text-indigo-600"
                          )} />
                        </div>
@@ -4418,38 +5480,42 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
                               </div>
                               <div className="bg-teal-50/50 border border-teal-200/50 rounded-xl p-5 space-y-3">
                                 <p className="text-xs text-slate-600 leading-relaxed">
-                                  The above list includes every unique individual or entity that has
-                                  appeared as either a Seller or Buyer for survey number <strong className="text-slate-900">{group.survey_no}</strong> across the
-                                  available EC transactions. A total of <strong className="text-slate-900">{group.records.length}</strong> registered transactions were
-                                  analyzed for this parcel.
+                                  <strong className="text-slate-900">{group.transfer_count}</strong> transfer deed{group.transfer_count === 1 ? "" : "s"} (Sale / Conveyance / Settlement / Gift / Partition)
+                                  {group.encumbrance_count > 0 && <> plus <strong className="text-slate-900">{group.encumbrance_count}</strong> non-transfer entr{group.encumbrance_count === 1 ? "y" : "ies"} (mortgages, receipts, POAs, attachments)</>}
+                                  &nbsp;found for survey&nbsp;<strong className="text-slate-900">{group.survey_no}</strong>.
+                                  &nbsp;Current owner is read from the latest <strong>transfer</strong> deed only — non-transfer entries do not change ownership.
                                 </p>
                                 <div className="border-t border-teal-200/50 pt-3 space-y-2">
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-slate-500 font-medium">Current Owner</span>
-                                    <span className="font-bold text-slate-900 truncate max-w-[180px]">{group.last_transfer?.buyers || "N/A"}</span>
+                                    <span className="font-bold text-slate-900 truncate max-w-[180px]" title={group.last_transfer?.buyers || "N/A"}>{group.last_transfer?.buyers || "N/A"}</span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500 font-medium">Total Transactions</span>
-                                    <span className="font-bold text-slate-900">{group.records.length}</span>
+                                    <span className="text-slate-500 font-medium">Transfers / Total</span>
+                                    <span className="font-bold text-slate-900">{group.transfer_count} / {group.records.length}</span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500 font-medium">Unique Entities</span>
+                                    <span className="text-slate-500 font-medium" title="Distinct buyers in transfer deeds. Each person de-duplicated across name variants (role suffixes, honorifics, punctuation).">Owners (historical)</span>
+                                    <span className="font-bold text-slate-900">{group.unique_buyers.size}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="text-slate-500 font-medium" title="Every distinct person across BOTH buyer and seller sides, across all transactions (transfers + encumbrances). Larger than 'Owners (historical)' because banks, agents, predecessors etc. count here too.">All Parties Ever</span>
                                     <span className="font-bold text-slate-900">{group.unique_owners.size}</span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
-                                    <span className="text-slate-500 font-medium">Last Activity</span>
-                                    <span className="font-bold text-slate-900">{group.last_transfer?.date || "N/A"}</span>
+                                    <span className="text-slate-500 font-medium">Last Transfer</span>
+                                    <span className="font-bold text-slate-900 truncate max-w-[180px]" title={group.last_transfer?.date || "N/A"}>{group.last_transfer?.date || "N/A"}</span>
                                   </div>
                                   <div className="flex items-center justify-between text-xs">
                                     <span className="text-slate-500 font-medium">First Activity</span>
-                                    <span className="font-bold text-slate-900">{group.records[0]?.date || "N/A"}</span>
+                                    <span className="font-bold text-slate-900 truncate max-w-[180px]" title={group.records[0]?.date || "N/A"}>{group.records[0]?.date || "N/A"}</span>
                                   </div>
                                 </div>
-                                {group.records.length > 3 && (
+                                {group.transfer_count > 20 && (
                                   <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200/50 rounded-lg">
                                     <p className="text-[10px] text-amber-700 font-bold flex items-center gap-1.5">
                                       <AlertTriangle className="w-3 h-3 shrink-0" />
-                                      High transfer frequency detected — {group.records.length} transactions across {group.unique_owners.size} entities. Manual review recommended.
+                                      High transfer frequency — {group.transfer_count} transfers across {group.unique_buyers.size} distinct buyer{group.unique_buyers.size === 1 ? "" : "s"}. Often indicates a developer / batch-sale subdivision; manual review recommended.
                                     </p>
                                   </div>
                                 )}
@@ -4488,7 +5554,7 @@ function OwnershipAuditTab({ parcelId, auditResults, isAuditLoading }: { parcelI
   );
 }
 
-function RisksTab({ requestId }: { requestId?: string }) {
+function RisksTab({ requestId, onOpenDocAnalysis }: { requestId?: string; onOpenDocAnalysis?: (docNo: string) => void }) {
   if (!requestId) {
     return (
       <div className="flex flex-col items-center justify-center py-20 space-y-6 bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-[3rem]">
@@ -4509,7 +5575,10 @@ function RisksTab({ requestId }: { requestId?: string }) {
         <h2 className="text-3xl font-black text-slate-900 tracking-tight">AI Title Health Score</h2>
         <p className="text-slate-500 font-medium mt-1">Automated risk assessment of the property title chain — designed for legal professionals and banks.</p>
       </div>
-      <RiskScoreCard requestId={requestId} />
+      <RiskScoreCard
+        requestId={requestId}
+        onOpenDocAnalysis={onOpenDocAnalysis}
+      />
     </div>
   );
 }

@@ -20,6 +20,10 @@ import { Badge } from "@/components/ui/badge";
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from "@/lib/utils";
 
+// Normalize a document number for tolerant matching against validation
+// results ("3765/2008" -> "37652008"). Mirrors the server _normalize_docno.
+const normDocNo = (s: any): string => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
 // Custom Node Component to support Collapse/Expand and Tooltip
 const HierarchyNode = ({ data, id }: any) => {
     const isCollapsed = data.isCollapsed;
@@ -153,12 +157,18 @@ interface ReactFlowHierarchyProps {
         edges: Edge[];
     };
     // Optional second arg carries full node data (used by Timeline Search)
-    onNodeClick: (docNo: string, data?: any) => void;
+    // Third arg = viewport click position, so callers can anchor a popup at the
+    // clicked node. Optional — existing callers ignore it.
+    onNodeClick: (docNo: string, data?: any, position?: { x: number; y: number }) => void;
     onNotesChange?: (docNo: string, notes: string) => void;
     searchTerm?: string;
+    // Validation results (keyed by document_number, each with a `match`
+    // boolean). Lets the graph tint a node GREEN when its document matched
+    // and RED when it mismatched. Optional — absent = no match coloring.
+    validationResults?: any[];
 }
 
-const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNodeClick, onNotesChange, searchTerm }) => {
+const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNodeClick, onNotesChange, searchTerm, validationResults }) => {
     const [collapsedNodes, setCollapsedNodes] = useState<Set<string>>(new Set());
     const { nodes: initialNodes, edges: initialEdges } = data;
     const { fitView } = useReactFlow();
@@ -256,6 +266,20 @@ const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNo
         return counts;
     }, [initialEdges]);
 
+    // Build a doc-number -> matched(boolean) lookup from validation results so
+    // each node can be tinted by its match status. Tolerates the top-level
+    // `match` flag and the nested `validation_result.match` shape.
+    const matchByDoc = useMemo(() => {
+        const map: Record<string, boolean> = {};
+        (validationResults || []).forEach((r: any) => {
+            const key = normDocNo(r?.document_number ?? r?.doc_no);
+            if (!key) return;
+            const matched = r?.match ?? r?.validation_result?.match ?? r?.validation?.match;
+            if (typeof matched === 'boolean') map[key] = matched;
+        });
+        return map;
+    }, [validationResults]);
+
     const processedNodes = useMemo(() => {
         const lowerSearch = searchTerm?.toLowerCase() || "";
         return initialNodes.map(node => {
@@ -268,11 +292,19 @@ const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNo
                 node.data?.executant?.toLowerCase().includes(lowerSearch)
             );
 
+            // Validation match status for this node's document (if any).
+            const docKey = normDocNo(node.data?.document_number);
+            const matchStatus = docKey in matchByDoc
+                ? (matchByDoc[docKey] ? "matched" : "mismatch")
+                : undefined;
+
             return {
                 ...node,
                 hidden: hiddenNodeIds.has(node.id),
                 className: cn(
                     node.className,
+                    matchStatus === "matched" ? "node-matched" : "",
+                    matchStatus === "mismatch" ? "node-mismatch" : "",
                     matches ? "ring-4 ring-yellow-400 ring-offset-4 shadow-2xl scale-110 z-[5000]" : "",
                     lowerSearch && !matches ? "opacity-30 grayscale" : ""
                 ),
@@ -283,11 +315,12 @@ const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNo
                     childCount,
                     isCollapsed: collapsedNodes.has(node.id),
                     onToggleCollapse,
-                    isHighlighted: matches
+                    isHighlighted: matches,
+                    matchStatus
                 }
             };
         });
-    }, [initialNodes, initialEdges, hiddenNodeIds, collapsedNodes, onToggleCollapse, searchTerm, childCountByParent]);
+    }, [initialNodes, initialEdges, hiddenNodeIds, collapsedNodes, onToggleCollapse, searchTerm, childCountByParent, matchByDoc]);
 
     // Bulk expand/collapse helpers used by the toolbar pill in the legend.
     const collapseAll = useCallback(() => {
@@ -309,77 +342,34 @@ const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNo
 
     const handleNodeClick = useCallback((event: React.MouseEvent, node: Node) => {
         if (node.data && node.data.document_number) {
-            onNodeClick(node.data.document_number, node.data);
+            onNodeClick(node.data.document_number, node.data, { x: event.clientX, y: event.clientY });
         }
     }, [onNodeClick]);
 
     return (
         <div className="w-full h-full min-h-[500px] bg-slate-50/50 relative">
-            {/* Legend / Overlay */}
+            {/* Bulk expand/collapse controls. The "Deed Registry (TN)" deed-type
+                legend was removed — node colours are now driven by validation
+                match status (green = matched, red = mismatch), not deed type, so
+                the old colour key no longer reflects what the user sees. */}
             <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
-                <div className="bg-white/95 backdrop-blur shadow-xl border p-4 rounded-2xl flex flex-col gap-3 min-w-[200px]">
-                    <span className="text-[10px] font-black tracking-[0.1em] text-slate-400 uppercase border-b pb-2">Deed Registry (TN)</span>
-                    <div className="grid grid-cols-1 gap-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-green-500 border border-green-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">SALE DEED</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-red-500 border border-red-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">MORTGAGE / HYPOTHECATION</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-purple-500 border border-purple-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">GIFT DEED</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-blue-500 border border-blue-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">SETTLEMENT DEED</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-orange-500 border border-orange-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">RELEASE DEED</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-teal-500 border border-teal-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">PARTITION DEED</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-slate-500 border border-slate-700 shadow-sm" />
-                            <span className="text-[10px] font-bold text-slate-600">POWER OF ATTORNEY</span>
-                        </div>
-                    </div>
-                    <div className="mt-2 pt-2 border-t flex flex-col gap-1.5">
-                        <div className="flex items-center gap-2 opacity-70">
-                            <div className="w-3 h-3 rounded-full border-2 border-primary border-dashed" />
-                            <span className="text-[9px] font-medium text-slate-500 italic">SURVEY BRANCH</span>
-                        </div>
-                        <div className="flex items-center gap-2 opacity-70">
-                            <Plus className="w-3 h-3 text-primary" />
-                            <span className="text-[9px] font-medium text-slate-500 italic">EXPAND LAYER</span>
-                        </div>
-                    </div>
-
-                    {/* Bulk expand/collapse — useful when the dataset is large
-                        and per-node toggling would be tedious. */}
-                    <div className="flex items-center gap-1 mt-2 pt-2 border-t">
-                        <button
-                            onClick={expandAll}
-                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[9px] font-extra-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
-                            title="Expand every node"
-                        >
-                            <Plus className="w-3 h-3" />
-                            Expand all
-                        </button>
-                        <button
-                            onClick={collapseAll}
-                            className="flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md text-[9px] font-extra-bold uppercase tracking-wider bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 transition-colors"
-                            title="Collapse every parent node"
-                        >
-                            <Minus className="w-3 h-3" />
-                            Collapse all
-                        </button>
-                    </div>
+                <div className="bg-white/95 backdrop-blur shadow-xl border p-2 rounded-2xl flex items-center gap-1">
+                    <button
+                        onClick={expandAll}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-[9px] font-extra-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                        title="Expand every node"
+                    >
+                        <Plus className="w-3 h-3" />
+                        Expand all
+                    </button>
+                    <button
+                        onClick={collapseAll}
+                        className="flex-1 inline-flex items-center justify-center gap-1 px-2.5 py-1 rounded-md text-[9px] font-extra-bold uppercase tracking-wider bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100 transition-colors"
+                        title="Collapse every parent node"
+                    >
+                        <Minus className="w-3 h-3" />
+                        Collapse all
+                    </button>
                 </div>
             </div>
 

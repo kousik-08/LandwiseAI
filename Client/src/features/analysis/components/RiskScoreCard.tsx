@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { API_BASE_URL } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { landwiseApi } from "@/lib/landwise-api";
 import { Badge } from "@/components/ui/badge";
 import {
   ShieldCheck,
@@ -19,6 +20,7 @@ import {
   FileText,
   Activity,
   Layers,
+  ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -826,35 +828,31 @@ function HeroStat({
 
 interface RiskScoreCardProps {
   requestId: string;
+  // Jump to the Document Analysis tab focused on a specific document.
+  onOpenDocAnalysis?: (docNo: string) => void;
 }
 
-export function RiskScoreCard({ requestId }: RiskScoreCardProps) {
-  const [data, setData] = useState<RiskScoreData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function RiskScoreCard({ requestId, onOpenDocAnalysis }: RiskScoreCardProps) {
   const [showFactors, setShowFactors] = useState(false);
   const [showFlags, setShowFlags] = useState(false);
   const [showDocumentDetails, setShowDocumentDetails] = useState(false);
   const [showGapDetails, setShowGapDetails] = useState(false);
   const [showDetailedSummary, setShowDetailedSummary] = useState(false);
 
-  useEffect(() => {
-    const fetchScore = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const resp = await fetch(`${API_BASE_URL}/api/v1/get-risk-score/${requestId}`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const json = await resp.json();
-        setData(json.data);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to load risk score");
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (requestId) fetchScore();
-  }, [requestId]);
+  // Routed through React Query (same ['risk-score', requestId] key the
+  // dashboard uses) so the cockpit endpoint's setQueryData fully dedupes
+  // this fetch. The previous raw useEffect+fetch couldn't reuse the
+  // parent's cache and always triggered a duplicate network call on
+  // every Risks-tab open.
+  const { data: queryData, isLoading: loading, error: queryError } = useQuery<any>({
+    queryKey: ['risk-score', requestId],
+    queryFn: () => landwiseApi.getRiskScore(requestId),
+    enabled: !!requestId,
+  });
+  const data: RiskScoreData | null = queryData?.data ?? null;
+  const error: string | null = queryError
+    ? (queryError instanceof Error ? queryError.message : "Failed to load risk score")
+    : null;
 
   if (loading) {
     return (
@@ -914,6 +912,13 @@ export function RiskScoreCard({ requestId }: RiskScoreCardProps) {
     data.flags.restricted_lands.length +
     data.flags.encumbrance_gaps.length +
     data.flags.scrutiny_docs.length;
+
+  // Documents that did NOT pass validation — the "16/20 passed" leaves these
+  // behind (matches metadata.failed_docs). We key off `match` (not status)
+  // because a not-passed doc that ALSO needs scrutiny is tagged "SCRUTINY",
+  // and we still want it surfaced here. Each carries its mismatch reasons; we
+  // link into the Document Analysis tab for the full per-field breakdown.
+  const failedDocs = (data.document_details ?? []).filter((d) => !d.match);
 
   return (
     <div className="space-y-4">
@@ -1067,6 +1072,78 @@ export function RiskScoreCard({ requestId }: RiskScoreCardProps) {
           </div>
         </div>
       </motion.div>
+
+      {/* ── Documents Needing Attention (did not pass validation) ───────── */}
+      {failedDocs.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+          className="bg-white rounded-2xl border border-red-200 shadow-sm overflow-hidden"
+        >
+          <div className="flex items-center gap-2.5 px-4 sm:px-5 py-3.5 bg-gradient-to-r from-red-50 via-rose-50/50 to-red-50/30 border-b border-red-100">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center shadow-sm shrink-0">
+              <AlertTriangle className="w-4 h-4 text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900">Documents Needing Attention</p>
+              <p className="text-[11px] text-slate-500 font-medium">
+                {failedDocs.length} of {data.metadata.total_docs} document{failedDocs.length === 1 ? "" : "s"} did not pass validation
+              </p>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {failedDocs.map((doc) => (
+              <div
+                key={doc.doc_no}
+                className="px-4 sm:px-5 py-3.5 flex flex-col sm:flex-row sm:items-start gap-3 hover:bg-red-50/30 transition-colors"
+              >
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-slate-900 font-mono">{doc.doc_no}</span>
+                    {doc.nature && (
+                      <Badge variant="outline" className="text-[9px] font-bold uppercase tracking-wide border-slate-200 text-slate-500">
+                        {doc.nature}
+                      </Badge>
+                    )}
+                    <Badge className="text-[9px] font-bold uppercase bg-red-100 text-red-700 hover:bg-red-100">Failed</Badge>
+                    <span className="text-[10px] font-bold text-slate-400">Trust {doc.trustability_score}%</span>
+                  </div>
+                  {doc.mismatches && doc.mismatches.length > 0 ? (
+                    <ul className="space-y-1">
+                      {doc.mismatches.slice(0, 4).map((m, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-[11px] text-slate-600 leading-snug">
+                          <CircleAlert className="w-3 h-3 text-red-500 mt-0.5 shrink-0" />
+                          <span>{m}</span>
+                        </li>
+                      ))}
+                      {doc.mismatches.length > 4 && (
+                        <li className="text-[10px] text-slate-400 italic pl-[18px]">
+                          +{doc.mismatches.length - 4} more issue{doc.mismatches.length - 4 === 1 ? "" : "s"}
+                        </li>
+                      )}
+                    </ul>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 italic">
+                      {doc.scrutiny_reason || "Did not match the encumbrance record."}
+                    </p>
+                  )}
+                </div>
+                {onOpenDocAnalysis && (
+                  <button
+                    onClick={() => onOpenDocAnalysis(doc.doc_no)}
+                    className="self-start shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[10px] font-bold uppercase tracking-wide border border-red-200 text-red-600 bg-white hover:bg-red-50 hover:border-red-300 transition-all"
+                    title="Open this document in Document Analysis"
+                  >
+                    Review
+                    <ArrowRight className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
 
       {/* ── Risk Flags ─────────────────────────────────────────────────── */}
       {hasAnyFlags && (

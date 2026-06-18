@@ -158,10 +158,19 @@ class S3Storage(Storage):
         # https://<bucket>.s3.<region>.amazonaws.com/... — not the legacy
         # https://<bucket>.s3.amazonaws.com/... which 301-redirects and
         # breaks browser CORS preflight.
+        #
+        # max_pool_connections raised from boto3's default 10 → 64 so the
+        # ThreadPoolExecutor in storage_sync.sync_dir can actually run that
+        # many parallel uploads without queueing on the connection pool.
+        # tcp_keepalive avoids the per-request TCP handshake when uploading
+        # many small files back-to-back during an analyze run.
         client_config = Config(
             region_name=region,
             signature_version="s3v4",
             s3={"addressing_style": "virtual"},
+            max_pool_connections=64,
+            tcp_keepalive=True,
+            retries={"max_attempts": 3, "mode": "standard"},
         )
         endpoint_url = f"https://s3.{region}.amazonaws.com"
 
@@ -195,7 +204,25 @@ class S3Storage(Storage):
     def put_file(self, key, local_path, content_type=None):
         k = _normalize_key(key)
         extra = {"ContentType": content_type} if content_type else {}
-        self._client.upload_file(local_path, self.bucket, k, ExtraArgs=extra or None)
+        # TransferConfig: multipart kicks in for files > 8MB and uses up to
+        # 4 parallel parts. Most artifacts are smaller and go single-PUT,
+        # but the large source-PDF vault uploads benefit a lot from this.
+        # Lazy import keeps boto3 out of LocalStorage's hot path.
+        from boto3.s3.transfer import TransferConfig
+        config = getattr(self, "_transfer_config", None)
+        if config is None:
+            config = TransferConfig(
+                multipart_threshold=8 * 1024 * 1024,
+                multipart_chunksize=8 * 1024 * 1024,
+                max_concurrency=4,
+                use_threads=True,
+            )
+            self._transfer_config = config
+        self._client.upload_file(
+            local_path, self.bucket, k,
+            ExtraArgs=extra or None,
+            Config=config,
+        )
         return k
 
     def get_bytes(self, key):
@@ -204,7 +231,19 @@ class S3Storage(Storage):
 
     def download_to(self, key, local_path):
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
-        self._client.download_file(self.bucket, _normalize_key(key), local_path)
+        from boto3.s3.transfer import TransferConfig
+        config = getattr(self, "_transfer_config", None)
+        if config is None:
+            config = TransferConfig(
+                multipart_threshold=8 * 1024 * 1024,
+                multipart_chunksize=8 * 1024 * 1024,
+                max_concurrency=4,
+                use_threads=True,
+            )
+            self._transfer_config = config
+        self._client.download_file(
+            self.bucket, _normalize_key(key), local_path, Config=config,
+        )
         return local_path
 
     def open_stream(self, key):

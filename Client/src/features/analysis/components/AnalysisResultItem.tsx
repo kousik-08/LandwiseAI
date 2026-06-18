@@ -6,6 +6,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, AlertCircle, ShieldCheck, MapPin, ExternalLink } from "lucide-react";
 import { TrustabilityScore } from "./TrustabilityScore";
+import { coerceMatchCount } from "@/lib/utils";
 
 interface Comparison {
   field: string;
@@ -89,17 +90,17 @@ export function ValidationResultItem({
   return (
     <AccordionItem
       value={result.document_number}
-      className="border rounded-lg mb-3 px-4 py-2"
+      className="border rounded-lg mb-2 px-3 py-1.5"
     >
-      <AccordionTrigger className="hover:no-underline" onClick={onSelect}>
-        <div className="flex items-center justify-between w-full pr-4">
+      <AccordionTrigger className="hover:no-underline py-2" onClick={onSelect}>
+        <div className="flex items-center justify-between w-full pr-3">
           <div className="flex flex-col items-start gap-1">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-base">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-sm">
                 {result.document_number}
               </span>
               <Badge
-                className={`text-sm px-3 py-1 ${result.match
+                className={`text-[10px] px-2 py-0.5 ${result.match
                   ? "bg-green-500 text-white border-green-600"
                   : "bg-red-500 text-white border-red-600"
                   }`}
@@ -107,8 +108,8 @@ export function ValidationResultItem({
                 {result.match ? "MATCH" : "REQUIRES MANUAL VERIFICATION"}
               </Badge>
             </div>
-            <span className="text-sm text-muted-foreground">
-              {result.validation_result.match_count || 0} /{" "}
+            <span className="text-[11px] text-muted-foreground">
+              {coerceMatchCount(result.validation_result.match_count, result.validation_result.comparisons)} /{" "}
               {result.validation_result.comparisons?.length || 0} fields matched
             </span>
             {result.validation_result.requires_extra_scrutiny && (
@@ -160,15 +161,15 @@ export function ValidationResultItem({
               return (
                 <div
                   key={compIndex}
-                  className={`p-4 rounded-lg border-2 ${isMatched
+                  className={`p-2.5 rounded-md border ${isMatched
                     ? "bg-green-50 border-green-200"
                     : "bg-red-50 border-red-200"
                     } relative`}
                 >
                   {/* Removed Plus icon as it might be confusing if we treat it as non-match */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex flex-col gap-1">
-                      <span className="font-semibold text-base">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-semibold text-xs">
                         {comparison.field}
                       </span>
                       {comparison.page_number && (() => {
@@ -196,14 +197,14 @@ export function ValidationResultItem({
                         );
                       })()}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {isMatched ? (
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
                       ) : (
-                        <AlertCircle className="w-5 h-5 text-red-600" />
+                        <AlertCircle className="w-4 h-4 text-red-600" />
                       )}
                       <Badge
-                        className={`text-sm px-2 py-1 ${isMatched
+                        className={`text-[10px] px-1.5 py-0.5 ${isMatched
                           ? "bg-green-500 text-white border-green-600"
                           : "bg-red-500 text-white border-red-600"
                           }`}
@@ -212,7 +213,7 @@ export function ValidationResultItem({
                       </Badge>
                     </div>
                   </div>
-                  <div className="space-y-2 text-sm">
+                  <div className="space-y-1.5 text-[11px]">
                     <div>
                       <span className="text-muted-foreground font-medium">
                         EC Value:{" "}
@@ -227,7 +228,7 @@ export function ValidationResultItem({
                         {comparison.metadata_value}
                       </span>
                     </div>
-                    <div className="pt-2 text-muted-foreground italic border-t border-border/50">
+                    <div className="pt-1.5 text-muted-foreground italic border-t border-border/50">
                       {comparison.reason}
                     </div>
                   </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
     Loader2,
     StickyNote,
@@ -204,7 +205,38 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
         documentId: string;
         note: NoteRow;
     } | null>(null);
-    const [focusKey, setFocusKey] = useState(0);
+    // Mirrors AnalysisDashboard's scrollToPage + focusHighlightId pattern:
+    // both states share ONE timestamp generated at click time. Driving them
+    // together via the SAME ts means PdfAnnotator's page-scroll effect and
+    // highlight-flash effect run in lockstep instead of racing each other.
+    const [scrollToPage, setScrollToPage] = useState<
+        { page: number; timestamp: number } | undefined
+    >(undefined);
+    const [focusHighlightId, setFocusHighlightId] = useState<
+        { id: string; page?: number; timestamp: number } | undefined
+    >(undefined);
+
+    // ── Pre-warm the annotations cache (mirrors AnalysisDashboard.tsx) ──
+    // Without this prefetch, opening the Notes Hub fires:
+    //   1. NotesSummary → /annotations/summary    (this component's data)
+    //   2. PdfAnnotator → /annotations             (the highlights array)
+    // …in sequence. Step 2 only starts when the user clicks a note,
+    // meaning the highlight-finding retry loop in PdfAnnotator polls for
+    // several seconds before the first match — and each poll triggers an
+    // internal scrollTo() → tip-layer remount → "createRoot() on a
+    // container that has already been passed to createRoot()" warning.
+    //
+    // Prefetching at this layer warms the EXACT same react-query cache
+    // key PdfAnnotator reads, so by the time the user clicks a note the
+    // highlights are already loaded → retry loop finds the target on
+    // attempt #1 → exactly one scrollTo() → no cascade, no warning, and
+    // the flash animation actually plays.
+    useQuery({
+        queryKey: ["annotations", parcelId],
+        queryFn: () => landwiseApi.getAnnotations(parcelId),
+        enabled: !!parcelId,
+        staleTime: 60_000,
+    });
     /** Bumped to force a server-fetch + localStorage scan (e.g. after an
      *  external "notes changed" event), even when the outer refreshKey
      *  hasn't changed. NOT used by the inline delete path — that uses
@@ -221,9 +253,13 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
 
     // ── Reset session state when the parcel changes ──────────────────────
     // Otherwise a note we deleted in parcel A would stay hidden after we
-    // switch to parcel B (different note ids but the same Set).
+    // switch to parcel B (different note ids but the same Set). Also clear
+    // any in-flight scroll/focus state so a stale note id from parcel A
+    // can't trigger a no-op focus attempt against parcel B's PdfAnnotator.
     useEffect(() => {
         setLocallyDeletedIds(new Set());
+        setScrollToPage(undefined);
+        setFocusHighlightId(undefined);
     }, [parcelId, refreshKey]);
 
     // ── Cross-component sync ─────────────────────────────────────────────
@@ -337,8 +373,16 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
     };
 
     const openInlinePreview = (note: NoteRow, doc: DocBucket) => {
+        // Identical to AnalysisDashboard's note-click handler: ONE timestamp,
+        // both `scrollToPage` and `focusHighlightId` driven off it. Setting
+        // both together (rather than nudging a separate counter) is what
+        // makes clicking the same note re-trigger the flash — Date.now() is
+        // unique per click so PdfAnnotator's signature latch sees a fresh
+        // value every time.
+        const ts = Date.now();
         setPreviewNote({ docNo: doc.doc_no, documentId: doc.document_id, note });
-        setFocusKey((k) => k + 1);
+        setScrollToPage({ page: note.page_number, timestamp: ts });
+        setFocusHighlightId({ id: note.id, page: note.page_number, timestamp: ts });
     };
 
     /**
@@ -424,7 +468,7 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
         return (
             <div className="flex flex-col items-center justify-center p-10 gap-3 text-slate-400">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                <span className="text-xs font-bold uppercase tracking-widest">Loading Notes Cockpit…</span>
+                <span className="text-xs font-bold uppercase tracking-widest">Loading Notes Hub…</span>
             </div>
         );
     }
@@ -463,7 +507,7 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
                     </div>
                     <div className="min-w-0 flex-1">
                         <p className="text-sm font-display font-extrabold text-slate-900 leading-none">
-                            Notes Cockpit
+                            Notes Hub
                         </p>
                         <p className="text-[10px] text-slate-500 font-bold uppercase tracking-[0.16em] mt-0.5">
                             Survey No <span className="text-amber-700">{data.survey_number}</span> ·{" "}
@@ -725,19 +769,32 @@ const NotesSummary: React.FC<NotesSummaryProps> = ({
                                 hasn't been populated yet (see PdfAnnotator.tsx:359-373). */}
                             <div className="flex-1 min-h-0 relative">
                                 {previewPdfUrl ? (
+                                    /*  ── Architecture mirrors AnalysisDashboard ──
+                                        - No `key` prop: PdfAnnotator stays mounted
+                                          across doc switches; the `url`/`docId`
+                                          prop change triggers its internal
+                                          PdfLoader to fetch the new PDF. This
+                                          avoids react-pdf-highlighter's tip-layer
+                                          mount/unmount cycle that was producing
+                                          the createRoot warning.
+                                        - `scrollToPage` and `focusHighlightId`
+                                          come from this component's state, set
+                                          together from openInlinePreview() with
+                                          a SHARED Date.now() timestamp — identical
+                                          to AnalysisDashboard's citation-chip and
+                                          note-row handlers.
+                                        - The annotations cache is pre-warmed at
+                                          the top of this component (see the
+                                          useQuery on `["annotations", parcelId]`)
+                                          so PdfAnnotator's retry loop finds the
+                                          target highlight on attempt #1 instead
+                                          of polling for several seconds. */
                                     <PdfAnnotator
                                         url={previewPdfUrl}
                                         docId={stripPdf(previewNote.docNo)}
                                         parcelId={parcelId}
-                                        scrollToPage={{
-                                            page: previewNote.note.page_number,
-                                            timestamp: focusKey,
-                                        }}
-                                        focusHighlightId={{
-                                            id: previewNote.note.id,
-                                            page: previewNote.note.page_number,
-                                            timestamp: focusKey,
-                                        }}
+                                        scrollToPage={scrollToPage}
+                                        focusHighlightId={focusHighlightId}
                                     />
                                 ) : (
                                     <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 text-slate-400">

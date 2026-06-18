@@ -143,6 +143,15 @@ class AnalysisBridge:
         links = []
 
         def _parse_date_for_sort(date_str: str) -> str:
+            # Multi-date EC column ("20-Jul-2018 | 20-Jul-2018 | 31-Jul-2018")
+            # → anchor on the first token before the split('-') / split('/')
+            # logic runs, otherwise the parts count is wrong and the sort
+            # key collapses to "0000-00-00".
+            if isinstance(date_str, str):
+                for sep in (' | ', '|', ' / '):
+                    if sep in date_str:
+                        date_str = date_str.split(sep, 1)[0].strip()
+                        break
             try:
                 if '-' in date_str:
                     parts = date_str.split('-')

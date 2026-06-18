@@ -1,11 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
+import { motion, AnimatePresence, useDragControls } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Calendar, MapPin, ArrowRight, Filter, X, FileText, Maximize2, Minimize2, User, Maximize, ShieldCheck, AlertCircle, MessageSquare, Plus, StickyNote, ExternalLink, Loader2, Sparkles, Network } from "lucide-react";
+import { Search, Calendar, MapPin, ArrowRight, Filter, X, FileText, Maximize2, Minimize2, User, Maximize, ShieldCheck, AlertCircle, MessageSquare, Plus, StickyNote, ExternalLink, Loader2, Sparkles, Network, Eye } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { ReactFlowHierarchy } from "@/features/hierarchy/components/ReactFlowHierarchy";
 import DocChat from "@/features/analysis/components/DocChat";
+import OverallChat from "@/features/analysis/components/OverallChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
@@ -77,14 +79,32 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         return `${BASE_API}/api/v1/landwise/documents/download-by-path?file_path=${encodeURIComponent(cleaned)}`;
     };
 
-    const [surveyNumber, setSurveyNumber] = useState("");
+    // URL-backed search params. Without this, the user's last search was
+    // wiped on reload and they were dumped back to the empty "enter a
+    // survey number" screen. We use `tlSurvey` + `tlLimit` (rather than
+    // bare `survey`/`limit`) to avoid colliding with the standalone
+    // /hierarchy page's own URL contract.
+    const [searchParams, setSearchParams] = useSearchParams();
+    const urlSurvey = searchParams.get("tlSurvey") || "";
+    const urlLimit = searchParams.get("tlLimit") || "all";
+
+    const [surveyNumber, setSurveyNumber] = useState(urlSurvey);
+    // Keep the input synced to the URL after mount. Needed because parcel
+    // switches in the dashboard clear tlSurvey/tlLimit *after* this component
+    // remounts — without this sync, the new parcel's input would still show
+    // the previous parcel's search until the user typed over it. We only
+    // ever write tlSurvey via handleSearch, so when an external clear sets
+    // urlSurvey="" we want to mirror that here.
+    useEffect(() => {
+        setSurveyNumber(urlSurvey);
+    }, [urlSurvey]);
     const [explorationMode, setExplorationMode] = useState<"search" | "global">("search");
     const [timeline, setTimeline] = useState<TimelineResult | null>(null);
     const [masterTimeline, setMasterTimeline] = useState<TimelineResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [masterLoading, setMasterLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [transactionLimit, setTransactionLimit] = useState<string>("all");
+    const [transactionLimit, setTransactionLimit] = useState<string>(urlLimit);
     const [previewDoc, setPreviewDoc] = useState<{ docNo: string, url?: string, imageUrl?: string, data?: Transaction, validation?: any } | null>(null);
     const [panelOpen, setPanelOpen] = useState(false);
     const [fullScreenPreview, setFullScreenPreview] = useState(false);
@@ -100,6 +120,26 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
     // Triggers a precise scroll-to-highlight + amber flash in PdfAnnotator
     // when a PAGE button is clicked from the annotations panel.
     const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; timestamp: number } | undefined>(undefined);
+    // Floating PDF popup. Replaces the inline PDF iframe that previously
+    // filled the bottom half of the right pane. The metadata + tabs stay
+    // visible while the PDF lives in a draggable window the user can
+    // position anywhere on screen (including a second monitor).
+    const [isPdfPopupOpen, setIsPdfPopupOpen] = useState(false);
+    const pdfPopupDragControls = useDragControls();
+
+    // Property-wide ("overall") chatbot launched from near the search bar.
+    const [overallChatOpen, setOverallChatOpen] = useState(false);
+    // Injects "@<doc>" into the overall chat when a node's "Mention" is picked.
+    const [pendingMention, setPendingMention] = useState<{ doc: string; nonce: number } | null>(null);
+    // Small two-option chooser popup anchored at a clicked graph node.
+    const [nodeChooser, setNodeChooser] = useState<{ docNo: string; x: number; y: number } | null>(null);
+
+    // Close the popup when the user picks a different document, so they
+    // don't accidentally read doc A's PDF while the right pane's metadata
+    // updates to doc B.
+    useEffect(() => {
+        setIsPdfPopupOpen(false);
+    }, [previewDoc?.docNo]);
 
     // Click handler for the per-document "PAGE N" buttons in the notes panel.
     // We only fire focusHighlightId — NOT scrollToPage — because the latter
@@ -158,8 +198,12 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
 
     const debouncedSaveNote = useDebouncedNoteSaver();
 
-    const handleSearch = async () => {
-        if (!surveyNumber.trim()) {
+    // Common search runner — used both by the user clicking "Search" and by
+    // the on-mount auto-fire below. Takes the query explicitly so the auto-
+    // fire can pass URL values without racing against state setters.
+    const runSurveySearch = useCallback(async (sn: string, lim: string) => {
+        const trimmed = sn.trim();
+        if (!trimmed) {
             setError("Please enter a survey number");
             return;
         }
@@ -174,9 +218,9 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         try {
             const API_URL = API_BASE_URL;
             const requestBody = {
-                survey_number: surveyNumber.trim(),
+                survey_number: trimmed,
                 request_id: requestId,
-                limit: transactionLimit === "all" ? null : parseInt(transactionLimit),
+                limit: lim === "all" ? null : parseInt(lim),
             };
 
             const response = await fetch(`${API_URL}/api/v1/search-survey-timeline`, {
@@ -246,7 +290,40 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         } finally {
             setLoading(false);
         }
-    };
+    }, [requestId]);
+
+    // The button + Enter-key handler. Persists the query into the URL on
+    // dispatch (not on response) so even a search that's still in flight
+    // survives a reload — the auto-fire effect below will retry it.
+    const handleSearch = useCallback(() => {
+        const trimmed = surveyNumber.trim();
+        if (!trimmed) {
+            setError("Please enter a survey number");
+            return;
+        }
+        const next = new URLSearchParams(searchParams);
+        next.set("tlSurvey", trimmed);
+        if (transactionLimit && transactionLimit !== "all") {
+            next.set("tlLimit", transactionLimit);
+        } else {
+            next.delete("tlLimit");
+        }
+        setSearchParams(next, { replace: true });
+        void runSurveySearch(trimmed, transactionLimit);
+    }, [surveyNumber, transactionLimit, searchParams, setSearchParams, runSurveySearch]);
+
+    // Auto-fire the search on mount when the URL already carries a query.
+    // Guarded by a ref so it runs exactly once per page load — without this,
+    // the effect would re-fire every time the URL was rewritten (which
+    // happens on tab clicks via the dashboard's URL sync).
+    const autoFiredRef = useRef(false);
+    useEffect(() => {
+        if (autoFiredRef.current) return;
+        if (!requestId) return;
+        if (!urlSurvey) return;
+        autoFiredRef.current = true;
+        void runSurveySearch(urlSurvey, urlLimit);
+    }, [requestId, urlSurvey, urlLimit, runSurveySearch]);
 
     const handleLoadMasterMap = async () => {
         setMasterLoading(true);
@@ -325,7 +402,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         [timeline, debouncedSaveNote],
     );
 
-    const handleNodeClick = useCallback((docNo: string, txData?: Transaction | any) => {
+    const handleNodeClick = useCallback((docNo: string, txData?: Transaction | any, position?: { x: number; y: number }) => {
         console.log("Handling click for doc:", docNo);
         setVerificationResult(null);
         setUploadFile(null);
@@ -426,7 +503,31 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
             validation
         });
         setPanelOpen(true);
+
+        // When invoked from a graph node click (position present), show the
+        // small chooser popup anchored at the node. Table-row clicks pass no
+        // position and simply open the panel as before — behaviour unchanged.
+        if (position) {
+            setNodeChooser({ docNo, x: position.x, y: position.y });
+        } else {
+            setNodeChooser(null);
+        }
     }, [timeline, results, validationCache, masterTimeline, findVaultPdfUrl]);
+
+    // All document numbers across the active + master timelines — feeds the
+    // overall chatbot's @-mention autocomplete.
+    const docNumbers = useMemo(() => {
+        const set = new Set<string>();
+        const collect = (tl: any) => {
+            (tl?.react_flow_data?.nodes || []).forEach((n: any) => {
+                const d = n?.data?.document_number;
+                if (d && d !== "NO TRANSACTION FOUND") set.add(d);
+            });
+        };
+        collect(timeline);
+        collect(masterTimeline);
+        return Array.from(set).sort();
+    }, [timeline, masterTimeline]);
 
     const getFullSurveyNumber = (data: any): string | undefined => {
         if (!data) return undefined;
@@ -634,34 +735,39 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                     <div className="absolute -bottom-32 -left-32 w-80 h-80 rounded-full bg-gradient-to-br from-violet-200/20 to-blue-200/20 blur-3xl animate-blob" />
                 </div>
 
-                <div className="relative p-5 sm:p-7 lg:p-8">
+                {/* Compacted from p-5/p-7/p-8 → p-4/p-5/p-6 and shrunk the
+                    header + form + buttons by one step. The hero was eating
+                    the whole viewport above the fold; the result now leaves
+                    room for the search-mode toggle and the proof-center cards
+                    without scrolling. */}
+                <div className="relative p-4 sm:p-5 lg:p-6">
                     {/* Header */}
-                    <div className="flex items-start gap-3 mb-6">
+                    <div className="flex items-start gap-2.5 mb-4">
                         <div className="relative shrink-0">
-                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-xl blur-lg opacity-40 -z-10 animate-pulse-glow" />
-                            <div className="w-11 h-11 bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/30 ring-1 ring-white/30">
-                                <Search className="w-5 h-5 text-white" strokeWidth={2.5} />
+                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500 to-blue-600 rounded-lg blur-md opacity-40 -z-10 animate-pulse-glow" />
+                            <div className="w-9 h-9 bg-gradient-to-br from-indigo-600 via-indigo-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-indigo-500/30 ring-1 ring-white/30">
+                                <Search className="w-4 h-4 text-white" strokeWidth={2.5} />
                             </div>
                         </div>
                         <div className="min-w-0">
-                            <h3 className="text-xl sm:text-2xl font-display font-extrabold text-slate-900 tracking-tight flex items-center gap-2 flex-wrap">
+                            <h3 className="text-base sm:text-lg font-display font-extrabold text-slate-900 tracking-tight flex items-center gap-1.5 flex-wrap">
                                 Smart <span className="text-gradient-primary">Lineage Explorer</span>
-                                <Sparkles className="w-4 h-4 text-amber-400 animate-pulse-subtle" />
+                                <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse-subtle" />
                             </h3>
-                            <p className="text-xs sm:text-sm text-slate-500 mt-0.5 font-medium">
+                            <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 font-medium">
                                 Trace ownership history through interactive diagrams and instant document previews
                             </p>
                         </div>
                     </div>
 
                     {/* Form */}
-                    <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex flex-col md:flex-row gap-3">
                         <div className="flex-[2] min-w-0">
-                            <Label htmlFor="survey-search" className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                            <Label htmlFor="survey-search" className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
                                 Survey Number
                             </Label>
-                            <div className="relative group focus-glow rounded-xl">
-                                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
+                            <div className="relative group focus-glow rounded-lg">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 group-focus-within:text-indigo-600 transition-colors" />
                                 <Input
                                     id="survey-search"
                                     placeholder="Enter Survey Number (e.g., 47, 47/1, 47/6A3)"
@@ -669,13 +775,13 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                     onChange={(e) => setSurveyNumber(e.target.value)}
                                     onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                                     disabled={loading}
-                                    className="pl-10 text-sm sm:text-base h-12 rounded-xl bg-white/80 border-slate-200 shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/40 transition-all"
+                                    className="pl-9 text-sm h-10 rounded-lg bg-white/80 border-slate-200 shadow-sm focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:border-indigo-500/40 transition-all"
                                 />
                             </div>
                         </div>
 
                         <div className="flex-1 min-w-0">
-                            <Label htmlFor="tx-limit" className="mb-2 block text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                            <Label htmlFor="tx-limit" className="mb-1.5 block text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">
                                 History Depth
                             </Label>
                             <Select
@@ -683,7 +789,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                 onValueChange={setTransactionLimit}
                                 disabled={loading}
                             >
-                                <SelectTrigger id="tx-limit" className="h-12 rounded-xl bg-white/80 border-slate-200 hover:border-indigo-300 transition-all">
+                                <SelectTrigger id="tx-limit" className="h-10 text-sm rounded-lg bg-white/80 border-slate-200 hover:border-indigo-300 transition-all">
                                     <SelectValue placeholder="All Transactions" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -701,18 +807,17 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                 <Button
                                     onClick={handleSearch}
                                     disabled={loading}
-                                    size="lg"
-                                    className="h-12 px-6 sm:px-8 font-bold rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 hover:from-indigo-700 hover:via-indigo-600 hover:to-blue-700 text-white shadow-lg shadow-indigo-500/30 hover:shadow-xl hover:shadow-indigo-500/40 shine-sweep transition-all"
+                                    className="h-10 px-4 sm:px-5 text-xs font-bold rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 hover:from-indigo-700 hover:via-indigo-600 hover:to-blue-700 text-white shadow-md shadow-indigo-500/30 hover:shadow-lg hover:shadow-indigo-500/40 shine-sweep transition-all"
                                 >
                                     {loading ? (
-                                        <span className="flex items-center gap-2">
-                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        <span className="flex items-center gap-1.5">
+                                            <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                                             Analyzing...
                                         </span>
                                     ) : (
-                                        <span className="flex items-center gap-2">
+                                        <span className="flex items-center gap-1.5">
                                             Explore Lineage
-                                            <ArrowRight className="w-4 h-4" />
+                                            <ArrowRight className="w-3.5 h-3.5" />
                                         </span>
                                     )}
                                 </Button>
@@ -720,8 +825,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                             {!loading && (
                                 <Button
                                     variant="outline"
-                                    size="lg"
-                                    className="h-12 px-5 rounded-xl border-indigo-200 bg-white/80 text-indigo-700 hover:text-indigo-700 font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all"
+                                    className="h-10 px-4 text-xs rounded-lg border-indigo-200 bg-white/80 text-indigo-700 hover:text-indigo-700 font-bold hover:bg-indigo-50 hover:border-indigo-300 transition-all"
                                     onClick={() => setExplorationMode(prev => prev === "search" ? "global" : "search")}
                                 >
                                     {explorationMode === "search" ? "View Master Map" : "Back to Search"}
@@ -732,16 +836,19 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                 </div>
             </motion.div>
 
+            {/* Mode toggle shrunk: h-11 → h-9, rounded-2xl → rounded-xl,
+                mb-6 → mb-4. Matches the new hero's compact rhythm so the two
+                strips read as a single block instead of competing for height. */}
             <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-                className="flex items-center gap-2 mb-6 sticky top-0 z-40 bg-white/80 backdrop-blur-xl p-1.5 rounded-2xl border border-slate-200 shadow-sm"
+                className="flex items-center gap-1.5 mb-4 sticky top-0 z-40 bg-white/80 backdrop-blur-xl p-1 rounded-xl border border-slate-200 shadow-sm"
             >
                 <button
                     onClick={() => setExplorationMode("search")}
                     className={cn(
-                        "relative flex-1 flex items-center justify-center gap-2 font-bold text-xs sm:text-sm h-11 transition-colors rounded-xl",
+                        "relative flex-1 flex items-center justify-center gap-1.5 font-bold text-[11px] sm:text-xs h-9 transition-colors rounded-lg",
                         explorationMode === "search" ? "text-white" : "text-slate-500 hover:text-indigo-600"
                     )}
                 >
@@ -749,18 +856,18 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                         <motion.span
                             layoutId="lineage-active-mode"
                             transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                            className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 shadow-lg shadow-indigo-500/30"
+                            className="absolute inset-0 rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 shadow-md shadow-indigo-500/30"
                         />
                     )}
-                    <span className="relative z-10 flex items-center gap-2">
-                        <Search className="w-4 h-4" />
+                    <span className="relative z-10 flex items-center gap-1.5">
+                        <Search className="w-3.5 h-3.5" />
                         Property Lineage Search
                     </span>
                 </button>
                 <button
                     onClick={() => setExplorationMode("global")}
                     className={cn(
-                        "relative flex-1 flex items-center justify-center gap-2 font-bold text-xs sm:text-sm h-11 transition-colors rounded-xl",
+                        "relative flex-1 flex items-center justify-center gap-1.5 font-bold text-[11px] sm:text-xs h-9 transition-colors rounded-lg",
                         explorationMode === "global" ? "text-white" : "text-slate-500 hover:text-indigo-600"
                     )}
                 >
@@ -768,13 +875,23 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                         <motion.span
                             layoutId="lineage-active-mode"
                             transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                            className="absolute inset-0 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 shadow-lg shadow-indigo-500/30"
+                            className="absolute inset-0 rounded-lg bg-gradient-to-r from-indigo-600 via-indigo-500 to-blue-600 shadow-md shadow-indigo-500/30"
                         />
                     )}
-                    <span className="relative z-10 flex items-center gap-2">
-                        <Network className="w-4 h-4" />
+                    <span className="relative z-10 flex items-center gap-1.5">
+                        <Network className="w-3.5 h-3.5" />
                         Master Network Overview
                     </span>
+                </button>
+
+                {/* Property-wide AI assistant launcher — opens a floating chat. */}
+                <button
+                    onClick={() => setOverallChatOpen(true)}
+                    className="shrink-0 inline-flex items-center gap-1.5 font-bold text-[11px] sm:text-xs h-9 px-3 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/30 hover:from-violet-700 hover:to-indigo-700 transition-all"
+                    title="Ask the property AI assistant"
+                >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Ask AI
                 </button>
             </motion.div>
 
@@ -807,80 +924,25 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
             {
                 explorationMode === "search" && timeline && (
                     <>
-
-                        <motion.div
-                            initial="hidden"
-                            animate="visible"
-                            variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } } }}
-                            className="flex flex-col md:flex-row gap-4 mb-4"
-                        >
-                            <motion.div
-                                variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
-                                className="flex-1"
-                            >
-                            <Card className="relative h-full border-amber-200 bg-gradient-to-br from-amber-50 via-orange-50/40 to-amber-50/30 overflow-hidden">
-                                <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-amber-400 via-orange-500 to-amber-400" />
-                                <CardHeader className="py-3 px-4 flex flex-row items-center gap-2.5 space-y-0">
-                                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-sm shadow-amber-500/30">
-                                        <StickyNote className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-                                    </div>
-                                    <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-amber-800">Overall Request Notes</CardTitle>
-                                </CardHeader>
-                                <CardContent className="px-4 pb-3">
-                                    <textarea
-                                        className="w-full bg-white/70 backdrop-blur-sm border border-amber-200/80 rounded-xl p-3 text-xs min-h-[64px] resize-none focus:ring-2 focus:ring-amber-400/40 focus:border-amber-400/40 outline-none transition-all placeholder:text-amber-700/40"
-                                        placeholder="Add general observations about this property or lineage..."
-                                        defaultValue={""}
-                                    />
-                                </CardContent>
-                            </Card>
-                            </motion.div>
-
-                            <motion.div
-                                variants={{ hidden: { opacity: 0, y: 8 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } } }}
-                                className="flex-1"
-                            >
-                            <Card className="relative h-full border-indigo-200 bg-gradient-to-br from-indigo-50 via-blue-50/40 to-indigo-50/30 overflow-hidden">
-                                <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500" />
-                                <CardHeader className="py-3 px-4 flex flex-row items-center gap-2.5 space-y-0">
-                                    <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 via-indigo-500 to-blue-500 flex items-center justify-center shadow-sm shadow-indigo-500/30">
-                                        <ShieldCheck className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
-                                    </div>
-                                    <CardTitle className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-800">Government Proof Center</CardTitle>
-                                </CardHeader>
-                                <CardContent className="px-4 pb-3 flex flex-wrap gap-2">
-                                    <Badge variant="outline" className="bg-white/80 backdrop-blur-sm border-blue-200 gap-1.5 py-1 px-3 inline-flex items-center text-[10px] font-bold">
-                                        <User className="w-3 h-3 text-blue-500" /> Aadhar:
-                                        <span className="text-blue-700 inline-flex items-center gap-1">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse-glow" />
-                                            Audit Ready
-                                        </span>
-                                    </Badge>
-                                    <Badge variant="outline" className="bg-white/80 backdrop-blur-sm border-rose-200 gap-1.5 py-1 px-3 inline-flex items-center text-[10px] font-bold">
-                                        <Calendar className="w-3 h-3 text-rose-500" /> Death Cert:
-                                        <span className="text-rose-700 inline-flex items-center gap-1">
-                                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse-glow" />
-                                            Pending Verify
-                                        </span>
-                                    </Badge>
-                                    <Badge variant="outline" className="bg-white/80 backdrop-blur-sm border-slate-200 gap-1.5 py-1 px-3 text-[10px] italic font-medium text-slate-600">
-                                        <Sparkles className="w-3 h-3 text-amber-400" />
-                                        Verification Summary Active
-                                    </Badge>
-                                </CardContent>
-                            </Card>
-                            </motion.div>
-                        </motion.div>
-
+                        {/* Mismatch Issues Hub moved to the Overview tab
+                            (ParcelOverview in LegalDashboard.tsx) per user
+                            request — it surfaced the same parcel-scoped
+                            validation_results data and naturally belongs on
+                            the dashboard summary page. */}
 
                         <div className={cn(
                             "grid gap-6 transition-all duration-500",
                             panelOpen ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
                         )}>
-                            {/* Left Side: Hierarchy & Timeline */}
+                            {/* Left Side: Hierarchy & Timeline.
+                                Widened to 9/12 (75%) — the per-doc preview
+                                panel only needs 25% now that its header row
+                                wraps and its badges have whitespace-nowrap /
+                                shrink-0 guards (see the earlier overflow fix
+                                in the summary card). */}
                             <div className={cn(
                                 "space-y-6 transition-all duration-500",
-                                panelOpen ? "lg:col-span-7 xl:col-span-8" : "w-full"
+                                panelOpen ? "lg:col-span-9 xl:col-span-9" : "w-full"
                             )}>
                                 {/* Lineage Path Breadcrumbs */}
                                 {timeline.lineage_path && timeline.lineage_path.length > 0 && (
@@ -950,7 +1012,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                     className="h-9 w-9 rounded-lg text-slate-300 hover:text-white hover:bg-white/10 transition-all hover:scale-105"
                                                     title="Open in Full View"
                                                     onClick={() => {
-                                                        // Pass parcelId so the HierarchyPage's Notes Cockpit
+                                                        // Pass parcelId so the HierarchyPage's Notes Hub
                                                         // can fetch parcel-wide annotations.
                                                         const params = new URLSearchParams({
                                                             requestId: requestId || '',
@@ -970,6 +1032,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                 data={timeline.react_flow_data}
                                                 onNodeClick={handleNodeClick}
                                                 onNotesChange={handleUpdateNodeNotes}
+                                                validationResults={results}
                                             />
                                         </CardContent>
                                     </Card>
@@ -1067,53 +1130,75 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                             {panelOpen && (
                                 <div className={cn(
                                     "transition-all duration-500 relative",
-                                    fullScreenPreview ? "fixed inset-0 z-50 bg-background" : "lg:col-span-5 xl:col-span-4"
+                                    fullScreenPreview ? "fixed inset-0 z-50 bg-background" : "lg:col-span-3 xl:col-span-3"
                                 )}>
+                                    {/* Non-fullscreen height switched from the hardcoded `h-[800px]`
+                                        to `h-auto max-h-[calc(100vh-6rem)]`. The 800px was sized for the
+                                        old inline PDF iframe; now that the PDF lives in a draggable
+                                        floating popup, the Card was leaving ~500px of empty whitespace
+                                        below the buttons. `h-auto` lets it hug the metadata + tabs +
+                                        compact source strip; the max-height cap keeps it from scrolling
+                                        the page on very tall content. */}
                                     <Card className={cn(
                                         "border-primary/20 shadow-2xl flex flex-col overflow-hidden sticky top-6",
-                                        fullScreenPreview ? "h-screen border-none rounded-none" : "h-[800px]"
+                                        fullScreenPreview
+                                            ? "h-screen border-none rounded-none"
+                                            // Summary view hugs its content (h-auto) so the compact panel
+                                            // doesn't leave whitespace. But the Chatbot / Notes overlays are
+                                            // absolutely positioned (top-0 bottom-0) and contribute no height
+                                            // to an h-auto parent — they collapsed to ~0px, which is why the
+                                            // chat "wouldn't open". Give the panel the full available height
+                                            // whenever a non-summary tab is active so the overlay has room.
+                                            : activeTab === "summary"
+                                                ? "h-auto max-h-[calc(100vh-6rem)]"
+                                                : "h-[calc(100vh-6rem)]"
                                     )}>
-                                        <CardHeader className="bg-primary text-primary-foreground py-3 px-4 flex flex-row items-center justify-between space-y-0">
-                                            <div className="flex items-center gap-2">
-                                                <div className="p-1.5 bg-white/20 rounded-md">
-                                                    <FileText className="w-4 h-4" />
+                                        {/* Header tightened to match the slimmer 25% panel:
+                                            padding py-3 px-4 → py-2 px-3, icon tile p-1.5 → p-1,
+                                            doc-no font text-sm → text-xs, buttons h-8 w-8 → h-7 w-7.
+                                            max-w on the docNo drops from 150 → 110 since the row
+                                            has less available width. */}
+                                        <CardHeader className="bg-primary text-primary-foreground py-2 px-3 flex flex-row items-center justify-between space-y-0">
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <div className="p-1 bg-white/20 rounded-md shrink-0">
+                                                    <FileText className="w-3.5 h-3.5" />
                                                 </div>
-                                                <div className="flex flex-col">
-                                                    <span className="text-[10px] opacity-70 leading-none">PROPERTIES OF</span>
-                                                    <span className="text-sm font-bold truncate max-w-[150px]">{previewDoc?.docNo}</span>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-[9px] opacity-70 leading-none">PROPERTIES OF</span>
+                                                    <span className="text-xs font-bold truncate max-w-[110px]">{previewDoc?.docNo}</span>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-0.5 shrink-0">
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
-                                                    className="h-8 w-8 hover:bg-white/20 text-white"
+                                                    className="h-7 w-7 hover:bg-white/20 text-white"
                                                     onClick={() => setFullScreenPreview(!fullScreenPreview)}
                                                 >
-                                                    {fullScreenPreview ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                                                    {fullScreenPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                                                 </Button>
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
                                                     className={cn(
-                                                        "h-8 w-8 hover:bg-white/20 text-white transition-all relative",
+                                                        "h-7 w-7 hover:bg-white/20 text-white transition-all relative",
                                                         isNotesVisible ? "bg-amber-400 text-amber-950 shadow-inner" : ""
                                                     )}
                                                     onClick={() => setIsNotesVisible(!isNotesVisible)}
                                                     title={isNotesVisible ? "Hide Notes" : "View/Add Notes"}
                                                 >
-                                                    <StickyNote className={cn("w-4 h-4 transition-all duration-300", isNotesVisible ? "scale-110" : "")} />
+                                                    <StickyNote className={cn("w-3.5 h-3.5 transition-all duration-300", isNotesVisible ? "scale-110" : "")} />
                                                     {!isNotesVisible && timeline?.react_flow_data.nodes.find(n => n.data.document_number === previewDoc?.docNo)?.data.notes && (
-                                                        <span className="absolute top-1 right-1 w-2 h-2 bg-amber-400 rounded-full border border-primary animate-pulse" />
+                                                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full border border-primary animate-pulse" />
                                                     )}
                                                 </Button>
                                                 <Button
                                                     size="icon"
                                                     variant="ghost"
-                                                    className="h-8 w-8 hover:bg-white/20 text-white"
+                                                    className="h-7 w-7 hover:bg-white/20 text-white"
                                                     onClick={() => { setPanelOpen(false); setFullScreenPreview(false); }}
                                                 >
-                                                    <X className="w-4 h-4" />
+                                                    <X className="w-3.5 h-3.5" />
                                                 </Button>
                                             </div>
                                         </CardHeader>
@@ -1156,18 +1241,24 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                 // Single-PDF-Matching button (z-30) so the chat overlay isn't
                                                 // pierced by PDF chrome. Buttons stay in the DOM and reappear
                                                 // when the chat tab closes.
-                                                <div className="absolute inset-x-0 top-0 bottom-[300px] z-[150] animate-in slide-in-from-right duration-300">
+                                                <div className="absolute inset-x-0 top-0 bottom-0 z-[150] animate-in slide-in-from-right duration-300">
                                                     <DocChat
                                                         docNo={previewDoc.docNo}
                                                         requestId={requestId}
                                                         onClose={() => setActiveTab("summary")}
-                                                        onPageClick={(page) => setScrollToPage({ page, timestamp: Date.now() })}
+                                                        onPageClick={(page) => {
+                                                            // Same pattern as the in-summary page pills:
+                                                            // chatbot citations now open the PDF popup so
+                                                            // the user actually lands on the cited page.
+                                                            setIsPdfPopupOpen(true);
+                                                            setScrollToPage({ page, timestamp: Date.now() });
+                                                        }}
                                                     />
                                                 </div>
                                             )}
 
                                             {activeTab === "annotations" && previewDoc && (
-                                                <div className="absolute inset-x-0 top-0 bottom-[300px] z-[150] animate-in slide-in-from-right duration-300 bg-white flex flex-col p-4 border-b">
+                                                <div className="absolute inset-x-0 top-0 bottom-0 z-[150] animate-in slide-in-from-right duration-300 bg-white flex flex-col p-4 border-b">
                                                     <div className="flex items-center justify-between mb-3">
                                                         <h3 className="text-[10px] font-extra-bold uppercase tracking-wider text-slate-400">PDF Annotations</h3>
                                                         <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setActiveTab("summary")}><X className="w-3 h-3" /></Button>
@@ -1341,48 +1432,63 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                                                 <p className="text-xs text-slate-700 font-medium leading-relaxed">
                                                                                     {supDoc.reason}
                                                                                 </p>
-                                                                                {supDoc.page_number && (
-                                                                                    <Button
-                                                                                        variant="ghost"
-                                                                                        size="sm"
-                                                                                        className="h-6 mt-2 text-[10px] font-bold bg-white/50 hover:bg-white text-slate-600 border border-slate-200"
-                                                                                        onClick={() => setScrollToPage({ page: parseInt(supDoc.page_number), timestamp: Date.now() })}
-                                                                                    >
-                                                                                        <ArrowRight className="w-3 h-3 mr-1" />
-                                                                                        View on Page {supDoc.page_number}
-                                                                                    </Button>
-                                                                                )}
+                                                                                {supDoc.page_number && (() => {
+                                                                                    // Strip any "Page" / "Pages" prefix and grab the
+                                                                                    // first integer so the label reads "View on Page 2"
+                                                                                    // instead of "View on Page Page 2, 15".
+                                                                                    const m = String(supDoc.page_number).match(/\d+/);
+                                                                                    const pg = m ? parseInt(m[0]) : null;
+                                                                                    if (pg === null) return null;
+                                                                                    return (
+                                                                                        <Button
+                                                                                            variant="ghost"
+                                                                                            size="sm"
+                                                                                            className="h-6 mt-2 text-[10px] font-bold bg-white/50 hover:bg-white text-slate-600 border border-slate-200"
+                                                                                            onClick={() => {
+                                                                                                setIsPdfPopupOpen(true);
+                                                                                                setScrollToPage({ page: pg, timestamp: Date.now() });
+                                                                                            }}
+                                                                                        >
+                                                                                            <ArrowRight className="w-3 h-3 mr-1" />
+                                                                                            View on Page {pg}
+                                                                                        </Button>
+                                                                                    );
+                                                                                })()}
                                                                             </div>
                                                                         );
                                                                     }
                                                                     return null;
                                                                 })()}
 
-                                                                {/* Summary Card */}
+                                                                {/* Summary Card — shrunk again because the docNo
+                                                                    was still wrapping ("5829/2" / "010") at the
+                                                                    25% panel width. docNo text-lg → text-sm,
+                                                                    MATCH badge text-[11px] → text-[9px],
+                                                                    trustability badge text-xs h-7 → text-[10px] h-5. */}
                                                                 <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
-                                                                    <div className="p-4 border-b bg-slate-50/50 flex items-center justify-between cursor-pointer" onClick={() => { /* Toggle logic could go here, for now simpler */ }}>
-                                                                        <div>
-                                                                            <div className="flex items-center gap-3">
-                                                                                <span className="text-xl font-bold text-slate-800">{previewDoc.docNo}</span>
-                                                                                <Badge className={cn("text-xs font-bold px-3 py-1", previewDoc.validation.match ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600")}>
+                                                                    <div className="p-2.5 border-b bg-slate-50/50 flex items-start justify-between gap-1.5 flex-wrap cursor-pointer" onClick={() => { /* Toggle logic could go here, for now simpler */ }}>
+                                                                        <div className="min-w-0 flex-1">
+                                                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                <span className="text-sm font-bold text-slate-800">{previewDoc.docNo}</span>
+                                                                                <Badge className={cn("text-[9px] font-bold px-1.5 py-0 h-4", previewDoc.validation.match ? "bg-green-500 hover:bg-green-600" : "bg-red-500 hover:bg-red-600")}>
                                                                                     {previewDoc.validation.match ? "MATCH" : "MISMATCH"}
                                                                                 </Badge>
                                                                             </div>
-                                                                            <p className="text-xs text-slate-500 font-medium mt-1">
+                                                                            <p className="text-[10px] text-slate-500 font-medium mt-0.5">
                                                                                 {previewDoc.validation.comparisons.filter((c: any) => c.status.includes("MATCHED")).length} / {previewDoc.validation.comparisons.length} fields matched
                                                                             </p>
                                                                         </div>
                                                                         {/* Trustability Score */}
                                                                         {previewDoc.validation.trustability_score !== undefined && (
-                                                                            <div className="flex flex-col items-end">
+                                                                            <div className="flex flex-col items-end shrink-0">
                                                                                 <Badge variant="default" className={cn(
-                                                                                    "text-sm font-bold h-8 px-3 transition-all",
+                                                                                    "text-[10px] font-bold h-5 px-1.5 transition-all whitespace-nowrap",
                                                                                     previewDoc.validation.trustability_score >= 80 ? "bg-green-500 hover:bg-green-600" :
                                                                                         previewDoc.validation.trustability_score >= 50 ? "bg-orange-500 hover:bg-orange-600" : "bg-red-500 hover:bg-red-600"
                                                                                 )}>
                                                                                     {previewDoc.validation.trustability_score}% | {previewDoc.validation.trustability_score >= 90 ? "Trustable" : previewDoc.validation.trustability_score >= 70 ? "Good" : "Needs Review"}
                                                                                 </Badge>
-                                                                                <span className="text-[9px] text-slate-400 mt-1 italic">
+                                                                                <span className="text-[8px] text-slate-400 mt-0.5 italic whitespace-nowrap">
                                                                                     Score based on data consistency
                                                                                 </span>
                                                                             </div>
@@ -1398,46 +1504,76 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                                             const badgeColor = isMatched ? "bg-green-500 hover:bg-green-600" : isPartial ? "bg-amber-500 hover:bg-amber-600" : "bg-red-500 hover:bg-red-600";
 
                                                                             return (
-                                                                                <div key={idx} className={cn("p-4 rounded-xl border border-l-4 transition-all shadow-sm hover:shadow-md", statusColor, isMatched ? "border-l-green-500" : isPartial ? "border-l-amber-500" : "border-l-red-500")}>
-                                                                                    <div className="flex items-center justify-between mb-3">
-                                                                                        <h4 className="text-sm font-bold text-slate-800">{comp.field}</h4>
-                                                                                        <div className="flex items-center gap-2">
-                                                                                            {comp.page_number && (
-                                                                                                <div
-                                                                                                    className="flex items-center gap-1 bg-white px-2 py-1 rounded-md border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-all active:scale-95"
-                                                                                                    onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        setScrollToPage({ page: parseInt(comp.page_number), timestamp: Date.now() });
-                                                                                                    }}
-                                                                                                    title={`Jump to Page ${comp.page_number}`}
-                                                                                                >
-                                                                                                    <Plus className="w-3 h-3 text-slate-400" />
-                                                                                                    <span className="text-[10px] font-bold text-slate-600 uppercase">Page {comp.page_number}</span>
-                                                                                                </div>
-                                                                                            )}
-                                                                                            <Badge className={cn("text-[10px] h-6 px-2.5", badgeColor)}>
-                                                                                                {isMatched ? <ShieldCheck className="w-3 h-3 mr-1" /> : <AlertCircle className="w-3 h-3 mr-1" />}
+                                                                                <div key={idx} className={cn("p-3 rounded-xl border border-l-4 transition-all shadow-sm hover:shadow-md", statusColor, isMatched ? "border-l-green-500" : isPartial ? "border-l-amber-500" : "border-l-red-500")}>
+                                                                                    {/* Header row uses flex-wrap + min-w-0 so the field
+                                                                                        title can shrink and the badge group drops to a
+                                                                                        second line instead of being clipped. Previously
+                                                                                        "Document Number" was forced into two lines because
+                                                                                        the row tried to fit Page pill + MATCHED badge on
+                                                                                        the same line — that badge ended up cropped to
+                                                                                        "MATCHE...". */}
+                                                                                    <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                                                                                        <h4 className="text-xs font-bold text-slate-800 min-w-0 break-words">{comp.field}</h4>
+                                                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                                                            {comp.page_number && (() => {
+                                                                                                // The AI sometimes returns page_number as a
+                                                                                                // bare number ("2"), sometimes as "Page 2",
+                                                                                                // sometimes as "Pages 2, 15". Extract the
+                                                                                                // first integer to keep the click target
+                                                                                                // sane and avoid rendering "PAGE PAGE 2".
+                                                                                                const m = String(comp.page_number).match(/\d+/);
+                                                                                                const pg = m ? parseInt(m[0]) : null;
+                                                                                                if (pg === null) return null;
+                                                                                                return (
+                                                                                                    <div
+                                                                                                        className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-md border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-all active:scale-95"
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            // Open the draggable PDF popup AND tell its
+                                                                                                            // PdfAnnotator to land on this page. Previously
+                                                                                                            // the click only set scrollToPage, which did
+                                                                                                            // nothing when the popup was closed — the user
+                                                                                                            // saw the "Jump to Page N" tooltip but nothing
+                                                                                                            // visible happened. React 18 batches both state
+                                                                                                            // updates, so PdfAnnotator mounts with the
+                                                                                                            // scrollToPage prop already set.
+                                                                                                            setIsPdfPopupOpen(true);
+                                                                                                            setScrollToPage({ page: pg, timestamp: Date.now() });
+                                                                                                        }}
+                                                                                                        title={`Jump to Page ${pg}`}
+                                                                                                    >
+                                                                                                        <Plus className="w-2.5 h-2.5 text-slate-400" />
+                                                                                                        <span className="text-[9px] font-bold text-slate-600 uppercase whitespace-nowrap">Page {pg}</span>
+                                                                                                    </div>
+                                                                                                );
+                                                                                            })()}
+                                                                                            <Badge className={cn("text-[9px] h-5 px-2 whitespace-nowrap", badgeColor)}>
+                                                                                                {isMatched ? <ShieldCheck className="w-2.5 h-2.5 mr-0.5" /> : <AlertCircle className="w-2.5 h-2.5 mr-0.5" />}
                                                                                                 {isMatched ? "MATCHED" : isPartial ? "PARTIAL" : "MISMATCH"}
                                                                                             </Badge>
                                                                                         </div>
                                                                                     </div>
 
-                                                                                    <div className="space-y-2 mb-3">
-                                                                                        <div className="grid grid-cols-[80px_1fr] items-baseline gap-2">
-                                                                                            <span className={cn("text-xs font-bold uppercase tracking-wider text-right", titleColor)}>EC Value:</span>
-                                                                                            <span className="text-xs font-semibold text-slate-700 font-mono bg-white/50 px-2 py-0.5 rounded border border-black/5 w-fit">
+                                                                                    {/* Tighter EC/Doc rows. Label column 80px → 64px,
+                                                                                        text-xs → text-[10px], so the value chip has
+                                                                                        more room and doesn't wrap awkwardly inside the
+                                                                                        narrow 25% panel. */}
+                                                                                    <div className="space-y-1.5 mb-2">
+                                                                                        <div className="grid grid-cols-[64px_1fr] items-baseline gap-1.5">
+                                                                                            <span className={cn("text-[10px] font-bold uppercase tracking-wider text-right", titleColor)}>EC Value:</span>
+                                                                                            <span className="text-[10px] font-semibold text-slate-700 font-mono bg-white/50 px-1.5 py-0.5 rounded border border-black/5 w-fit break-all">
                                                                                                 {comp.ec_value || "N/A"}
                                                                                             </span>
                                                                                         </div>
-                                                                                        <div className="grid grid-cols-[80px_1fr] items-baseline gap-2">
-                                                                                            <span className={cn("text-xs font-bold uppercase tracking-wider text-right", titleColor)}>Doc Value:</span>
-                                                                                            <span className="text-xs font-semibold text-slate-900 font-mono bg-white px-2 py-0.5 rounded border border-black/10 w-fit shadow-sm">
+                                                                                        <div className="grid grid-cols-[64px_1fr] items-baseline gap-1.5">
+                                                                                            <span className={cn("text-[10px] font-bold uppercase tracking-wider text-right", titleColor)}>Doc Value:</span>
+                                                                                            <span className="text-[10px] font-semibold text-slate-900 font-mono bg-white px-1.5 py-0.5 rounded border border-black/10 w-fit shadow-sm break-all">
                                                                                                 {comp.metadata_value || "N/A"}
                                                                                             </span>
                                                                                         </div>
                                                                                     </div>
 
-                                                                                    <p className={cn("text-[11px] italic font-medium pt-2 border-t border-black/5", titleColor)}>
+                                                                                    <p className={cn("text-[10px] italic font-medium pt-1.5 border-t border-black/5", titleColor)}>
                                                                                         {comp.reason}
                                                                                     </p>
                                                                                 </div>
@@ -1600,28 +1736,41 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                 )}
                                             </div>
 
-                                            <div className="flex-1 relative group">
+                                            {/* Dropped the `flex-1` here. Previously the child was a
+                                                full-height <PdfAnnotator> that genuinely needed to stretch
+                                                — now it's a 50px-tall horizontal strip, and `flex-1`
+                                                was producing the empty whitespace below the buttons.
+                                                Use `shrink-0` so this strip sits at its natural height
+                                                and the column above it can take whatever space remains. */}
+                                            <div className="shrink-0 relative group">
                                                 {previewDoc?.url ? (
-                                                    <>
-                                                        <PdfAnnotator
-                                                            url={previewDoc.url}
-                                                            docId={previewDoc.docNo}
-                                                            parcelId={parcelId}
-                                                            onAnnotationChange={(h) => setPdfAnnotations(h)}
-                                                            scrollToPage={scrollToPage}
-                                                            focusHighlightId={focusHighlightId}
-                                                        />
-                                                        <div className="absolute top-4 right-4 z-30 flex gap-2">
-                                                            <Button
-                                                                className="bg-primary hover:bg-primary/90 text-white font-bold text-xs shadow-xl flex items-center gap-2"
-                                                                onClick={handleSinglePdfMatch}
-                                                                disabled={validatingSingle}
-                                                            >
-                                                                {validatingSingle ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-                                                                {validatingSingle ? "Matching..." : "Single PDF Matching"}
-                                                            </Button>
+                                                    /* Compact source-document footer. Stacked vertically
+                                                       (docNo row → button row) because at the current
+                                                       25% panel width the inline layout truncated the
+                                                       docNo to zero — the Preview + Match buttons claimed
+                                                       all the horizontal space. Keeping the strip at the
+                                                       same total height by using tight gaps. */
+                                                    <div className="px-3 py-2 flex flex-col gap-1.5 border-t border-slate-100">
+                                                        <div className="flex items-center gap-2 min-w-0">
+                                                            <div className="w-5 h-5 rounded-md bg-indigo-50 flex items-center justify-center shrink-0">
+                                                                <FileText className="w-3 h-3 text-indigo-600" />
+                                                            </div>
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">
+                                                                Source
+                                                            </span>
+                                                            <span className="text-[11px] font-black text-slate-900 tabular-nums truncate">
+                                                                {previewDoc.docNo}
+                                                            </span>
                                                         </div>
-                                                    </>
+                                                        <button
+                                                            onClick={() => setIsPdfPopupOpen(true)}
+                                                            className="w-full inline-flex items-center justify-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] uppercase tracking-wider px-2 h-7 rounded-md shadow-sm transition-all"
+                                                            title="Open the document in a draggable preview window"
+                                                        >
+                                                            <Eye className="w-3 h-3" />
+                                                            Preview
+                                                        </button>
+                                                    </div>
                                                 ) : (
                                                     <motion.div
                                                         initial={{ opacity: 0, y: 8 }}
@@ -1721,12 +1870,143 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                 <ReactFlowHierarchy
                                     data={masterTimeline.react_flow_data}
                                     onNodeClick={handleNodeClick}
+                                    validationResults={results}
                                 />
                             </div>
                         </Card>
                         </motion.div>
                     </div>
                 </div>
+            )}
+
+            {/* ─── Floating draggable PDF popup ────────────────────────────
+                Mounted at the component root so it floats above everything,
+                including the master-network-map and the right-pane card.
+                Same architecture as the HierarchyTab popup:
+                  - dragListener={false} + onPointerDown on the header strip
+                    means only the header drags; the PDF body keeps normal
+                    scroll / text-selection / annotation behavior
+                  - dragMomentum={false} so it stops where you release
+                  - AnimatePresence handles the scale-from-0.92 enter/exit
+                  - Auto-closes on previewDoc.docNo change (see useEffect)
+            */}
+            <AnimatePresence>
+                {isPdfPopupOpen && previewDoc?.url && (
+                    <motion.div
+                        drag
+                        dragControls={pdfPopupDragControls}
+                        dragListener={false}
+                        dragMomentum={false}
+                        dragElastic={0}
+                        initial={{ opacity: 0, scale: 0.92 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.92 }}
+                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                        className="fixed top-20 right-8 z-[200] w-[680px] max-w-[92vw] h-[82vh] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/30 overflow-hidden flex flex-col select-none"
+                    >
+                        <div
+                            onPointerDown={(e) => pdfPopupDragControls.start(e)}
+                            className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-white to-violet-50/70 cursor-move"
+                        >
+                            <div className="flex items-center gap-2 min-w-0">
+                                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shrink-0 shadow-sm">
+                                    <FileText className="w-3.5 h-3.5 text-white" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-700 leading-none">
+                                        Document Preview
+                                    </p>
+                                    <p className="text-xs font-black text-slate-900 truncate">
+                                        {previewDoc.docNo}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                                <Button
+                                    size="sm"
+                                    className="h-7 bg-primary hover:bg-primary/90 text-white font-bold text-[10px] uppercase tracking-wider gap-1.5 px-2.5"
+                                    onClick={handleSinglePdfMatch}
+                                    disabled={validatingSingle}
+                                    title="Re-match this PDF against the EC"
+                                >
+                                    {validatingSingle ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                                    {validatingSingle ? "Matching" : "Match"}
+                                </Button>
+                                <button
+                                    onClick={() => setIsPdfPopupOpen(false)}
+                                    className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-400 hover:text-indigo-600"
+                                    title="Close preview"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex-1 min-h-0 bg-slate-900 relative">
+                            <PdfAnnotator
+                                url={previewDoc.url}
+                                docId={previewDoc.docNo}
+                                parcelId={parcelId}
+                                onAnnotationChange={(h) => setPdfAnnotations(h)}
+                                scrollToPage={scrollToPage}
+                                focusHighlightId={focusHighlightId}
+                            />
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Node-click chooser — two options anchored at the clicked node.
+                The detail side-panel still opens on click (handleNodeClick); this
+                popup is purely additive. */}
+            {nodeChooser && (
+                <>
+                    <div className="fixed inset-0 z-[290]" onClick={() => setNodeChooser(null)} />
+                    <div
+                        className="fixed z-[295] bg-white rounded-xl border border-primary/20 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-[210px]"
+                        style={{
+                            left: Math.min(nodeChooser.x, window.innerWidth - 230),
+                            top: Math.min(nodeChooser.y, window.innerHeight - 120),
+                        }}
+                    >
+                        <div className="px-3 py-2 text-[9px] font-extra-bold uppercase tracking-wider text-slate-400 border-b font-mono">
+                            {nodeChooser.docNo}
+                        </div>
+                        <button
+                            onClick={() => {
+                                setOverallChatOpen(true);
+                                setPendingMention({ doc: nodeChooser.docNo, nonce: Date.now() });
+                                setNodeChooser(null);
+                            }}
+                            className="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-violet-50 hover:text-violet-700 flex items-center gap-2 transition-colors"
+                        >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Mention in chatbot
+                        </button>
+                        <button
+                            onClick={() => {
+                                setActiveTab("chat");
+                                setPanelOpen(true);
+                                setNodeChooser(null);
+                            }}
+                            className="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-primary/5 hover:text-primary flex items-center gap-2 border-t transition-colors"
+                        >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            Open document chat
+                        </button>
+                    </div>
+                </>
+            )}
+
+            {/* Property-wide floating AI assistant (launched from the "Ask AI"
+                button near the search bar). */}
+            {overallChatOpen && (
+                <OverallChat
+                    requestId={requestId}
+                    parcelId={parcelId}
+                    docNumbers={docNumbers}
+                    pendingMention={pendingMention}
+                    onClose={() => setOverallChatOpen(false)}
+                />
             )}
         </div>
     );

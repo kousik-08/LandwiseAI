@@ -21,6 +21,14 @@ def construct_validation_prompt(ec_entry: dict, metadata: str) -> str:
           2. **Date of Registration**
             - Must represent the same calendar date.
             - Ignore formatting differences (e.g., "05-04-2022" vs "5 April 2022").
+            - The EC's "date" field may carry MULTIPLE dates separated by " | "
+              (execution / registration / completion), e.g.
+              "20-Jul-2018 | 20-Jul-2018 | 31-Jul-2018". Treat the match as
+              MATCHED if ANY of those dates equals the deed's Date of
+              Registration. The deed should anchor to the execution date
+              (typically the first token); the completion date in the
+              third token is intentionally LATER and does NOT cause a
+              mismatch by itself.
  
           3. **Name Matching (Phonetic & Initial Expansion)**
             - Names must be identical or phonetically equivalent (Tamil ↔ English).
@@ -161,7 +169,7 @@ def construct_validation_prompt(ec_entry: dict, metadata: str) -> str:
               }}
             ],
             "reason_for_failure": "Summary if match is false. If true, 'All fields consistent'.",
-            "match_count": "Number of passed fields",
+            "match_count": "<integer — count of comparisons whose status starts with MATCHED. Emit a plain JSON number, e.g. 7 or 9. Do NOT emit a string like \"8 / 9 fields\" or \"9 of 9\" — that breaks the UI which renders this verbatim.>",
             "valuation_details": {{
               "actual_sell_value": number,
               "guideline_value": number,

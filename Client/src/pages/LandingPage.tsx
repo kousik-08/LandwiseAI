@@ -280,23 +280,23 @@ const LandingPage = () => {
         initial={{ y: -32, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-        className="relative bg-gradient-to-r from-[#1A3FD4] via-[#1737B8] to-[#0F2A8F] text-white p-4 sm:p-6 sticky top-0 z-50 shadow-lg overflow-hidden"
+        className="relative bg-gradient-to-r from-[#1A3FD4] via-[#1737B8] to-[#0F2A8F] text-white px-3 sm:px-4 py-2 sm:py-2.5 sticky top-0 z-50 shadow-md overflow-hidden"
       >
         {/* Animated aurora overlay */}
         <div className="pointer-events-none absolute inset-0 opacity-30 mix-blend-overlay">
-          <div className="absolute -top-32 -left-20 w-96 h-96 rounded-full bg-blue-400/40 blur-3xl animate-blob-slow" />
-          <div className="absolute -bottom-40 right-10 w-96 h-96 rounded-full bg-indigo-300/40 blur-3xl animate-blob" />
+          <div className="absolute -top-32 -left-20 w-72 h-72 rounded-full bg-blue-400/40 blur-3xl animate-blob-slow" />
+          <div className="absolute -bottom-40 right-10 w-72 h-72 rounded-full bg-indigo-300/40 blur-3xl animate-blob" />
         </div>
-        <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-3 flex-wrap relative">
+        <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-2 flex-wrap relative">
           <div className="min-w-0">
-            <h1 className="text-lg sm:text-xl lg:text-2xl font-extrabold tracking-tight flex items-center gap-2 flex-wrap">
+            <h1 className="text-sm sm:text-base font-extrabold tracking-tight flex items-center gap-1.5 flex-wrap leading-none">
               <motion.span
                 initial={{ rotate: -20, scale: 0.6, opacity: 0 }}
                 animate={{ rotate: 0, scale: 1, opacity: 1 }}
                 transition={{ delay: 0.15, duration: 0.6, ease: [0.34, 1.56, 0.64, 1] }}
                 className="inline-flex"
               >
-                <Scale className="w-5 h-5 sm:w-6 sm:h-6 text-[#A5B4FC]" />
+                <Scale className="w-4 h-4 text-[#A5B4FC]" />
               </motion.span>
               LandwiseAI <span className="text-[#A5B4FC] font-light hidden sm:inline">| Legal Command Center</span>
             </h1>
@@ -304,11 +304,11 @@ const LandingPage = () => {
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 0.85, y: 0 }}
               transition={{ delay: 0.25, duration: 0.4 }}
-              className="hidden sm:flex items-center gap-3 lg:gap-4 mt-1 text-[10px] sm:text-[11px] uppercase tracking-wider font-semibold flex-wrap"
+              className="hidden sm:flex items-center gap-2 lg:gap-3 mt-0.5 text-[9px] uppercase tracking-wider font-semibold flex-wrap"
             >
-              <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {user?.full_name}</span>
-              <span className="flex items-center gap-1 font-bold"><ShieldAlert className="w-3 h-3" /> {user?.role}</span>
-              <span className="hidden md:flex items-center gap-1"><MapIcon className="w-3 h-3" /> Tamil Nadu Regulations</span>
+              <span className="flex items-center gap-1"><Users className="w-2.5 h-2.5" /> {user?.full_name}</span>
+              <span className="flex items-center gap-1 font-bold"><ShieldAlert className="w-2.5 h-2.5" /> {user?.role}</span>
+              <span className="hidden md:flex items-center gap-1"><MapIcon className="w-2.5 h-2.5" /> Tamil Nadu Regulations</span>
             </motion.div>
           </div>
           <motion.div
@@ -339,21 +339,21 @@ const LandingPage = () => {
         </div>
       </motion.header>
 
-      <div className="flex-1 max-w-[1600px] mx-auto w-full flex flex-col min-h-0 bg-white shadow-xl my-4 sm:my-6 lg:my-8 mx-3 sm:mx-6 lg:mx-auto rounded-2xl sm:rounded-3xl overflow-hidden border border-slate-200">
+      <div className="flex-1 max-w-[1600px] mx-auto w-full flex flex-col min-h-0 bg-white shadow-lg my-3 mx-3 sm:mx-4 lg:mx-auto rounded-xl sm:rounded-2xl overflow-hidden border border-slate-200">
         {user ? (
           <div className="flex flex-col h-full">
             {/* PROJECTS HUB HEADER */}
-            <div className="p-5 sm:p-7 lg:p-10 border-b border-slate-100 bg-gradient-to-br from-white to-slate-50/50">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="p-3 sm:p-4 lg:p-5 border-b border-slate-100 bg-gradient-to-br from-white to-slate-50/50">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
                 <motion.div
                   initial={{ opacity: 0, y: 16 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                 >
-                  <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-slate-900">
+                  <h2 className="text-lg sm:text-xl lg:text-2xl font-display font-extrabold tracking-tight text-slate-900">
                     Project <span className="text-gradient-primary">Command Center</span>
                   </h2>
-                  <p className="text-sm lg:text-base text-slate-500 mt-2 font-medium">Monitoring {projects.length} active real estate acquisitions across Tamil Nadu.</p>
+                  <p className="text-xs lg:text-sm text-slate-500 mt-0.5 font-medium">Monitoring {projects.length} active real estate acquisitions across Tamil Nadu.</p>
                 </motion.div>
                 <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
                   <DialogTrigger asChild>
@@ -364,36 +364,36 @@ const LandingPage = () => {
                       whileHover={{ scale: 1.04 }}
                       whileTap={{ scale: 0.97 }}
                     >
-                      <Button className="bg-[#1A3FD4] hover:bg-[#0F2A8F] text-white px-5 sm:px-8 h-12 sm:h-14 rounded-xl sm:rounded-2xl font-bold shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 text-sm sm:text-base shine-sweep transition-all">
-                        <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2 sm:mr-3" />
+                      <Button className="bg-[#1A3FD4] hover:bg-[#0F2A8F] text-white px-3 sm:px-4 h-9 rounded-lg font-bold shadow-md shadow-blue-500/25 hover:shadow-lg hover:shadow-blue-500/35 text-xs sm:text-sm shine-sweep transition-all">
+                        <Plus className="w-3.5 h-3.5 mr-1.5" />
                         <span className="hidden sm:inline">Initiate New Project</span>
                         <span className="sm:hidden">New Project</span>
                       </Button>
                     </motion.div>
                   </DialogTrigger>
-                  <DialogContent className="bg-white border-slate-200 sm:max-w-[600px] rounded-3xl">
+                  <DialogContent className="bg-white border-slate-200 sm:max-w-[520px] rounded-2xl max-h-[90vh] overflow-y-auto p-4">
                     <DialogHeader>
-                      <DialogTitle className="text-2xl font-black text-slate-900">Initiate Project</DialogTitle>
-                      <DialogDescription className="text-slate-500 font-medium pt-1">
+                      <DialogTitle className="text-sm sm:text-base font-display font-extrabold text-slate-900">Initiate Project</DialogTitle>
+                      <DialogDescription className="text-[11px] text-slate-500 font-medium pt-0.5">
                         Define a new real-estate project to begin legal auditing.
                       </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-5 py-6">
+                    <div className="space-y-3 py-2">
                       {/* Project Name & Type */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Project Name</Label>
-                          <Input 
-                            placeholder="e.g. Green Valley Residency" 
-                            className="bg-slate-50 border-slate-200 h-11 rounded-xl focus:ring-blue-500"
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Project Name</Label>
+                          <Input
+                            placeholder="e.g. Green Valley Residency"
+                            className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md focus:ring-blue-500"
                             value={newProject.name}
                             onChange={e => setNewProject({...newProject, name: e.target.value})}
                           />
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Project Type</Label>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Project Type</Label>
                           <Select value={newProject.project_type} onValueChange={(val) => setNewProject({...newProject, project_type: val})}>
-                            <SelectTrigger className="bg-slate-50 border-slate-200 h-11 rounded-xl">
+                            <SelectTrigger className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md">
                               <SelectValue placeholder="Select type" />
                             </SelectTrigger>
                             <SelectContent className="bg-white border-slate-200">
@@ -406,11 +406,11 @@ const LandingPage = () => {
                       </div>
 
                       {/* District & State */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs font-black uppercase tracking-widest text-slate-500">District</Label>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">District</Label>
                           <Select value={newProject.district} onValueChange={(val) => setNewProject({...newProject, district: val})}>
-                            <SelectTrigger className="bg-slate-50 border-slate-200 h-11 rounded-xl">
+                            <SelectTrigger className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md">
                               <SelectValue placeholder="Select district" />
                             </SelectTrigger>
                             <SelectContent className="bg-white border-slate-200">
@@ -422,10 +422,10 @@ const LandingPage = () => {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs font-black uppercase tracking-widest text-slate-500">State</Label>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">State</Label>
                           <Select value={newProject.state} onValueChange={(val) => setNewProject({...newProject, state: val})}>
-                            <SelectTrigger className="bg-slate-50 border-slate-200 h-11 rounded-xl">
+                            <SelectTrigger className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md">
                               <SelectValue placeholder="Select state" />
                             </SelectTrigger>
                             <SelectContent className="bg-white border-slate-200">
@@ -440,11 +440,11 @@ const LandingPage = () => {
                       </div>
 
                       {/* Legal Advisor & Target Date */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Legal Advisor</Label>
+                      <div className="grid grid-cols-2 gap-2.5">
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Legal Advisor</Label>
                           <Select value={newProject.legal_advisor_id} onValueChange={(val) => setNewProject({...newProject, legal_advisor_id: val})}>
-                            <SelectTrigger className="bg-slate-50 border-slate-200 h-11 rounded-xl">
+                            <SelectTrigger className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md">
                               <SelectValue placeholder="Select advisor" />
                             </SelectTrigger>
                             <SelectContent className="bg-white border-slate-200">
@@ -454,18 +454,18 @@ const LandingPage = () => {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-2">
-                          <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Target Completion Date</Label>
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Target Completion Date</Label>
                           <Popover>
                             <PopoverTrigger asChild>
                               <Button
                                 variant="outline"
                                 className={cn(
-                                  "w-full bg-slate-50 border-slate-200 h-11 justify-start text-left font-medium rounded-xl",
+                                  "w-full bg-slate-50 border-slate-200 h-8 justify-start text-left text-xs font-medium rounded-md",
                                   !targetDate && "text-slate-400"
                                 )}
                               >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
                                 {targetDate ? format(targetDate, "PPP") : <span>Pick a date</span>}
                               </Button>
                             </PopoverTrigger>
@@ -482,9 +482,9 @@ const LandingPage = () => {
                       </div>
 
                       {/* Project Icon */}
-                      <div className="space-y-3">
-                        <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Project Icon</Label>
-                        <div className="flex flex-wrap gap-3">
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Project Icon</Label>
+                        <div className="flex flex-wrap gap-1.5">
                           {icons.map((item) => {
                             const IconComp = item.icon;
                             return (
@@ -493,13 +493,13 @@ const LandingPage = () => {
                                 type="button"
                                 onClick={() => setNewProject({ ...newProject, project_icon: item.id })}
                                 className={cn(
-                                  "w-10 h-10 rounded-xl flex items-center justify-center border-2 transition-all",
-                                  newProject.project_icon === item.id 
-                                    ? "bg-indigo-50 border-indigo-500 shadow-sm" 
-                                    : "bg-white border-slate-100 hover:border-slate-200"
+                                  "w-7 h-7 rounded-md flex items-center justify-center border transition-all",
+                                  newProject.project_icon === item.id
+                                    ? "bg-indigo-50 border-indigo-500 ring-1 ring-indigo-300"
+                                    : "bg-white border-slate-200 hover:border-slate-300"
                                 )}
                               >
-                                <IconComp className={cn("w-5 h-5", item.color)} />
+                                <IconComp className={cn("w-3.5 h-3.5", item.color)} />
                               </button>
                             );
                           })}
@@ -507,22 +507,30 @@ const LandingPage = () => {
                       </div>
 
                       {/* Description */}
-                      <div className="space-y-2">
-                        <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Strategic Description</Label>
-                        <Textarea 
-                          placeholder="High-level project goals and timelines..." 
-                          className="bg-slate-50 border-slate-200 rounded-xl focus:ring-blue-500 min-h-[80px]"
+                      <div className="space-y-1">
+                        <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Strategic Description</Label>
+                        <Textarea
+                          placeholder="High-level project goals and timelines..."
+                          className="bg-slate-50 border-slate-200 rounded-md text-xs focus:ring-blue-500 min-h-[56px]"
                           value={newProject.description}
                           onChange={e => setNewProject({...newProject, description: e.target.value})}
                         />
                       </div>
                     </div>
-                    <DialogFooter>
-                      <Button variant="ghost" onClick={() => setIsCreateModalOpen(false)} className="text-slate-500 hover:bg-slate-100 font-bold">Cancel</Button>
-                      <Button 
+                    <DialogFooter className="gap-2 pt-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setIsCreateModalOpen(false)}
+                        className="text-slate-500 hover:bg-slate-100 text-xs font-bold h-8 px-3"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
                         onClick={handleCreateProject}
                         disabled={createProjectMutation.isPending}
-                        className="bg-[#1A3FD4] hover:bg-[#0F2A8F] text-white px-8 h-12 rounded-xl font-bold shadow-lg"
+                        className="bg-[#1A3FD4] hover:bg-[#0F2A8F] text-white px-4 h-8 rounded-md text-xs font-bold shadow-sm"
                       >
                         {createProjectMutation.isPending ? "Initiating..." : "Initiate Project"}
                       </Button>
@@ -532,7 +540,7 @@ const LandingPage = () => {
               </div>
 
               <motion.div
-                className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mt-6 lg:mt-10"
+                className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3 mt-3 lg:mt-4"
                 initial="hidden"
                 animate="visible"
                 variants={{
@@ -540,28 +548,28 @@ const LandingPage = () => {
                   visible: { transition: { staggerChildren: 0.08, delayChildren: 0.15 } },
                 }}
               >
-                <SummaryStat icon={<Briefcase className="w-5 h-5" />} label="In Flight" value={projects.length} color="blue" />
-                <SummaryStat icon={<MapPin className="w-5 h-5" />} label="Districts" value={new Set(projects.map(p => p.district)).size} color="indigo" />
-                <SummaryStat icon={<LayoutDashboard className="w-5 h-5" />} label="Pending" value="82%" color="green" />
-                <SummaryStat icon={<ShieldAlert className="w-5 h-5" />} label="High Risk" value="12" color="red" />
+                <SummaryStat icon={<Briefcase className="w-4 h-4" />} label="In Flight" value={projects.length} color="blue" />
+                <SummaryStat icon={<MapPin className="w-4 h-4" />} label="Districts" value={new Set(projects.map(p => p.district)).size} color="indigo" />
+                <SummaryStat icon={<LayoutDashboard className="w-4 h-4" />} label="Pending" value="82%" color="green" />
+                <SummaryStat icon={<ShieldAlert className="w-4 h-4" />} label="High Risk" value="12" color="red" />
               </motion.div>
             </div>
 
             {/* PROJECTS GRID */}
-            <div className="flex-1 p-5 sm:p-7 lg:p-10 overflow-y-auto">
+            <div className="flex-1 p-3 sm:p-4 lg:p-5 overflow-y-auto">
               {projectsLoading ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6 lg:gap-8">
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
                   {[1,2,3].map(i => (
                     <div
                       key={i}
-                      className="h-[280px] rounded-3xl animate-skeleton border border-slate-100"
+                      className="h-[180px] rounded-2xl animate-skeleton border border-slate-100"
                       style={{ animationDelay: `${i * 0.1}s` }}
                     />
                   ))}
                 </div>
               ) : projects.length > 0 ? (
                 <motion.div
-                  className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6 lg:gap-8"
+                  className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4"
                   initial="hidden"
                   animate="visible"
                   variants={{
@@ -830,18 +838,18 @@ function SummaryStat({ icon, label, value, color }: { icon: React.ReactNode, lab
   return (
     <motion.div
       variants={statItemVariants}
-      whileHover={{ y: -4 }}
+      whileHover={{ y: -2 }}
       className={cn(
-        "relative bg-white border border-slate-100 rounded-xl sm:rounded-2xl p-3 sm:p-4 lg:p-5 flex items-center gap-3 sm:gap-4 shadow-sm overflow-hidden transition-shadow hover:shadow-xl min-w-0",
+        "relative bg-white border border-slate-100 rounded-lg p-2.5 flex items-center gap-2.5 shadow-sm overflow-hidden transition-shadow hover:shadow-md min-w-0",
         ringColors[color]
       )}
     >
-      <div className={cn("w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl flex items-center justify-center transition-transform duration-500 group-hover:rotate-6 shrink-0", colors[color])}>
+      <div className={cn("w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center transition-transform duration-500 group-hover:rotate-6 shrink-0", colors[color])}>
         {icon}
       </div>
-      <div className="min-w-0">
-        <p className="text-[9px] sm:text-[10px] font-black text-slate-400 uppercase tracking-[0.16em] sm:tracking-widest truncate">{label}</p>
-        <h4 className="text-lg sm:text-xl font-black text-slate-900 tabular-nums">
+      <div className="min-w-0 leading-tight">
+        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.14em] truncate">{label}</p>
+        <h4 className="text-base sm:text-lg font-display font-extrabold text-slate-900 tabular-nums">
           <AnimatedValue value={value} />
         </h4>
       </div>
@@ -861,58 +869,58 @@ function ProjectCard({ project, onClick }: { project: Project, onClick: () => vo
       whileHover={{ y: -8 }}
       whileTap={{ scale: 0.985 }}
       transition={{ type: "spring", stiffness: 320, damping: 22 }}
-      className="relative bg-white border border-slate-200 rounded-2xl sm:rounded-3xl p-5 sm:p-7 lg:p-8 hover:border-[#1A3FD4] hover:shadow-2xl hover:shadow-blue-900/10 transition-all cursor-pointer group flex flex-col h-full overflow-hidden"
+      className="relative bg-white border border-slate-200 rounded-xl p-3.5 sm:p-4 hover:border-[#1A3FD4] hover:shadow-lg hover:shadow-blue-900/10 transition-all cursor-pointer group flex flex-col h-full overflow-hidden"
       onClick={onClick}
     >
       {/* Hover gradient sheen */}
-      <div className="pointer-events-none absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-blue-200/0 via-blue-100/0 to-indigo-200/0 group-hover:from-blue-200/40 group-hover:via-blue-100/30 group-hover:to-indigo-200/40 blur-3xl transition-all duration-700" />
+      <div className="pointer-events-none absolute -top-16 -right-16 w-40 h-40 rounded-full bg-gradient-to-br from-blue-200/0 via-blue-100/0 to-indigo-200/0 group-hover:from-blue-200/40 group-hover:via-blue-100/30 group-hover:to-indigo-200/40 blur-3xl transition-all duration-700" />
       {/* Top edge highlight on hover */}
       <div className="pointer-events-none absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-[#1A3FD4]/0 to-transparent group-hover:via-[#1A3FD4]/60 transition-all duration-500" />
 
-      <div className="flex items-start justify-between mb-8 relative">
-        <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center border border-slate-100 group-hover:bg-[#EBF0FF] group-hover:border-[#1A3FD4]/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
-          <Briefcase className="w-7 h-7 text-[#1A3FD4]" />
+      <div className="flex items-start justify-between mb-3 relative">
+        <div className="w-9 h-9 bg-slate-50 rounded-lg flex items-center justify-center border border-slate-100 group-hover:bg-[#EBF0FF] group-hover:border-[#1A3FD4]/30 group-hover:scale-110 group-hover:rotate-3 transition-all duration-500">
+          <Briefcase className="w-4 h-4 text-[#1A3FD4]" />
         </div>
-        <Badge className="bg-green-50 text-green-700 hover:bg-green-50 border-green-200 font-black text-[10px] px-3 h-6 uppercase tracking-wider relative">
-          <span className="absolute -left-1 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse-glow" />
-          <span className="ml-2">{project.status || "Active"}</span>
+        <Badge className="bg-green-50 text-green-700 hover:bg-green-50 border-green-200 font-bold text-[9px] px-2 h-4 uppercase tracking-wider relative">
+          <span className="absolute -left-0.5 top-1/2 -translate-y-1/2 w-1 h-1 rounded-full bg-green-500 animate-pulse-glow" />
+          <span className="ml-1.5">{project.status || "Active"}</span>
         </Badge>
       </div>
 
       <div className="flex-1 relative">
-        <h3 className="text-xl font-black text-slate-900 mb-2 truncate group-hover:text-[#1A3FD4] transition-colors">{project.name}</h3>
-        <p className="text-slate-500 text-sm font-medium line-clamp-2 min-h-[40px] mb-6">{project.description || "No project description provided."}</p>
+        <h3 className="text-sm font-display font-extrabold text-slate-900 mb-1 truncate group-hover:text-[#1A3FD4] transition-colors">{project.name}</h3>
+        <p className="text-slate-500 text-xs font-medium line-clamp-2 min-h-[32px] mb-2.5">{project.description || "No project description provided."}</p>
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-            <MapPin className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#1A3FD4] transition-colors" />
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+            <MapPin className="w-3 h-3 text-slate-400 group-hover:text-[#1A3FD4] transition-colors" />
             {project.district}, {project.state || "Tamil Nadu"}
           </div>
-          <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-            <Calendar className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#1A3FD4] transition-colors" />
+          <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-700">
+            <Calendar className="w-3 h-3 text-slate-400 group-hover:text-[#1A3FD4] transition-colors" />
             Target: {project.target_acquisition_date || "Not Set"}
           </div>
         </div>
       </div>
 
-      <div className="mt-8 pt-6 border-t border-slate-100 flex items-center justify-between relative">
-        <div className="flex -space-x-2">
+      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between relative">
+        <div className="flex -space-x-1.5">
           {[1,2,3].map(i => (
             <div
               key={i}
-              className="w-8 h-8 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[10px] font-black text-slate-400 transition-transform duration-300 group-hover:translate-y-[-2px]"
+              className="w-6 h-6 rounded-full bg-slate-100 border-2 border-white flex items-center justify-center text-[9px] font-bold text-slate-400 transition-transform duration-300 group-hover:translate-y-[-2px]"
               style={{ transitionDelay: `${i * 40}ms` }}
             >
               U{i}
             </div>
           ))}
-          <div className="w-8 h-8 rounded-full bg-blue-50 border-2 border-white flex items-center justify-center text-[10px] font-black text-blue-600 transition-transform duration-300 group-hover:translate-y-[-2px]" style={{ transitionDelay: "160ms" }}>
+          <div className="w-6 h-6 rounded-full bg-blue-50 border-2 border-white flex items-center justify-center text-[9px] font-bold text-blue-600 transition-transform duration-300 group-hover:translate-y-[-2px]" style={{ transitionDelay: "160ms" }}>
             +4
           </div>
         </div>
-        <div className="flex items-center gap-2 text-[#1A3FD4] font-black text-xs uppercase tracking-widest opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
-          Open Workspace
-          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+        <div className="flex items-center gap-1.5 text-[#1A3FD4] font-bold text-[10px] uppercase tracking-widest opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+          Open
+          <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
         </div>
       </div>
     </motion.div>

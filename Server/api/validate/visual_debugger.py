@@ -22,6 +22,7 @@ import json
 import shutil
 import hashlib
 import threading
+from collections import defaultdict
 
 import fitz  # PyMuPDF
 from PIL import Image, ImageDraw
@@ -42,6 +43,13 @@ SCALE = DPI / 72.0
 
 # Reject obvious hallucinations: at DPI=200 a real word token is ≥ ~80×20 px².
 MIN_BOX_AREA_PX = 80 * 20
+
+# Visual padding (PDF points) inflated around each located rect before drawing,
+# so the red highlight surrounds the text with a clear margin instead of hugging
+# it pixel-tight. ~8 pt ≈ half a line of body text.
+BOX_DRAW_PAD_PT = 8
+# Stroke width of the red highlight rectangle.
+BOX_DRAW_STROKE_PT = 2.5
 
 # Local debug artefacts: spacing (in PNG px) of the faint grid drawn onto
 # `grid_<doc>_p<N>.png`. Matches CONTEXT_PADDING_PX so the operator can
@@ -93,34 +101,95 @@ SENTENCE_RESPONSE_SCHEMA = {
 }
 
 
-def build_sentence_prompt(values: list[str]) -> str:
-    """Per-page descriptive locator prompt for LLM call #1."""
-    bullet_list = "\n".join(f"  - {v!r}" for v in values)
-    return f"""
-TASK: For EACH value below, decide whether it appears anywhere on this page
-(translations / re-orderings count as a match) and, if yes, return a SHORT
-description of the surrounding sentence plus a COARSE bounding box that
-encloses that whole sentence (not just the value).
+def build_sentence_prompt(entries: list[tuple[str, str]]) -> str:
+    """
+    Per-page descriptive locator prompt for LLM call #1.
 
-Values:
+    entries: list of (field_label, value). The field label (e.g. "Sellers",
+    "Document No", "Survey No") is used as a search ANCHOR so the LLM can
+    locate the value by looking for the labeled cell/row even when the value
+    itself is rendered in a slightly different form than the EC extracted it.
+    """
+    rows = []
+    for field, value in entries:
+        if field:
+            rows.append(f'  - {value!r}  (look near a "{field}" label / table cell)')
+        else:
+            rows.append(f'  - {value!r}')
+    bullet_list = "\n".join(rows)
+    return f"""
+PRIOR INFORMATION (load-bearing for your judgement):
+Each value below was previously extracted from this very document by an
+upstream LLM extraction pass — they ARE known to appear somewhere in the
+document. You are NOT being asked to decide whether they exist in the
+document; you are being asked to LOCATE THEM on this page if any one
+of them appears here. They may also appear on other pages — that's
+fine, those will be located on those pages' own calls.
+
+TASK: For EACH value below, decide whether it appears ANYWHERE on this
+page (header, body, table cell, footer, stamp, sign-off block). Mark EVERY
+occurrence you can see — if the same value appears twice on this page,
+emit one entry per occurrence.
+
+Be VERY GENEROUS with matching — the upstream extractor normalized
+spacing, punctuation, transliteration, and formatting. If the value
+appears in ANY of the forms below, return found=true.
+
+MATCHING RULES — treat ALL of these as a match:
+  • Exact string (case-insensitive).
+  • Same value, different punctuation / spacing:
+        "12/05/2015" ≈ "12-05-2015" ≈ "12.05.2015" ≈ "12 May 2015"
+                    ≈ "12th May, 2015" ≈ "12 May Two Thousand Fifteen"
+        "277/1998"   ≈ "277 / 1998" ≈ "No. 277 of 1998" ≈ "Document No. 277/1998"
+        "96/4B2"     ≈ "96 / 4 B 2" ≈ "96-4B2"
+  • Same numeric value rendered differently:
+        "1,50,000" ≈ "150000" ≈ "Rs. 1,50,000/-" ≈ "Rs. 1.5 Lakhs"
+                   ≈ "ரூபாய் 1,50,000"
+  • Tamil ↔ English transliteration / mixed-script of the same person /
+    village / taluk:
+        "Murugan" ≈ "முருகன்"   "Mettur" ≈ "மேட்டூர்"
+        "S. Vijayakumar" ≈ "திரு.S.விஜயகுமார்"
+  • Re-orderings of the same fact:
+        "Murugan S/o Velu" ≈ "Velu's son Murugan" ≈ "வேலு குமாரர் முருகன்"
+  • Value embedded in a longer phrase, in a table cell, in a header /
+    footer line, or directly next to its field label (use the "look near a
+    … label" hint as your anchor when present).
+  • Date written in a paragraph (e.g. "Executed on this 12th day of May,
+    2015") matches "12/05/2015".
+  • Doc number written prose-style ("Registered as document number 277 of
+    the year 1998") matches "277/1998".
+
+STRONG BIAS toward FOUND=TRUE: only emit found=false AFTER you have
+visually scanned every region of this page (header, all text columns,
+tables, footer, stamps) and the value is genuinely absent in every form
+above. A field label appearing on the page without the value next to it
+is NOT a match — only the value's presence counts. But remember the
+prior: these values DO exist somewhere in the doc, so a "this looks
+like it could be the value" should be treated as found=true.
+
+Values to find:
 {bullet_list}
 
-For every value emit ONE entry:
+OUTPUT — one JSON object per OCCURRENCE you can locate. Multiple
+occurrences of the same value on this page → multiple entries with the
+same "value" field. If a value is not on this page at all, emit ONE
+entry with found=false.
+
   {{
-    "value": <the value, verbatim from the list>,
-    "found": <true | false>,
-    "context_sentence": <≤ 120 chars of the sentence containing the value;
-                         "" if not found>,
-    "context_box_0_1000": [ymin, xmin, ymax, xmax]  // see Coordinate system.
-                          // Use [0,0,0,0] when not found.
+    "value":              <the value, verbatim from the list>,
+    "found":              <true | false>,
+    "context_sentence":   <≤120 chars of the sentence / table cell / line
+                           containing the value; "" if not found>,
+    "context_box_0_1000": [ymin, xmin, ymax, xmax]   // [0,0,0,0] when not found
   }}
 
 Coordinate system:
   - All numbers are integers in [0, 1000] measured from the TOP-LEFT corner
     of the page image.
-  - The box must enclose the FULL SENTENCE (or table cell) containing the
-    value, with a little breathing room — do NOT tightly enclose only the
-    value. Tight pinpointing happens in a follow-up call.
+  - The box must enclose the FULL SENTENCE (or table row / cell / header
+    line) containing the value, with a little breathing room — do NOT
+    tightly enclose only the value. Tight pinpointing happens in a
+    follow-up call.
 
 Return a JSON array. No prose outside the JSON.
 """.strip()
@@ -181,12 +250,16 @@ class SentenceContextLocator:
         self.last_prompt: str | None = None
         self.last_raw_response = None
 
-    def locate(self, page_image_path, page_w_px, page_h_px, values):
-        if not values:
+    def locate(self, page_image_path, page_w_px, page_h_px, entries):
+        """
+        entries: list of (field_label, value) — field is used as an anchor in
+        the prompt; the response is still keyed by value.
+        """
+        if not entries:
             self.last_prompt = None
             self.last_raw_response = None
             return {}
-        prompt = build_sentence_prompt(values)
+        prompt = build_sentence_prompt(entries)
         self.last_prompt = prompt
         try:
             response = self.gemini.generate_json_from_file(
@@ -199,7 +272,7 @@ class SentenceContextLocator:
         except Exception as e:
             print(f"[VD] sentence-locator error: {e}")
             self.last_raw_response = {"_error": str(e)}
-            return {v: [] for v in values}
+            return {v: [] for _, v in entries}
         return parse_sentence_response(response, page_w_px, page_h_px)
 
 
@@ -337,7 +410,7 @@ class VisualDebugger:
 
     # Bump when the cache schema or LLM prompts change so stale entries
     # don't poison the new flow.
-    _CACHE_VERSION = "20"
+    _CACHE_VERSION = "23"
 
     MISMATCH_BOX_COLOR = (255, 0, 0)
     MISMATCH_TEXT_COLOR = (255, 0, 0)
@@ -616,11 +689,13 @@ class VisualDebugger:
                         x0 + xmax * scale_x,
                         y0 + ymax * scale_y,
                     )
+                    rect += (-BOX_DRAW_PAD_PT, -BOX_DRAW_PAD_PT,
+                             BOX_DRAW_PAD_PT, BOX_DRAW_PAD_PT)
                     rect &= page.rect
 
                     red = (1, 0, 0)
                     white = (1, 1, 1)
-                    page.draw_rect(rect, color=red, width=2)
+                    page.draw_rect(rect, color=red, width=BOX_DRAW_STROKE_PT)
 
                     font_size = 10
                     label_w = max(20, int(len(label) * 5.2)) + 4
@@ -752,31 +827,33 @@ class VisualDebugger:
 
     # ── Batch entry point: the new two-call flow ────────────────────────────
 
-    def debug_mismatches_batch(self, pdf_path, doc_no, mismatches):
+    def debug_mismatches_batch(self, pdf_path, doc_no, mismatches, max_occurrences=None):
         """
-        For every page that a mismatch is targeted to (via its page_info; see
-        _parse_pages — values without a parseable page fall back to all pages):
+        Page-targeted two-call locate + mark.
+
+        For every page that a mismatch is targeted to via its page_info
+        (parsed by _parse_pages) we:
           1. Rasterize the page.
-          2. LLM call #1: for that page's mismatched values, get sentence-level
-             context boxes (one call per scanned page).
-          3. LLM call #2: for each (value, sentence-box), crop with
-             CONTEXT_PADDING_PX padding and get the tight value box.
+          2. LLM call #1: for that page's (field, value) pairs, get
+             sentence-level context boxes (one batched call per page).
+          3. LLM call #2: for each hit, crop with CONTEXT_PADDING_PX padding
+             and get the tight value box.
           4. Mark every located box on the PDF in one save cycle.
 
-        Miss-fallback: if a page-scoped value finds nothing on its named
-        page(s) (a likely wrong matcher page_number), the remaining pages are
-        re-scanned for just that value, stopping at the first page where it is
-        found, so the box is not silently dropped.
+        Trust the page hint. If a value carries page_info, we ONLY look at
+        that page (no all-pages fallback). When call #1 still misses with
+        the lenient prompt, the value is reported as ABSENT in the coverage
+        report rather than silently swept across every page. Values with no
+        parseable page hint stay unscoped and are queried on every page (the
+        only safe option when we don't know where to look).
         """
         clean_doc_no = doc_no.replace("/", "_").replace("\\", "_")
-        field_by_value: dict[str, str] = {mm["value"]: mm["field"] for mm in mismatches}
         per_mismatch_boxes: dict[tuple, int] = {
             (mm["field"], mm["value"]): 0 for mm in mismatches
         }
-        # Boxes found per value (any field/page). Drives the miss-fallback:
-        # a page-scoped value still at 0 after its targeted page(s) likely had
-        # a wrong matcher page_number and is re-searched on the other pages.
-        boxes_by_value: dict[str, int] = {mm["value"]: 0 for mm in mismatches}
+        # Track every (field, value) that carried a page hint so we can
+        # surface "scoped but absent" cleanly in the coverage report.
+        scoped_keys: set[tuple] = set()
         all_boxes: list[dict] = []
 
         if not mismatches:
@@ -789,28 +866,28 @@ class VisualDebugger:
         finally:
             doc.close()
 
-        # Page-targeted search. The validator carries each mismatch's page_info
-        # (the matcher's page_number, e.g. "Page 2"). Group values by the
-        # page(s) they belong to so LLM call #1 only runs on those pages instead
-        # of every page. A mismatch whose page_info yields no parseable in-range
-        # page is "unscoped" and searched on every page — preserving the prior
-        # recall while page-scoped values save the wasted per-page calls.
-        values_by_page: dict[int, list[str]] = {}
-        named_pages_by_value: dict[str, set[int]] = {}
-        unscoped_values: list[str] = []
+        # Bucket (field, value) entries by their named page(s). Field is
+        # threaded into LLM call #1 as a search anchor.
+        entries_by_page: dict[int, list[tuple[str, str]]] = {}
+        unscoped_entries: list[tuple[str, str]] = []
         for mm in mismatches:
+            field = mm.get("field", "") or ""
+            value = mm["value"]
+            entry = (field, value)
             pages = self._parse_pages(mm.get("page_info", ""), total_pages)
             if pages:
+                scoped_keys.add(entry)
                 for p in pages:
-                    values_by_page.setdefault(p, []).append(mm["value"])
-                named_pages_by_value.setdefault(mm["value"], set()).update(pages)
+                    entries_by_page.setdefault(p, []).append(entry)
             else:
-                unscoped_values.append(mm["value"])
+                unscoped_entries.append(entry)
 
-        if unscoped_values:
+        if unscoped_entries:
+            # No page hint → no choice but to look everywhere.
             pages_to_scan = list(range(1, total_pages + 1))
         else:
-            pages_to_scan = sorted(values_by_page.keys())
+            # Every mismatch is scoped → scan ONLY the named pages.
+            pages_to_scan = sorted(entries_by_page.keys())
 
         doc_debug_dir = self._doc_debug_dir(clean_doc_no)
         # Reset the llm_inputs/ folder so this run's manifest is clean,
@@ -821,11 +898,17 @@ class VisualDebugger:
         print(f"[VD] Debug artefacts dir: {os.path.abspath(doc_debug_dir)}")
         print(f"[VD] LLM-input dumps      : {os.path.abspath(os.path.join(doc_debug_dir, self.LLM_INPUTS_DIRNAME))}")
 
-        def scan_page(page_num, page_values):
-            """Run the two-call locate→mark flow for one page over page_values.
-            Mutates the shared all_boxes / per_mismatch_boxes / boxes_by_value /
-            llm_step state. Used by both the targeted pass and the fallback."""
+        def scan_page(page_num, page_entries):
+            """
+            Two-call locate→mark flow for one page over a list of (field, value)
+            entries. Mutates the shared all_boxes / per_mismatch_boxes / llm_step.
+            """
             nonlocal llm_step
+
+            # Per-page (field, value) → field lookup so the same value can be
+            # marked against different fields on the same page.
+            field_by_value_on_page = {v: f for f, v in page_entries}
+            page_values = [v for _, v in page_entries]
 
             base_img = os.path.join(doc_debug_dir, f"raw_p{page_num}.png")
             extraction = self.extract_page_as_image(pdf_path, page_num, base_img)
@@ -842,12 +925,12 @@ class VisualDebugger:
             except Exception as e:
                 print(f"[VD] grid overlay failed for page {page_num}: {e}")
 
-            # LLM call #1: sentence-level context boxes for every value
+            # LLM call #1: sentence-level context boxes for every (field, value)
             sentence_hits = self.sentence_locator.locate(
                 page_image_path=base_img,
                 page_w_px=img_w,
                 page_h_px=img_h,
-                values=page_values,
+                entries=page_entries,
             )
             # Dump exactly what Gemini saw / said for call #1.
             llm_step += 1
@@ -864,14 +947,14 @@ class VisualDebugger:
                     "page": page_num,
                     "total_pages": total_pages,
                     "image_size_px": [img_w, img_h],
-                    "values_queried": list(page_values),
+                    "entries_queried": [
+                        {"field": f, "value": v} for f, v in page_entries
+                    ],
                     "parsed_hits_per_value": {
                         v: len(hits) for v, hits in sentence_hits.items()
                     },
                 },
             )
-            # Persist the descriptive context so an operator can see what
-            # Gemini reported per page (sentence + coarse box per value).
             self._save_context_json(
                 path=os.path.join(doc_debug_dir, f"context_p{page_num}.json"),
                 doc_no=doc_no,
@@ -882,9 +965,16 @@ class VisualDebugger:
 
             # LLM call #2: pinpoint inside the padded crop for every hit
             for value, hits in sentence_hits.items():
-                field = field_by_value.get(value, "")
+                field = field_by_value_on_page.get(value, "")
                 key = (field, value)
                 for idx, hit in enumerate(hits):
+                    # Cap the number of boxes per value when requested. The EC
+                    # marking passes max_occurrences=1 so a repeated value (e.g.
+                    # an executant name that appears in many transactions) is
+                    # boxed ONCE — anchored by the unique document number — not
+                    # on every row it appears in.
+                    if max_occurrences is not None and per_mismatch_boxes.get(key, 0) >= max_occurrences:
+                        break
                     ckey = self._cache_key(pdf_path, page_num, field, f"{value}#{idx}")
                     if ckey in self._coord_cache:
                         cached = self._coord_cache[ckey]
@@ -903,10 +993,6 @@ class VisualDebugger:
                             sentence_hint=hit.get("sentence", ""),
                             crop_out_path=crop_path,
                         )
-                        # Dump the crop + prompt + raw response for call #2.
-                        # We do this whether or not the pinpoint succeeded —
-                        # a failed/None pixel_box is itself the interesting
-                        # signal we want to inspect.
                         llm_step += 1
                         if os.path.exists(crop_path):
                             self._dump_llm_input(
@@ -942,50 +1028,104 @@ class VisualDebugger:
                         "label": field or value,
                     })
                     per_mismatch_boxes[key] += 1
-                    boxes_by_value[value] = boxes_by_value.get(value, 0) + 1
 
-        # Phase 1 — targeted pass: scan only each mismatch's named page(s);
-        # unscoped values (no parseable page) ride along on every page.
+        # Track which pages each entry was already scanned on so the
+        # fallback sweep doesn't re-pay LLM cost on pages it already
+        # covered.
+        scanned_pages_for_entry: dict[tuple, set[int]] = defaultdict(set)
+
+        # Single targeted pass — scan each mismatch's named page(s);
+        # unscoped entries (no parseable page) ride along on every page.
+        #
+        # EARLY EXIT (when max_occurrences is capped, e.g. on-demand EC marking):
+        # the EC page stamp is chunk-level — a transaction "on pages 1-20" really
+        # sits on one or two pages within that span. Once every queued value
+        # (incl. the document-number anchor) has reached its cap, STOP — there is
+        # no reason to grind through the rest of the named range. This is what
+        # turns a 20-page scan into a 2-3 page scan. With max_occurrences=None
+        # (deed marking during analysis) we keep scanning every named page so all
+        # legitimate header/body/sign-off repeats still get boxed.
+        def _all_capped() -> bool:
+            return (
+                max_occurrences is not None
+                and bool(per_mismatch_boxes)
+                and all(c >= max_occurrences for c in per_mismatch_boxes.values())
+            )
+
         for page_num in pages_to_scan:
-            page_values = list(dict.fromkeys(
-                values_by_page.get(page_num, []) + unscoped_values
+            page_entries = list(dict.fromkeys(
+                entries_by_page.get(page_num, []) + unscoped_entries
             ))
-            if not page_values:
+            if not page_entries:
                 continue
             yield f"Scanning {doc_no} page {page_num}/{total_pages}"
-            scan_page(page_num, page_values)
+            scan_page(page_num, page_entries)
+            for e in page_entries:
+                scanned_pages_for_entry[e].add(page_num)
+            if _all_capped():
+                yield (
+                    f"All values located for {doc_no} — stopping early at "
+                    f"page {page_num} (skipping {len(pages_to_scan) - pages_to_scan.index(page_num) - 1} "
+                    f"remaining page(s) in range)"
+                )
+                break
 
-        # Phase 2 — miss-fallback: a page-scoped value that found nothing on its
-        # named page(s) likely had a wrong matcher page_number. Re-scan the
-        # remaining pages for just that value so the box is not silently dropped.
-        # This fires ONLY on a miss, so the correct-page case keeps the
-        # single-call savings; the worst case degrades to the old all-pages cost
-        # for that one value (bounded, never worse than before page-targeting).
-        missed_scoped = [
-            v for v in named_pages_by_value if boxes_by_value.get(v, 0) == 0
+        # PRIOR-CONFIRMED FULL-DOC SWEEP.
+        # The matcher's page_info is sometimes off-by-one or wrong outright,
+        # AND many fields (date of registration, document number, survey
+        # number, executant name) legitimately appear on multiple pages —
+        # header, body, footer, sign-off block, stamps. So for every
+        # scoped value we sweep the rest of the doc:
+        #   * if the scoped page missed → fallback discovers the right page
+        #   * if the scoped page hit → fallback marks every OTHER occurrence
+        #
+        # Cost: one LLM call per (page, scoped-value) that wasn't already
+        # scanned, capped at total_pages × len(scoped_keys). Bounded, and
+        # the per-page cache + prior-hits cache short-circuit repeats.
+        # Only sweep for values that were NOT located on their targeted page.
+        # This is the key speedup: a value found on its targeted page triggers
+        # NO sweep at all (previously we scanned every page to also mark header/
+        # footer/sign-off repeats — the dominant cost on multi-page deeds/ECs).
+        # A value sweeps only until it is found, then stops. Set
+        # VD_MARK_ALL_OCCURRENCES=1 to restore the exhaustive every-page sweep.
+        mark_all = os.getenv("VD_MARK_ALL_OCCURRENCES", "0") == "1"
+        sweep_keys = scoped_keys if mark_all else [
+            e for e in scoped_keys if per_mismatch_boxes.get(e, 0) == 0
         ]
-        if missed_scoped:
-            # Sweep the remaining pages in order, but stop searching a value the
-            # moment it is found+marked — the matcher merely pointed at the wrong
-            # page, so one recovery is enough and later pages add no value.
-            # A value never found anywhere stays pending and is searched on every
-            # remaining page (full recall preserved for genuine misses).
-            pending = list(missed_scoped)
+        if sweep_keys:
+            print(
+                f"[VD] {doc_no}: fallback sweep for {len(sweep_keys)} value(s) "
+                f"not found on their targeted page "
+                f"(stops as soon as each value is located)."
+            )
             for page_num in range(1, total_pages + 1):
-                if not pending:
-                    break
-                page_values = [
-                    v for v in pending if page_num not in named_pages_by_value[v]
+                pending = [
+                    e for e in sweep_keys
+                    if page_num not in scanned_pages_for_entry[e]
+                    and (mark_all or per_mismatch_boxes.get(e, 0) == 0)
                 ]
-                if not page_values:
+                if not pending:
                     continue
                 yield (
                     f"Fallback scan {doc_no} page {page_num}/{total_pages} "
-                    f"for {page_values} (matcher page missed)"
+                    f"for {len(pending)} value(s)"
                 )
-                scan_page(page_num, page_values)
-                # Drop values that just got marked so later pages skip them.
-                pending = [v for v in pending if boxes_by_value.get(v, 0) == 0]
+                scan_page(page_num, pending)
+                for e in pending:
+                    scanned_pages_for_entry[e].add(page_num)
+
+        # Final report on anything STILL absent — those are genuinely not
+        # in the PDF (or OCR was too noisy for Gemini to recognise).
+        still_missing = [
+            k for k in scoped_keys if per_mismatch_boxes.get(k, 0) == 0
+        ]
+        if still_missing:
+            print(
+                f"[VD] {doc_no}: {len(still_missing)} value(s) absent even "
+                f"after full-doc sweep — likely genuinely not in this PDF:"
+            )
+            for f, v in still_missing:
+                print(f"   [VD] absent: field={f!r} value={v!r}")
 
         if not all_boxes:
             yield f"No occurrences found for any mismatch in {doc_no}"

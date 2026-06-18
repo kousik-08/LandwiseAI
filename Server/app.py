@@ -11,12 +11,13 @@ from fastapi.staticfiles import StaticFiles
 from common.storage import get_storage
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from sqlalchemy.exc import OperationalError
 
 # Local imports
 from api.download_ec.handler import handle_download_ec, ECRequest
 from api.validate.handler import (
     handle_validate, handle_validate_json, WorkflowRequest, 
-    handle_verify_supporting_doc, handle_chat_with_doc, handle_validate_single,
+    handle_verify_supporting_doc, handle_chat_with_doc, handle_chat_overall, handle_mark_ec, handle_validate_single,
     handle_get_global_hierarchy, handle_search_survey_timeline,
     handle_generate_report, handle_analyze_ec, handle_get_survey_ownership
 )
@@ -111,9 +112,49 @@ async def request_logging_middleware(request: Request, call_next):
     return response
 
 
+# Transparent one-shot retry for transient DB blips on idempotent requests.
+# Registered AFTER request_logging_middleware so it sits OUTSIDE logging
+# (Starlette stacks middlewares LIFO — last registered = outermost).
+#
+# Why only safe methods: re-issuing call_next consumes the request body for
+# POST/PUT/PATCH/DELETE, so we can't safely replay them. Those fall through
+# to the OperationalError handler which returns 503.
+_SAFE_RETRY_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+@app.middleware("http")
+async def db_blip_retry_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except OperationalError as e:
+        if request.method not in _SAFE_RETRY_METHODS:
+            raise
+        orig = getattr(e, "orig", e)
+        print(f"[!] DB blip on {request.method} {request.url.path} — retrying once: {orig}")
+        return await call_next(request)
+
+
+# Origins allowed to make credentialed (cookie) requests. A wildcard "*" is
+# INVALID together with allow_credentials=True — browsers reject the response,
+# which previously surfaced as net::ERR_FAILED on cross-origin API calls and
+# hid backend error messages. Use an explicit list; extend it for new
+# frontends via the CORS_ALLOW_ORIGINS env var (comma-separated).
+_DEFAULT_ALLOWED_ORIGINS = [
+    "https://staging.d1sd2m4ye8eyia.amplifyapp.com",
+    "https://13.201.0.127.nip.io",
+    "http://localhost:8080",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:5173",
+]
+_extra_origins = [
+    o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "").split(",") if o.strip()
+]
+ALLOWED_ORIGINS = list(dict.fromkeys(_DEFAULT_ALLOWED_ORIGINS + _extra_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -121,21 +162,12 @@ app.add_middleware(
 
 _storage_backend = (os.environ.get("STORAGE_BACKEND") or "local").strip().lower()
 
-# Origins allowed to read presigned-redirect responses. FastAPI's
-# CORSMiddleware does not always attach CORS headers to 3xx responses,
-# so we add them manually below.
-_ALLOWED_ORIGINS = {
-    "https://staging.d1sd2m4ye8eyia.amplifyapp.com",
-    "http://localhost:8080",
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://127.0.0.1:8080",
-}
-
-
+# Presigned-redirect responses (3xx) need CORS headers added manually because
+# FastAPI's CORSMiddleware does not always attach them to redirects. Reuse the
+# same allow-list as the middleware above.
 def _cors_redirect_headers(request: Request) -> dict:
     origin = request.headers.get("origin", "")
-    if origin in _ALLOWED_ORIGINS:
+    if origin in ALLOWED_ORIGINS:
         return {
             "Access-Control-Allow-Origin": origin,
             "Access-Control-Allow-Credentials": "true",
@@ -427,7 +459,7 @@ async def chat_with_doc_endpoint(
     finally:
         db.close()
 
-    response_data = await handle_chat_with_doc(doc_no, message, history_list, request_id=request_id)
+    response_data = await handle_chat_with_doc(doc_no, message, history_list, request_id=request_id, parcel_id=parcel_id)
     
     # Save Assistant Response to DB
     db = SessionLocal()
@@ -442,6 +474,84 @@ async def chat_with_doc_endpoint(
         db.commit()
     except Exception as e:
         print(f"[!] Error saving assistant message: {e}")
+    finally:
+        db.close()
+
+    return response_data
+
+
+@router.post("/visual-debug/mark-ec")
+async def mark_ec_endpoint(
+    request: Request,
+    request_id: str = Form(...),
+    parcel_id: str = Form(...),
+    doc_no: str = Form(...),
+    mismatches: str = Form("[]"),
+):
+    """
+    Produce a marked EC PDF that boxes a deed's mismatched ec_values on the EC,
+    for side-by-side comparison in Document Analysis. `mismatches` is a JSON list
+    of {field, value} (the EC values) supplied by the client.
+    """
+    print(f"[*] mark-ec: request_id={request_id}, doc_no={doc_no}")
+    try:
+        mismatch_list = json.loads(mismatches)
+        if not isinstance(mismatch_list, list):
+            mismatch_list = []
+    except Exception:
+        mismatch_list = []
+    return await handle_mark_ec(request_id, parcel_id, doc_no, mismatch_list)
+
+
+@router.post("/chat-overall")
+async def chat_overall_endpoint(
+    request: Request,
+    message: str = Form(...),
+    history: str = Form("[]"),
+    request_id: Optional[str] = Form(None),
+    parcel_id: Optional[str] = Form(None),
+    mentions: str = Form("[]"),
+):
+    """
+    Property-wide chatbot: answers over the whole EC chain for the analyze run,
+    with optional @-mentioned document numbers to focus on. Mirrors
+    /chat-with-doc but is not scoped to a single document.
+    """
+    print(f"[*] chat-overall: request_id={request_id}, parcel_id={parcel_id}")
+    try:
+        history_list = json.loads(history)
+    except Exception:
+        history_list = []
+    try:
+        mention_list = json.loads(mentions)
+        if not isinstance(mention_list, list):
+            mention_list = []
+    except Exception:
+        mention_list = []
+
+    from common.database import SessionLocal
+    from common.landwise_models import ChatMessage
+
+    # Save user message (best-effort; doc_no marks the property-wide thread).
+    db = SessionLocal()
+    try:
+        db.add(ChatMessage(doc_no="__overall__", parcel_id=parcel_id, role="user", content=message))
+        db.commit()
+    except Exception as e:
+        print(f"[!] Error saving overall user message: {e}")
+    finally:
+        db.close()
+
+    response_data = await handle_chat_overall(
+        message, history_list, request_id=request_id, parcel_id=parcel_id, mentions=mention_list
+    )
+
+    db = SessionLocal()
+    try:
+        db.add(ChatMessage(doc_no="__overall__", parcel_id=parcel_id, role="assistant", content=response_data.get("response", "")))
+        db.commit()
+    except Exception as e:
+        print(f"[!] Error saving overall assistant message: {e}")
     finally:
         db.close()
 

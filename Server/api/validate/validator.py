@@ -64,13 +64,18 @@ class Validator:
     def __init__(
         self,
         output_dir: str,
+        ec_pdf_path: str = None,
     ):
         self.output_dir = output_dir
-        # Initialize Gemini Helper (defaults to gemini-2.5-flash-lite)
-        self.gemini = GeminiHelper(model_id="gemini-2.5-flash-lite")
+        # EC PDF for this run. When set, we also box each deed's mismatched
+        # values on the EC (see _mark_ec_for_doc). Optional so existing callers
+        # keep working.
+        self.ec_pdf_path = ec_pdf_path
+        # Initialize Gemini Helper (defaults to gemini-3.5-flash)
+        self.gemini = GeminiHelper(model_id="gemini-3.5-flash")
         # Visual Debugger uses a slightly more capable model for vision tasks
         self.visual_debugger = VisualDebugger(
-            GeminiHelper(model_id="gemini-2.5-flash"), output_dir
+            GeminiHelper(model_id="gemini-3.5-flash"), output_dir
         )
 
     def query_gemini(self, prompt: str) -> str:
@@ -83,6 +88,83 @@ class Validator:
         except Exception as e:
             print(f"[!] Error contacting Gemini: {e}")
             return "{}"
+
+    def _mark_ec_for_doc(self, doc_no: str, ec_entry: Dict, comparisons: List[Dict]):
+        """
+        Box THIS deed's mismatched values on the EC PDF, scoped to the EC page(s)
+        the transaction was extracted from (ec_page_start/end). Scoping to the
+        page is what stops us from boxing the same name everywhere it appears
+        across the EC. We anchor on the EC's document number so the debugger
+        lands on the right row; if the document-number field is itself the
+        mismatch, the EC's own number still uniquely identifies the row, so we
+        include it regardless and also rely on the other mismatched values.
+
+        Returns the relative marked-EC path (servable via /files) or None.
+        """
+        import shutil
+        import tempfile
+
+        if not self.ec_pdf_path or not os.path.exists(self.ec_pdf_path) or not isinstance(ec_entry, dict):
+            return None
+
+        # Page scope from the stored EC page range. Empty -> debugger scans all
+        # pages (older caches without page numbers).
+        ps, pe = ec_entry.get("ec_page_start"), ec_entry.get("ec_page_end")
+        page_info = ""
+        if isinstance(ps, int) and isinstance(pe, int) and 1 <= ps <= pe:
+            page_info = "Pages " + ", ".join(str(n) for n in range(ps, pe + 1))
+
+        def _is_mismatch(s: str) -> bool:
+            s = (s or "").upper()
+            return "NOT MATCHED" in s or "NOT_MATCHED" in s or ("NOT" in s and "MATCH" in s)
+
+        _PLACEHOLDER = {"", "...", "n/a", "na", "none", "null", "not found", "unknown", "missing"}
+
+        def _placeholder(v) -> bool:
+            return not v or str(v).strip().lower() in _PLACEHOLDER
+
+        ec_mismatches: List[Dict] = []
+        # Anchor on the EC's document number first (most reliable row locator).
+        ec_doc_no = ec_entry.get("document_number")
+        if not _placeholder(ec_doc_no):
+            ec_mismatches.append({"field": "Document Number", "value": ec_doc_no, "page_info": page_info})
+        for c in (comparisons or []):
+            if not _is_mismatch(c.get("status", "")):
+                continue
+            ec_val = c.get("ec_value")
+            if not _placeholder(ec_val):
+                ec_mismatches.append({"field": c.get("field", "") or "", "value": ec_val, "page_info": page_info})
+
+        if not ec_mismatches:
+            return None
+
+        safe_doc = re.sub(r"[^a-zA-Z0-9]", "_", str(doc_no))
+        ec_copy_name = f"{safe_doc}_ec.pdf"  # per-doc name so marked output is unique
+        tmpdir = tempfile.mkdtemp(prefix="ec_vd_")
+        try:
+            ec_copy = os.path.join(tmpdir, ec_copy_name)
+            shutil.copy2(self.ec_pdf_path, ec_copy)
+            try:
+                for _msg in self.visual_debugger.debug_mismatches_batch(
+                    pdf_path=ec_copy, doc_no=f"EC_{doc_no}", mismatches=ec_mismatches,
+                    max_occurrences=1,
+                ):
+                    pass
+            except Exception as ve:
+                print(f"   [!] EC visual debug failed for {doc_no}: {ve}")
+                return None
+        finally:
+            shutil.rmtree(tmpdir, ignore_errors=True)
+
+        marked = os.path.join(self.output_dir, "matched_docs", ec_copy_name)
+        if not os.path.exists(marked):
+            return None
+        p = marked.replace("\\", "/").lstrip("./")
+        if p.startswith("tmp/work/"):
+            return p[len("tmp/work/"):]
+        if p.startswith("outputs/"):
+            return p[len("outputs/"):]
+        return p
 
     def validate(
         self,
@@ -158,6 +240,18 @@ class Validator:
         filename = os.path.basename(file_path)
         meta_filename = os.path.splitext(filename)[0] + "_metadata.txt"
         meta_path = os.path.join(self.output_dir, meta_filename)
+
+        if not os.path.exists(meta_path):
+            # Extract the deed metadata ON DEMAND so each document is processed
+            # end-to-end (extract -> validate -> emit) in a single pass, rather
+            # than waiting for a separate batch stage to extract ALL documents
+            # first. This lets the FIRST document's result surface immediately.
+            try:
+                from api.validate.sale_deed_processor import SaleDeedProcessor
+                print(f"[*] On-demand metadata extraction for {doc_no}...")
+                SaleDeedProcessor(output_dir=self.output_dir).process_file(file_path)
+            except Exception as ex:
+                print(f"[!] On-demand extraction failed for {doc_no}: {ex}")
 
         if not os.path.exists(meta_path):
             print(f"[!] Metadata file not found: {meta_path}")
@@ -272,6 +366,7 @@ class Validator:
                     match_status=match_status,
                     visual_debug=True,
                     inputs_hash=current_inputs_hash,
+                    ec_entry=ec_entry,
                 )
             except Exception as e:
                 print(f"[!] Error reading cache: {e}. Re-validating...")
@@ -316,6 +411,7 @@ class Validator:
             match_status=match_status,
             visual_debug=visual_debug,
             inputs_hash=current_inputs_hash,
+            ec_entry=ec_entry,
         )
 
     def _finalize_with_visual_debug(
@@ -327,6 +423,7 @@ class Validator:
         match_status: bool,
         visual_debug: bool,
         inputs_hash: str = "",
+        ec_entry: Dict = None,
     ) -> Dict:
         """
         Runs the visual debugger over any NOT-MATCHED comparisons (when enabled),
@@ -438,6 +535,13 @@ class Validator:
             # debugging. Useful for the UI to flag missed boxes.
             "vd_coverage": coverage_report,
         }
+
+        # NOTE: EC-side visual marking is intentionally NOT done here. It copies
+        # and scans the (often large) EC PDF per document, which blocked the
+        # per-document validation stream — extraction churned for many docs
+        # before any result surfaced. It now runs ON DEMAND when the user opens
+        # the EC view (POST /visual-debug/mark-ec), so each document streams
+        # extract → validate → show as soon as it is ready, one at a time.
 
         # Persist the FULL wrapped result (not just validation_data) so that
         # subsequent cache hits can return the same shape the frontend expects.
