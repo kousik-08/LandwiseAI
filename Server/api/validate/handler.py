@@ -597,6 +597,66 @@ def workflow_generator(
                 message=f"{pass_count}/{len(results)} validated successfully",
                 step="validation",
             )
+
+            # ── Pre-mark each mismatched doc's EC so the side-by-side "Compare"
+            #    view opens INSTANTLY (no on-demand Gemini scan when the user
+            #    clicks). This runs AFTER every per-document result has already
+            #    streamed above, so it never blocks the document-by-document
+            #    reveal — the reason EC marking was originally moved off the hot
+            #    path. Each marked EC is cached on disk, so re-runs are near-
+            #    instant. The resulting path is attached to the result dict, so
+            #    it flows into results.json / final_result.json (which the audit
+            #    endpoint reads) and, via `result_update`, into the live session.
+            if visual_debug and getattr(validator, "ec_pdf_path", None):
+                def _has_mismatch(r):
+                    comps = (r.get("validation_result") or {}).get("comparisons") or []
+                    return any(
+                        ("NOT" in str(c.get("status", "")).upper() and "MATCH" in str(c.get("status", "")).upper())
+                        for c in comps
+                    )
+
+                to_mark = [r for r in results if _has_mismatch(r)]
+                if to_mark:
+                    yield event(
+                        "log",
+                        message=f"Pre-marking EC for {len(to_mark)} document(s) for side-by-side compare...",
+                        step="validation",
+                    )
+                    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+                    def _mark_one(r):
+                        doc_no = r.get("document_number")
+                        ec_entry = ec_lookup.get(doc_no)
+                        comps = (r.get("validation_result") or {}).get("comparisons") or []
+                        try:
+                            return doc_no, validator._mark_ec_for_doc(doc_no, ec_entry, comps)
+                        except Exception as _me:
+                            print(f"[!] EC pre-mark failed for {doc_no}: {_me}")
+                            return doc_no, None
+
+                    marked_count = 0
+                    with ThreadPoolExecutor(max_workers=3) as _ec_ex:
+                        _futs = {_ec_ex.submit(_mark_one, r): r for r in to_mark}
+                        for _f in as_completed(_futs):
+                            doc_no, rel = _f.result()
+                            if rel:
+                                marked_count += 1
+                                # Mutating the original result dict updates the
+                                # `results` list that gets dumped to the artifacts.
+                                _futs[_f]["ec_file_path"] = rel
+                                # The Document Analysis tab reads the live streamed
+                                # results, which dedupe `partial_result` by doc — so
+                                # send a dedicated merge event to patch ec_file_path.
+                                yield event(
+                                    "result_update",
+                                    data={"document_number": doc_no, "ec_file_path": rel},
+                                )
+                    yield event(
+                        "sub_log",
+                        message=f"EC pre-marked for {marked_count}/{len(to_mark)} document(s)",
+                        step="validation",
+                    )
+
             # Persist Validation Results to DB
             db = SessionLocal()
             try:
@@ -2053,7 +2113,7 @@ Chat History:
 User Question: {message}
 """
         try:
-            gemini = GeminiHelper(model_id="gemini-3.5-flash")  # flash = large context
+            gemini = GeminiHelper()  # configured GEMINI_MODEL (large context)
             # Run the blocking SDK call off the event loop so the API stays responsive.
             response = await asyncio.to_thread(
                 gemini.generate_from_text, context, instructions
@@ -2076,7 +2136,7 @@ User Question: {message}
         }
 
     print(f"[*] Chatting with PDF (fallback): {file_path}")
-    gemini = GeminiHelper(model_id="gemini-3.5-flash")  # flash for large context
+    gemini = GeminiHelper()  # configured GEMINI_MODEL (large context)
 
     context_prompt = f"""
     You are an expert Indian Property Legal Assistant.
@@ -2121,6 +2181,9 @@ async def handle_chat_overall(
     request_id: Optional[str] = None,
     parcel_id: Optional[str] = None,
     mentions: Optional[list] = None,
+    active_doc: Optional[str] = None,
+    view_context: Optional[str] = None,
+    screen_context: Optional[str] = None,
 ):
     """
     Property-wide ("overall") chat. Answers over the WHOLE encumbrance chain for
@@ -2144,7 +2207,8 @@ async def handle_chat_overall(
 
     raw_text = _read_ec_raw_text(request_id)
 
-    if not (ec_data or raw_text):
+    has_screen = bool(screen_context and str(screen_context).strip())
+    if not (ec_data or raw_text or has_screen):
         return {
             "response": (
                 "⚠️ I couldn't find extracted EC data for this property yet. "
@@ -2153,7 +2217,14 @@ async def handle_chat_overall(
         }
 
     # Resolve @-mentioned documents to their EC entries (focused context).
+    # Screen-awareness: if the user typed no explicit @-mention but is looking
+    # at a specific document (the frontend passes `active_doc` for the open
+    # DEED-vs-EC compare view), treat that open document as the focus so
+    # questions like "what's the issue in market value?" resolve to it.
     mentions = [m for m in (mentions or []) if str(m).strip()]
+    explicit_mentions = list(mentions)
+    if not mentions and active_doc and str(active_doc).strip():
+        mentions = [str(active_doc).strip()]
     focused = []
     seen_focus = set()
     for m in mentions:
@@ -2164,6 +2235,16 @@ async def handle_chat_overall(
                 focused.append(e)
 
     context_parts = []
+    if has_screen:
+        # What the user is literally looking at right now (e.g. the Risk Score
+        # factors, gap analysis, ownership stats). This data often lives OUTSIDE
+        # the EC chain, so it is provided as first-class context the assistant
+        # is allowed to answer from directly.
+        context_parts.append(
+            "### CURRENT SCREEN (what the user is looking at right now — you MAY "
+            "answer directly from this, it is not limited to the EC chain)\n"
+            + str(screen_context).strip()
+        )
     if focused:
         context_parts.append(
             "### FOCUSED DOCUMENTS (the user @-mentioned these — prioritize them)\n"
@@ -2184,22 +2265,44 @@ async def handle_chat_overall(
         context_parts.append("### EC RAW EXTRACTED TEXT\n" + raw_text[:150000])
     context = "\n\n".join(context_parts)
 
-    mention_line = (
-        f"\nThe user is asking specifically about: "
-        f"{', '.join(str(m) for m in mentions)}.\n" if mentions else ""
+    if explicit_mentions:
+        mention_line = (
+            f"\nThe user is asking specifically about: "
+            f"{', '.join(str(m) for m in explicit_mentions)}.\n"
+        )
+    elif mentions:
+        # Implicit focus — the document currently open on the user's screen.
+        mention_line = (
+            f"\nThe user is currently looking at document {mentions[0]} on screen. "
+            f"Treat their question as being about this document unless they clearly "
+            f"ask about the whole property.\n"
+        )
+    else:
+        mention_line = ""
+
+    screen_line = (
+        f"\nCurrent screen: {view_context}.\n" if view_context and str(view_context).strip() else ""
     )
 
     instructions = f"""You are an expert Indian Property Legal Assistant for LandwiseAI.
-You are answering questions about an ENTIRE property using its Encumbrance
-Certificate (EC) data — the full chain of registered transactions below.
-{mention_line}
+You are answering questions about a property using the data provided below:
+its Encumbrance Certificate (EC) chain of registered transactions AND, when
+present, a "CURRENT SCREEN" block describing exactly what the user is looking
+at right now (e.g. the Risk Score factors, gap analysis, ownership stats).
+{screen_line}{mention_line}
 Use the data to answer the question and to CHECK / COMPARE across the chain
 (ownership flow, whether a document appears, whether parties / survey / extent /
-dates / consideration are consistent between transactions).
+dates / consideration are consistent between transactions). When the user asks
+about something shown on their screen (a score, a factor, a flag, a number),
+answer from the CURRENT SCREEN block — that information may not be in the EC
+chain, and that is expected.
 
 Rules:
-1. Base your answer ONLY on the EC data provided — never invent facts.
-2. If something is not present in the data, say so in one short bullet.
+1. Base your answer ONLY on the data provided below — the EC chain AND the
+   CURRENT SCREEN block. Never invent facts. Do NOT say something is "not in the
+   EC data" when it is shown in the CURRENT SCREEN block.
+2. If something is genuinely not present in ANY of the provided data, say so in
+   one short bullet.
 3. Cite transactions by their EC Document No (e.g. "Doc 3765/2008").
 4. Keep Tamil names in the original script.
 5. ALWAYS answer as a SHORT bulleted list. Start every line with "- ".
@@ -2224,7 +2327,7 @@ User Question: {message}
 """
 
     try:
-        gemini = GeminiHelper(model_id="gemini-3.5-flash")
+        gemini = GeminiHelper()  # configured GEMINI_MODEL (chat-overall)
         response = await asyncio.to_thread(
             gemini.generate_from_text, context, instructions
         )
@@ -2232,6 +2335,75 @@ User Question: {message}
     except Exception as e:
         print(f"[!] Overall chat failed (request {request_id}): {e}")
         return {"response": "⚠️ Sorry, I hit an error answering that. Please try again."}
+
+
+async def handle_marked_boxes(request_id: str, doc_no: str):
+    """
+    Return the per-field boxes for a document's MARKED deed and EC PDFs by
+    reading them back out of the PDFs (vector rects + red labels) — no LLM.
+
+    This is what makes the spotlight / error-navigator work on documents that
+    were analyzed before per-field coordinates were captured: the marked PDFs
+    already exist on disk, so we recover the boxes directly. Read-only and fast.
+
+    Returns ``{"deed_boxes": [...], "ec_boxes": [...]}`` (each box normalized to
+    [0,1] page coords with its field label).
+    """
+    from common.run_paths import RunPaths
+    from api.validate.visual_debugger import extract_marked_boxes
+
+    try:
+        rp = RunPaths(request_id, kind="validate").ensure()
+        output_dir = rp.output_dir
+    except Exception as e:
+        print(f"[!] marked-boxes: run paths failed for {request_id}: {e}")
+        return {"deed_boxes": [], "ec_boxes": []}
+
+    marked_dir = os.path.join(output_dir, "matched_docs")
+    safe = re.sub(r"[^a-zA-Z0-9]", "_", str(doc_no))
+
+    def _resolve(name: str) -> str | None:
+        """Materialize a marked PDF locally (download if needed); return path or None."""
+        p = os.path.join(marked_dir, name)
+        if os.path.exists(p) or ensure_local(p):
+            return p if os.path.exists(p) else None
+        return None
+
+    deed_path = _resolve(f"{safe}.pdf")
+    # Fallback: the marked deed is named after the original file's basename,
+    # which is usually the doc number but not guaranteed. Glob for a slug match.
+    if not deed_path and os.path.isdir(marked_dir):
+        for fn in os.listdir(marked_dir):
+            if fn.lower().endswith(".pdf") and not fn.lower().endswith("_ec.pdf"):
+                stem = re.sub(r"[^a-zA-Z0-9]", "_", os.path.splitext(fn)[0])
+                if stem == safe:
+                    deed_path = os.path.join(marked_dir, fn)
+                    break
+
+    ec_path = _resolve(f"{safe}_ec.pdf")
+
+    deed_boxes = extract_marked_boxes(deed_path) if deed_path else []
+    ec_boxes = extract_marked_boxes(ec_path) if ec_path else []
+    print(f"[*] marked-boxes: {doc_no} -> {len(deed_boxes)} deed, {len(ec_boxes)} ec")
+    return {"deed_boxes": deed_boxes, "ec_boxes": ec_boxes}
+
+
+def _load_ec_boxes_sidecar(boxes_path: str) -> list:
+    """
+    Read the marked-EC box sidecar (normalized coords) if present, fetching it
+    from remote storage first when only the marked PDF was materialized locally.
+    Returns [] on any miss — the EC spotlight degrades to page-only navigation.
+    """
+    try:
+        if not os.path.exists(boxes_path):
+            ensure_local(boxes_path)
+        if os.path.exists(boxes_path):
+            with open(boxes_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, list) else []
+    except Exception as e:
+        print(f"[!] mark-ec: box sidecar read failed: {e}")
+    return []
 
 
 async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatches: list):
@@ -2301,10 +2473,14 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
     output_dir = rp.output_dir
     marked_path = os.path.join(output_dir, "matched_docs", marked_name)
     rel_path = f"validate/{request_id}/matched_docs/{marked_name}"
+    # Sidecar holding the marked boxes' normalized coords, so a cache hit (or a
+    # fresh server instance) can still drive the EC spotlight without re-running
+    # the visual debugger.
+    boxes_path = os.path.join(output_dir, "matched_docs", f"{safe_doc}_ec_boxes.json")
 
     # Cached marked EC for this document.
     if os.path.exists(marked_path) or ensure_local(marked_path):
-        return {"url": rel_path, "page": target_page}
+        return {"url": rel_path, "page": target_page, "boxes": _load_ec_boxes_sidecar(boxes_path)}
 
     # Locate the parcel's EC document.
     db = SessionLocal()
@@ -2363,6 +2539,15 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
         # scoped target page.
         marked_pages = getattr(vd, "last_marked_pages", []) or []
         page = marked_pages[0] if marked_pages else target_page
+        boxes = getattr(vd, "last_marked_boxes", []) or []
+
+        # Persist the box coords beside the marked PDF so later cache hits can
+        # spotlight without re-running the VD.
+        try:
+            with open(boxes_path, "w", encoding="utf-8") as f:
+                json.dump(boxes, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"[!] mark-ec: box sidecar write failed: {e}")
 
         try:
             sync_dir(
@@ -2371,7 +2556,7 @@ async def handle_mark_ec(request_id: str, parcel_id: str, doc_no: str, mismatche
             )
         except Exception as e:
             print(f"[!] mark-ec sync failed: {e}")
-        return {"url": rel_path, "page": page}
+        return {"url": rel_path, "page": page, "boxes": boxes}
     finally:
         shutil.rmtree(tmpdir, ignore_errors=True)
 
@@ -2593,6 +2778,8 @@ async def handle_get_global_hierarchy(request_id: str):
                 res["file_path"] = _normalize_file_path(res.get("file_path"))
             if "vault_path" in res:
                 res["vault_path"] = _normalize_file_path(res.get("vault_path"))
+            if "ec_file_path" in res:
+                res["ec_file_path"] = _normalize_file_path(res.get("ec_file_path"))
 
     # 4. Load EC final data for Ownership Tabs.
     # The earlier refactor that introduced read_json_artifact removed the

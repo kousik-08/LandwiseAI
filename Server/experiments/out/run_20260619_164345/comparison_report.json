@@ -1,0 +1,217 @@
+{
+  "run": {
+    "timestamp": "2026-06-19T16:47:44",
+    "ec_pdf": "C:\\Users\\FAI-In_Hand\\Downloads\\63\\63\\Survey_63.pdf",
+    "deeds": "C:\\Users\\FAI-In_Hand\\Downloads\\63\\63\\Survey_No_63 (2)\\Survey_No_63\\10160_2011.pdf",
+    "ec_context_mode": "page",
+    "model": "gemini-3.5-flash",
+    "doc_count": 1
+  },
+  "documents": [
+    {
+      "document_number": "10160/2011",
+      "file_path": "D:\\Legal Module\\June 18\\LandwiseAI Cloud Version - Copy (4)\\Server\\experiments\\out\\run_20260619_164345\\matched_docs\\10160_2011.pdf",
+      "baseline": {
+        "match": true,
+        "trustability_score": 95,
+        "requires_extra_scrutiny": false,
+        "scrutiny_reason": "N/A - Absolute Sale Deed with highly consistent records.",
+        "comparisons": [
+          {
+            "field": "Document Number",
+            "ec_value": "10160/2011",
+            "metadata_value": "10160 / 2011",
+            "status": "MATCHED",
+            "reason": "The document numbers match exactly, ignoring minor spacing differences.",
+            "page_number": "Page 2"
+          },
+          {
+            "field": "Date of Registration",
+            "ec_value": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+            "metadata_value": "14/12/2011 (Execution Date) / 15/12/2011 (Registration Date)",
+            "status": "MATCHED",
+            "reason": "The registration date of 15/12/2011 in the deed matches the registration date recorded in the EC.",
+            "page_number": "Page 1 & 4"
+          },
+          {
+            "field": "Executant Name & Kinship",
+            "ec_value": "வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன், மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)",
+            "metadata_value": "K. Shanmugasundaram (Power of Attorney Agent) acting for: 1. Mr. Vajjiram, 2. Mr. Jeganathan, 3. Mr. Palanikkam",
+            "status": "MATCHED (LINKED)",
+            "reason": "The EC lists the principals (Vajjiram, Jeganathan) and the Power of Attorney Agent (K. Shanmugasundaram). There is a minor spelling variation between 'மாணிக்கம்' (Manikkam) in the EC and 'பழனிக்கம்' (Palanikkam) in the deed, but the overall principal-agent structure matches perfectly.",
+            "page_number": "Page 1, 2 & 13"
+          },
+          {
+            "field": "Claimant Name & Kinship",
+            "ec_value": "L. அக்ஸிலியா வினோலா",
+            "metadata_value": "Mrs. Auxillia Vinola, w/o Mr. Lourdes Xavier",
+            "status": "MATCHED",
+            "reason": "The claimant's name matches. The initial 'L' in the EC corresponds to her husband's name 'Lourdes Xavier' in the deed.",
+            "page_number": "Page 1, 2 & 12"
+          },
+          {
+            "field": "Survey Number",
+            "ec_value": "63/1, 63/6, 66/5",
+            "metadata_value": "Survey Nos. 63/6, 66/5, 63/1",
+            "status": "MATCHED",
+            "reason": "All three survey numbers (63/1, 63/6, and 66/5) match exactly between the EC and the deed.",
+            "page_number": "Page 3 & 9"
+          },
+          {
+            "field": "Nature of Document",
+            "ec_value": "Conveyance Non Metro/UA",
+            "metadata_value": "Absolute Sale Deed (சுத்த விக்கிரையப் பத்திரம்)",
+            "status": "MATCHED",
+            "reason": "'Conveyance Non Metro/UA' is the standard registration category used in Tamil Nadu ECs for an Absolute Sale Deed.",
+            "page_number": "Page 1 & 8"
+          },
+          {
+            "field": "Square Feet / Extent",
+            "ec_value": "1200 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2)",
+            "metadata_value": "Plot No. 108, measuring 1200 Sq.Ft",
+            "status": "MATCHED (PARTIAL)",
+            "reason": "The deed details Plot No. 108 measuring 1200 Sq.Ft, which corresponds to one of the two 1200 Sq.Ft schedules listed in the EC.",
+            "page_number": "Page 6, 9 & 10"
+          },
+          {
+            "field": "Supporting Documents",
+            "ec_value": "N/A",
+            "metadata_value": "Election Card No. AZZ8531253 (Executant Agent); Election Card No. CPK6949127 / XOE0751125 (Claimant)",
+            "status": "MATCHED",
+            "reason": "Valid Voter ID cards are provided for both the Power of Attorney Agent (K. Shanmugasundaram) and the Claimant (Auxillia Vinola) with matching names.",
+            "page_number": "Page 1, 12 & 13"
+          },
+          {
+            "field": "Market Value & Consideration",
+            "ec_value": "Consideration: Rs. 26,400/-, Market Value: Rs. 52,800/-",
+            "metadata_value": "Consideration: Rs. 26,000/-, Market Value: Rs. 26,400/-",
+            "status": "MATCHED",
+            "reason": "The deed's market value of Rs. 26,400 matches the EC's consideration of Rs. 26,400. The EC's market value of Rs. 52,800 is exactly double (2x) the deed's market value, which is mathematically consistent with the EC containing two schedules of 1200 Sq.Ft each (total 2400 Sq.Ft), while the deed metadata focuses on one schedule of 1200 Sq.Ft. The consideration of Rs. 26,000 in the deed is within 1.5% of the EC's Rs. 26,400.",
+            "page_number": "Page 6 & 11"
+          }
+        ],
+        "reason_for_failure": "All fields consistent",
+        "match_count": 9,
+        "valuation_details": {
+          "actual_sell_value": 26000,
+          "guideline_value": 26400,
+          "area_sqft": 1200,
+          "sell_value_per_sqft": 21.67,
+          "market_value_per_sqft": 22.0
+        }
+      },
+      "full_context": {
+        "match": false,
+        "trustability_score": 85,
+        "requires_extra_scrutiny": true,
+        "scrutiny_reason": "Significant clerical discrepancies detected in the SRO's EC entry: 1) The EC lists a phantom 'Schedule 2' doubling the extent to 2400 sq.ft and doubling the Market Value to Rs. 52,800/-, whereas the physical deed only conveys 1200 sq.ft (Plot 108) valued at Rs. 26,400/-. 2) The EC lists the third principal as 'Manickam' (மாணிக்கம்) instead of 'Palanikkam' (பழனிக்கம்). SRO rectification is recommended.",
+        "comparisons": [
+          {
+            "field": "Document Number",
+            "ec_value": "10160/2011",
+            "metadata_value": "10160 / 2011",
+            "status": "MATCHED",
+            "reason": "Exact match. Minor spacing differences in the SRO stamp do not affect validity.",
+            "page_number": "Page 1, 2"
+          },
+          {
+            "field": "Date of Registration",
+            "ec_value": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+            "metadata_value": "14/12/2011 (Execution) / 15/12/2011 (Registration)",
+            "status": "MATCHED",
+            "reason": "The registration date of 15-Dec-2011 matches the registration and completion tokens in the EC date field.",
+            "page_number": "Page 1, 2, 4"
+          },
+          {
+            "field": "Executant Name & Kinship",
+            "ec_value": "வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன், மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)",
+            "metadata_value": "K. Shanmugasundaram (Power of Attorney Agent) for: 1. Vajjiram (s/o Ellaikkan), 2. Jeganathan (s/o Vajjiram), 3. Palanikkam (s/o Vajjiram)",
+            "status": "MATCHED (PARTIAL)",
+            "reason": "The Power Agent (K. Shanmugasundaram) and the first two principals (Vajjiram and Jeganathan) match perfectly. However, there is a clerical discrepancy in the third principal's name: the physical deed lists 'பழனிக்கம்' (Palanikkam) while the EC records 'மாணிக்கம்' (Manickam).",
+            "page_number": "Page 1, 2, 3, 5"
+          },
+          {
+            "field": "Claimant Name & Kinship",
+            "ec_value": "L. அக்ஸிலியா வினோலா",
+            "metadata_value": "Mrs. L. Auxillia Vinola, w/o Mr. Lourdes Xavier",
+            "status": "MATCHED",
+            "reason": "Exact phonetic match. The deed provides additional kinship details (spouse name) which acts as a supplemental match.",
+            "page_number": "Page 1, 2, 12"
+          },
+          {
+            "field": "Survey Number",
+            "ec_value": "63/1, 63/6, 66/5",
+            "metadata_value": "Survey Nos. 63/6, 66/5, 63/1",
+            "created_survey_nos": "63/6, 66/5, 63/1",
+            "status": "MATCHED",
+            "reason": "Exact match of all involved survey numbers listed in the parent tract description.",
+            "page_number": "Page 3, 9"
+          },
+          {
+            "field": "Nature of Document",
+            "ec_value": "Conveyance Non Metro/UA",
+            "metadata_value": "சுத்த விக்கிரையப் பத்திரம் (Absolute Sale Deed)",
+            "status": "MATCHED",
+            "reason": "'Conveyance Non Metro/UA' is the standard Tamil Nadu registration system synonym for an Absolute Sale Deed outside municipal/urban areas.",
+            "page_number": "Page 1, 8"
+          },
+          {
+            "field": "Square Feet / Extent",
+            "ec_value": "1200 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2)",
+            "metadata_value": "Plot No. 108, measuring 1200 Sq.Ft",
+            "status": "NOT MATCHED",
+            "reason": "The physical deed only conveys a single plot (Plot 108) of 1200 sq.ft. The EC incorrectly lists two schedules of 1200 sq.ft each (total 2400 sq.ft), which is a critical contradiction likely caused by an SRO data entry error (cloning the structure of adjacent document 10161/2011 registered on the same day).",
+            "page_number": "Page 6, 9, 10"
+          },
+          {
+            "field": "Supporting Documents",
+            "ec_value": "N/A",
+            "metadata_value": "Voter ID Card for Claimant L. Auxillia Vinola (XOE0751123) and Power Agent K. Shanmugasundaram (AZZ8531253)",
+            "status": "MATCHED",
+            "reason": "Valid identity proofs are embedded in the deed for both the claimant and the executant's power agent, with names and details matching perfectly.",
+            "page_number": "Page 1, 12, 13"
+          },
+          {
+            "field": "Market Value & Consideration",
+            "ec_value": "Consideration: Rs. 26,400/-, Market Value: Rs. 52,800/-",
+            "metadata_value": "Consideration: Rs. 26,400/-, Market Value: Rs. 26,400/-",
+            "status": "NOT MATCHED",
+            "reason": "While the consideration matches at Rs. 26,400/-, the Market Value has a 100% discrepancy. The EC lists Rs. 52,800/- due to the phantom Schedule 2 entry, whereas the physical deed lists the correct market value of Rs. 26,400/- on Page 11.",
+            "page_number": "Page 6, 11"
+          }
+        ],
+        "reason_for_failure": "Critical discrepancies in Square Feet/Extent (1200 sq.ft in deed vs 2400 sq.ft in EC) and Market Value (Rs. 26,400/- in deed vs Rs. 52,800/- in EC) due to SRO data entry errors in the EC record.",
+        "match_count": 7,
+        "valuation_details": {
+          "actual_sell_value": 26400,
+          "guideline_value": 26400,
+          "area_sqft": 1200,
+          "sell_value_per_sqft": 22,
+          "market_value_per_sqft": 22
+        }
+      },
+      "diffs": [
+        {
+          "field": "__overall_match__",
+          "baseline": true,
+          "full_context": false
+        },
+        {
+          "field": "Executant Name & Kinship",
+          "baseline": "MATCHED (LINKED)",
+          "full_context": "MATCHED (PARTIAL)"
+        },
+        {
+          "field": "Market Value & Consideration",
+          "baseline": "MATCHED",
+          "full_context": "NOT MATCHED"
+        },
+        {
+          "field": "Square Feet / Extent",
+          "baseline": "MATCHED (PARTIAL)",
+          "full_context": "NOT MATCHED"
+        }
+      ]
+    }
+  ]
+}

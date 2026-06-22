@@ -8,6 +8,33 @@ from prompts.validation_prompts import construct_validation_prompt
 from api.validate.visual_debugger import VisualDebugger
 
 
+def _attach_boxes_to_comparisons(comparisons: List[Dict], marked_boxes: List[Dict]) -> None:
+    """
+    Attach each drawn box's normalized coords onto the comparison it was located
+    for, as ``comparison["bounding_boxes"] = [{"page", "rect"}, ...]``.
+
+    Boxes are matched to comparisons by field name (case-insensitive). The deed
+    visual-debug pass labels every box with the comparison's own field, so this
+    is a direct match; a field may legitimately carry several boxes (the same
+    value boxed in the header, body and sign-off block). Mutates in place.
+    """
+    if not comparisons or not marked_boxes:
+        return
+    by_field: Dict[str, list] = {}
+    for b in marked_boxes:
+        field = str(b.get("field") or "").strip().lower()
+        rect = b.get("rect")
+        page = b.get("page")
+        if not field or not rect or page is None:
+            continue
+        by_field.setdefault(field, []).append({"page": page, "rect": rect})
+    for c in comparisons:
+        key = str(c.get("field") or "").strip().lower()
+        boxes = by_field.get(key)
+        if boxes:
+            c["bounding_boxes"] = boxes
+
+
 def _build_ec_lookup(ec_data: List[Dict]) -> Dict:
     """
     Build a doc_number → entry lookup that MERGES duplicate document_numbers.
@@ -140,6 +167,21 @@ class Validator:
 
         safe_doc = re.sub(r"[^a-zA-Z0-9]", "_", str(doc_no))
         ec_copy_name = f"{safe_doc}_ec.pdf"  # per-doc name so marked output is unique
+        marked = os.path.join(self.output_dir, "matched_docs", ec_copy_name)
+
+        def _rel(path: str):
+            p = path.replace("\\", "/").lstrip("./")
+            if p.startswith("tmp/work/"):
+                return p[len("tmp/work/"):]
+            if p.startswith("outputs/"):
+                return p[len("outputs/"):]
+            return p
+
+        # Cached marked EC for this document — skip the (slow) Gemini re-scan so
+        # re-analyzing a parcel is near-instant for already-marked documents.
+        if os.path.exists(marked):
+            return _rel(marked)
+
         tmpdir = tempfile.mkdtemp(prefix="ec_vd_")
         try:
             ec_copy = os.path.join(tmpdir, ec_copy_name)
@@ -156,15 +198,9 @@ class Validator:
         finally:
             shutil.rmtree(tmpdir, ignore_errors=True)
 
-        marked = os.path.join(self.output_dir, "matched_docs", ec_copy_name)
         if not os.path.exists(marked):
             return None
-        p = marked.replace("\\", "/").lstrip("./")
-        if p.startswith("tmp/work/"):
-            return p[len("tmp/work/"):]
-        if p.startswith("outputs/"):
-            return p[len("outputs/"):]
-        return p
+        return _rel(marked)
 
     def validate(
         self,
@@ -482,6 +518,17 @@ class Validator:
                 ):
                     print(f"   [VD] {msg}")
                 coverage_report = getattr(self.visual_debugger, "last_coverage_report", None)
+                # Attach the drawn boxes' normalized coords onto each comparison
+                # so the frontend can spotlight a field's box on click. Matched
+                # by field name; a field may carry several boxes (header/body/
+                # sign-off repeats). Best-effort — never break validation.
+                try:
+                    marked_boxes = getattr(self.visual_debugger, "last_marked_boxes", []) or []
+                    _attach_boxes_to_comparisons(
+                        validation_data.get("comparisons", []), marked_boxes
+                    )
+                except Exception as be:
+                    print(f"   [!] Box attach failed for {doc_no}: {be}")
             except Exception as ve:
                 import traceback
                 print(f"   [!] Visual Debugger batch failed for {doc_no}: {ve}")

@@ -1,0 +1,4300 @@
+[
+  {
+    "document_number": "1887/1990",
+    "date": "19-Jun-1990 | 19-Jun-1990 | 21-Jun-1990",
+    "nature_of_document": "Mortgage",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "பெருமாள்",
+      "கண்ணன்"
+    ],
+    "buyers": [
+      "கண்ணம்மாள்"
+    ],
+    "property_extent": "1.21 Acre",
+    "consideration": "Rs. 3,000/-",
+    "market_value": "Rs. 7,000/-",
+    "ec_page_start": 1,
+    "ec_page_end": 1,
+    "survey_number": "63/3",
+    "survey_raw": "63/3",
+    "involved_surveys": [
+      "63/3"
+    ],
+    "survey_base": "63",
+    "sub_division": "3"
+  },
+  {
+    "document_number": "3732/1990",
+    "date": "11-Dec-1990 | 11-Dec-1990 | 13-Dec-1990",
+    "nature_of_document": "Sale deed",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "முத்துமாணிக்கம்",
+      "லட்சுமி அம்மாள்"
+    ],
+    "buyers": [
+      "A. சுப்பிரமணி"
+    ],
+    "property_extent": "0.88 Cents",
+    "consideration": "Rs. 5,000/-",
+    "market_value": "Rs. 5,280/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "63/4",
+    "survey_raw": "63/4",
+    "involved_surveys": [
+      "63/4"
+    ],
+    "survey_base": "63",
+    "sub_division": "4"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "100/6",
+    "survey_raw": "100/6",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "100",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "118/17",
+    "survey_raw": "118/17",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "118",
+    "sub_division": "17"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "60/7",
+    "survey_raw": "60/7",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "60",
+    "sub_division": "7"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "61/5",
+    "survey_raw": "61/5",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "61",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "86/1A",
+    "survey_raw": "86/1A",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "86",
+    "sub_division": "1A"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "86/1C",
+    "survey_raw": "86/1C",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "86",
+    "sub_division": "1C"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "88/2",
+    "survey_raw": "88/2",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "88",
+    "sub_division": "2"
+  },
+  {
+    "document_number": "2850/2004",
+    "date": "08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004",
+    "nature_of_document": "Mortgage with possession Other property",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "buyers": [
+      "M/s State Bank of India"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "94",
+    "survey_raw": "94",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "94",
+    "sub_division": null
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "100/6",
+    "survey_raw": "100/6",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "100",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "118/17",
+    "survey_raw": "118/17",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "118",
+    "sub_division": "17"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "60/7",
+    "survey_raw": "60/7",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "60",
+    "sub_division": "7"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "61/5",
+    "survey_raw": "61/5",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "61",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "86/1A",
+    "survey_raw": "86/1A",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "86",
+    "sub_division": "1A"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "86/1C",
+    "survey_raw": "86/1C",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "86",
+    "sub_division": "1C"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "88/2",
+    "survey_raw": "88/2",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "88",
+    "sub_division": "2"
+  },
+  {
+    "document_number": "1911/2009",
+    "date": "12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009",
+    "nature_of_document": "Receipt",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M/s State Bank of India"
+    ],
+    "buyers": [
+      "Vajjiram",
+      "Jagannathan",
+      "Manickam",
+      "Rajasekaran",
+      "Dasarathan"
+    ],
+    "property_extent": "3.11.0ஹெக்",
+    "consideration": "Rs. 50,000/-",
+    "market_value": "Rs. 50,000/-",
+    "ec_page_start": 2,
+    "ec_page_end": 2,
+    "survey_number": "94",
+    "survey_raw": "94",
+    "involved_surveys": [
+      "100/6",
+      "118/17",
+      "60/7",
+      "61/5",
+      "63/1",
+      "86/1A",
+      "86/1C",
+      "88/2",
+      "94"
+    ],
+    "survey_base": "94",
+    "sub_division": null
+  },
+  {
+    "document_number": "3092/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "N. சிவகாமி"
+    ],
+    "property_extent": "3600 சதுரடி",
+    "consideration": "Rs. 81,000/-",
+    "market_value": "Rs. 81,000/-",
+    "ec_page_start": 3,
+    "ec_page_end": 3,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3092/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "N. சிவகாமி"
+    ],
+    "property_extent": "3600 சதுரடி",
+    "consideration": "Rs. 81,000/-",
+    "market_value": "Rs. 81,000/-",
+    "ec_page_start": 3,
+    "ec_page_end": 3,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3093/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. சுதா"
+    ],
+    "property_extent": "1565 சதுரடி",
+    "consideration": "Rs. 35,300/-",
+    "market_value": "Rs. 35,300/-",
+    "ec_page_start": 3,
+    "ec_page_end": 3,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3093/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. சுதா"
+    ],
+    "property_extent": "1565 சதுரடி",
+    "consideration": "Rs. 35,300/-",
+    "market_value": "Rs. 35,300/-",
+    "ec_page_start": 3,
+    "ec_page_end": 3,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3094/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "M. முரளி"
+    ],
+    "property_extent": "1200 சதுரடி",
+    "consideration": "Rs. 27,000/-",
+    "market_value": "Rs. 27,000/-",
+    "ec_page_start": 4,
+    "ec_page_end": 4,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3094/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "M. முரளி"
+    ],
+    "property_extent": "1200 சதுரடி",
+    "consideration": "Rs. 27,000/-",
+    "market_value": "Rs. 27,000/-",
+    "ec_page_start": 4,
+    "ec_page_end": 4,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3095/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "U. கார்த்திக்"
+    ],
+    "property_extent": "1783 சதுரடி",
+    "consideration": "Rs. 40,120/-",
+    "market_value": "Rs. 40,120/-",
+    "ec_page_start": 4,
+    "ec_page_end": 4,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3095/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "U. கார்த்திக்"
+    ],
+    "property_extent": "1783 சதுரடி",
+    "consideration": "Rs. 40,120/-",
+    "market_value": "Rs. 40,120/-",
+    "ec_page_start": 4,
+    "ec_page_end": 4,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3096/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "K. ராஜாமணி"
+    ],
+    "property_extent": "1349 சதுரடி",
+    "consideration": "Rs. 30,400/-",
+    "market_value": "Rs. 40,120/-",
+    "ec_page_start": 4,
+    "ec_page_end": 4,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3096/2009",
+    "date": "04-May-2009 | 04-May-2009 | 04-May-2009",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "K. ராஜாமணி"
+    ],
+    "property_extent": "1349 சதுரடி",
+    "consideration": "Rs. 30,400/-",
+    "market_value": "Rs. 40,120/-",
+    "ec_page_start": 4,
+    "ec_page_end": 4,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "5829/2010",
+    "date": "16-Aug-2010 | 16-Aug-2010 | 16-Aug-2010",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. சந்தோஷ்குமார்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 48,000/-",
+    "market_value": "Rs. 96,000/-",
+    "ec_page_start": 5,
+    "ec_page_end": 5,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "5829/2010",
+    "date": "16-Aug-2010 | 16-Aug-2010 | 16-Aug-2010",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. சந்தோஷ்குமார்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 48,000/-",
+    "market_value": "Rs. 96,000/-",
+    "ec_page_start": 5,
+    "ec_page_end": 5,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5829/2010",
+    "date": "16-Aug-2010 | 16-Aug-2010 | 16-Aug-2010",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. சந்தோஷ்குமார்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 48,000/-",
+    "market_value": "Rs. 96,000/-",
+    "ec_page_start": 5,
+    "ec_page_end": 5,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "662/2011",
+    "date": "02-Feb-2011 | 02-Feb-2011 | 02-Feb-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "G. கேசவன்"
+    ],
+    "property_extent": "2400 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 5,
+    "ec_page_end": 5,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "662/2011",
+    "date": "02-Feb-2011 | 02-Feb-2011 | 02-Feb-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "G. கேசவன்"
+    ],
+    "property_extent": "2400 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 5,
+    "ec_page_end": 5,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "662/2011",
+    "date": "02-Feb-2011 | 02-Feb-2011 | 02-Feb-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "G. கேசவன்"
+    ],
+    "property_extent": "2400 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 5,
+    "ec_page_end": 5,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "4338/2011",
+    "date": "01-Jun-2011 | 01-Jun-2011 | 01-Jun-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "கே. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "ஈ. ராஜாகன்னி"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,000/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 6,
+    "ec_page_end": 6,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/6"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5238/2011",
+    "date": "30-Jun-2011 | 30-Jun-2011 | 30-Jun-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "கே. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "பி. அம்பிகா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,000/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 6,
+    "ec_page_end": 6,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5238/2011",
+    "date": "30-Jun-2011 | 30-Jun-2011 | 30-Jun-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "கே. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "பி. அம்பிகா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,000/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 6,
+    "ec_page_end": 6,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "5405/2011",
+    "date": "06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "M. சுமதி"
+    ],
+    "property_extent": "1005 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 48,510/-",
+    "market_value": "Rs. 97,020/-",
+    "ec_page_start": 7,
+    "ec_page_end": 7,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "5405/2011",
+    "date": "06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "M. சுமதி"
+    ],
+    "property_extent": "1005 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 48,510/-",
+    "market_value": "Rs. 97,020/-",
+    "ec_page_start": 7,
+    "ec_page_end": 7,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5405/2011",
+    "date": "06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "M. சுமதி"
+    ],
+    "property_extent": "1005 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 48,510/-",
+    "market_value": "Rs. 97,020/-",
+    "ec_page_start": 7,
+    "ec_page_end": 7,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "5408/2011",
+    "date": "06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. மணி"
+    ],
+    "property_extent": "1200 ச அடி, 1845 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 7,
+    "ec_page_end": 7,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "5408/2011",
+    "date": "06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. மணி"
+    ],
+    "property_extent": "1200 ச அடி, 1845 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 7,
+    "ec_page_end": 7,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5408/2011",
+    "date": "06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. மணி"
+    ],
+    "property_extent": "1200 ச அடி, 1845 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 7,
+    "ec_page_end": 7,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "7752/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "V. சுமங்கலி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 8,
+    "ec_page_end": 8,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "7752/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "V. சுமங்கலி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 8,
+    "ec_page_end": 8,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "7752/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "V. சுமங்கலி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 8,
+    "ec_page_end": 8,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "7754/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. அமுதா",
+      "K. சுப்பிரமணி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 8,
+    "ec_page_end": 8,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "7754/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. அமுதா",
+      "K. சுப்பிரமணி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 8,
+    "ec_page_end": 8,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "7754/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. அமுதா",
+      "K. சுப்பிரமணி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 8,
+    "ec_page_end": 8,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "7755/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. அமுதா",
+      "K. சுப்பிரமணி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 9,
+    "ec_page_end": 9,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "7755/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. அமுதா",
+      "K. சுப்பிரமணி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 9,
+    "ec_page_end": 9,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "7755/2011",
+    "date": "22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. அமுதா",
+      "K. சுப்பிரமணி"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 9,
+    "ec_page_end": 9,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "8799/2011",
+    "date": "09-Nov-2011 | 09-Nov-2011 | 09-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "J. கீத்மொரிரா"
+    ],
+    "property_extent": "1200 சஅடி, 999 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 71,170/-",
+    "ec_page_start": 9,
+    "ec_page_end": 9,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "8799/2011",
+    "date": "09-Nov-2011 | 09-Nov-2011 | 09-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "J. கீத்மொரிரா"
+    ],
+    "property_extent": "1200 சஅடி, 999 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 71,170/-",
+    "ec_page_start": 9,
+    "ec_page_end": 9,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "8799/2011",
+    "date": "09-Nov-2011 | 09-Nov-2011 | 09-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "J. கீத்மொரிரா"
+    ],
+    "property_extent": "1200 சஅடி, 999 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 71,170/-",
+    "ec_page_start": 9,
+    "ec_page_end": 9,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "9159/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. கிறிஸிட்டாஜரின்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 10,
+    "ec_page_end": 10,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "9159/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. கிறிஸிட்டாஜரின்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 10,
+    "ec_page_end": 10,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "9159/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. கிறிஸிட்டாஜரின்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 10,
+    "ec_page_end": 10,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "9161/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. கிறிஸ்ஜோகன்ஸ்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 10,
+    "ec_page_end": 10,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "9161/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. கிறிஸ்ஜோகன்ஸ்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 10,
+    "ec_page_end": 10,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "9161/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "S. கிறிஸ்ஜோகன்ஸ்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 10,
+    "ec_page_end": 10,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "9162/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "C. பிரட்ராபின்சன்"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 11,
+    "ec_page_end": 11,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "9162/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "C. பிரட்ராபின்சன்"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 11,
+    "ec_page_end": 11,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "9162/2011",
+    "date": "21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "C. பிரட்ராபின்சன்"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 11,
+    "ec_page_end": 11,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "10159/2011",
+    "date": "14-Dec-2011 | 14-Dec-2011 | 14-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "V. தீபா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 11,
+    "ec_page_end": 11,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "10159/2011",
+    "date": "14-Dec-2011 | 14-Dec-2011 | 14-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "V. தீபா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 11,
+    "ec_page_end": 11,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "10159/2011",
+    "date": "14-Dec-2011 | 14-Dec-2011 | 14-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "V. தீபா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 11,
+    "ec_page_end": 11,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "10160/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன்",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "L. அக்ஸிலியா வினோலா"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 12,
+    "ec_page_end": 12,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "10160/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன்",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "L. அக்ஸிலியா வினோலா"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 12,
+    "ec_page_end": 12,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "10160/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன்",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "L. அக்ஸிலியா வினோலா"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 52,800/-",
+    "ec_page_start": 12,
+    "ec_page_end": 12,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "10161/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "உஷாநந்தின்"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 12,
+    "ec_page_end": 12,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "10161/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "உஷாநந்தின்"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 12,
+    "ec_page_end": 12,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "10161/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "உஷாநந்தின்"
+    ],
+    "property_extent": "1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 12,
+    "ec_page_end": 12,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "10162/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "A. பீட்டபீ ர்ஜான்"
+    ],
+    "property_extent": "1640 ச அடி, 1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 36,080/-",
+    "market_value": "Rs. 1,41,680/-",
+    "ec_page_start": 13,
+    "ec_page_end": 13,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "10162/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "A. பீட்டபீ ர்ஜான்"
+    ],
+    "property_extent": "1640 ச அடி, 1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 36,080/-",
+    "market_value": "Rs. 1,41,680/-",
+    "ec_page_start": 13,
+    "ec_page_end": 13,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "10162/2011",
+    "date": "15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "A. பீட்டபீ ர்ஜான்"
+    ],
+    "property_extent": "1640 ச அடி, 1200 ச அடி, 1200 ச அடி",
+    "consideration": "Rs. 36,080/-",
+    "market_value": "Rs. 1,41,680/-",
+    "ec_page_start": 13,
+    "ec_page_end": 13,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "10403/2011",
+    "date": "14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. பால்மாரிஸ்"
+    ],
+    "property_extent": "1200சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 14,
+    "ec_page_end": 14,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "10403/2011",
+    "date": "14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. பால்மாரிஸ்"
+    ],
+    "property_extent": "1200சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 14,
+    "ec_page_end": 14,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "10403/2011",
+    "date": "14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. பால்மாரிஸ்"
+    ],
+    "property_extent": "1200சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 14,
+    "ec_page_end": 14,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "10404/2011",
+    "date": "14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. மனோன்மணி"
+    ],
+    "property_extent": "1200சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 14,
+    "ec_page_end": 14,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "10404/2011",
+    "date": "14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. மனோன்மணி"
+    ],
+    "property_extent": "1200சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 14,
+    "ec_page_end": 14,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "10404/2011",
+    "date": "14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "S. மனோன்மணி"
+    ],
+    "property_extent": "1200சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 14,
+    "ec_page_end": 14,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "1561/2012",
+    "date": "24-Feb-2012 | 24-Feb-2012 | 24-Feb-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. அஜய்மேத்யூஸ்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 15,
+    "ec_page_end": 15,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "1561/2012",
+    "date": "24-Feb-2012 | 24-Feb-2012 | 24-Feb-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. அஜய்மேத்யூஸ்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 15,
+    "ec_page_end": 15,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "1561/2012",
+    "date": "24-Feb-2012 | 24-Feb-2012 | 24-Feb-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. அஜய்மேத்யூஸ்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 15,
+    "ec_page_end": 15,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "1986/2012",
+    "date": "08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "M. செல்வி"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 15,
+    "ec_page_end": 15,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "1986/2012",
+    "date": "08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "M. செல்வி"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 15,
+    "ec_page_end": 15,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "1986/2012",
+    "date": "08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "M. செல்வி"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 15,
+    "ec_page_end": 15,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "1989/2012",
+    "date": "08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. அஜய் மேத்யூஸ்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 16,
+    "ec_page_end": 16,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "1989/2012",
+    "date": "08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. அஜய் மேத்யூஸ்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 16,
+    "ec_page_end": 16,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "1989/2012",
+    "date": "08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "B. அஜய் மேத்யூஸ்"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 52,800/-",
+    "market_value": "Rs. 1,05,600/-",
+    "ec_page_start": 16,
+    "ec_page_end": 16,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "2708/2012",
+    "date": "28-Mar-2012 | 28-Mar-2012 | 28-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "P. முருகேஷ் (எ) முருகேசன் (முதல்வர்)",
+      "P. குப்புசாமி (முதல்வர்)",
+      "A. வெங்கடேசன் (முகவர்)"
+    ],
+    "buyers": [
+      "B. புகழேந்தி"
+    ],
+    "property_extent": "2.27 Acres",
+    "consideration": "Rs. 4,50,000/-",
+    "market_value": "Rs. 4,54,000/-",
+    "ec_page_start": 16,
+    "ec_page_end": 16,
+    "survey_number": "63/5",
+    "survey_raw": "63/5",
+    "involved_surveys": [
+      "63/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "2714/2012",
+    "date": "28-Mar-2012 | 28-Mar-2012 | 28-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "G. கணேசன்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 17,
+    "ec_page_end": 17,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "2714/2012",
+    "date": "28-Mar-2012 | 28-Mar-2012 | 28-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "G. கணேசன்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 17,
+    "ec_page_end": 17,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "2714/2012",
+    "date": "28-Mar-2012 | 28-Mar-2012 | 28-Mar-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "G. கணேசன்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "Rs. 26,400/-",
+    "market_value": "Rs. 26,400/-",
+    "ec_page_start": 17,
+    "ec_page_end": 17,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3184/2012",
+    "date": "11-Apr-2012 | 11-Apr-2012 | 11-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "T. ஷாயமளா"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 1,42,800/-",
+    "ec_page_start": 17,
+    "ec_page_end": 17,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3184/2012",
+    "date": "11-Apr-2012 | 11-Apr-2012 | 11-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "T. ஷாயமளா"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 1,42,800/-",
+    "ec_page_start": 17,
+    "ec_page_end": 17,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "3184/2012",
+    "date": "11-Apr-2012 | 11-Apr-2012 | 11-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "T. ஷாயமளா"
+    ],
+    "property_extent": "1200 சஅடி, 1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 1,42,800/-",
+    "ec_page_start": 17,
+    "ec_page_end": 17,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3716/2012",
+    "date": "30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. கோபிநாத்"
+    ],
+    "property_extent": "1984 ச அடி",
+    "consideration": "Rs. 1,48,800/-",
+    "market_value": "Rs. 1,48,800/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3716/2012",
+    "date": "30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. கோபிநாத்"
+    ],
+    "property_extent": "1984 ச அடி",
+    "consideration": "Rs. 1,48,800/-",
+    "market_value": "Rs. 1,48,800/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "3716/2012",
+    "date": "30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. கோபிநாத்"
+    ],
+    "property_extent": "1984 ச அடி",
+    "consideration": "Rs. 1,48,800/-",
+    "market_value": "Rs. 1,48,800/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "3717/2012",
+    "date": "30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. ராதாபாய்"
+    ],
+    "property_extent": "1802 ச அடி",
+    "consideration": "Rs. 1,35,150/-",
+    "market_value": "Rs. 1,35,150/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "3717/2012",
+    "date": "30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. ராதாபாய்"
+    ],
+    "property_extent": "1802 ச அடி",
+    "consideration": "Rs. 1,35,150/-",
+    "market_value": "Rs. 1,35,150/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "3717/2012",
+    "date": "30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "P. ராதாபாய்"
+    ],
+    "property_extent": "1802 ச அடி",
+    "consideration": "Rs. 1,35,150/-",
+    "market_value": "Rs. 1,35,150/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "5175/2012",
+    "date": "02-Jul-2012 | 02-Jul-2012 | 02-Jul-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "P. ஏசு (முதல்வர்)"
+    ],
+    "buyers": [
+      "ரத்தினகுமார் மாஜி"
+    ],
+    "property_extent": "5555 ச அடி",
+    "consideration": "Rs. 4,16,625/-",
+    "market_value": "Rs. 4,16,625/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "5175/2012",
+    "date": "02-Jul-2012 | 02-Jul-2012 | 02-Jul-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "P. ஏசு (முதல்வர்)"
+    ],
+    "buyers": [
+      "ரத்தினகுமார் மாஜி"
+    ],
+    "property_extent": "5555 ச அடி",
+    "consideration": "Rs. 4,16,625/-",
+    "market_value": "Rs. 4,16,625/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5175/2012",
+    "date": "02-Jul-2012 | 02-Jul-2012 | 02-Jul-2012",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர்)",
+      "P. ஏசு (முதல்வர்)"
+    ],
+    "buyers": [
+      "ரத்தினகுமார் மாஜி"
+    ],
+    "property_extent": "5555 ச அடி",
+    "consideration": "Rs. 4,16,625/-",
+    "market_value": "Rs. 4,16,625/-",
+    "ec_page_start": 18,
+    "ec_page_end": 18,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "1552/2013",
+    "date": "27-Feb-2013 | 27-Feb-2013 | 27-Feb-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநான்",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "மரியா ஆன்கின்ஸ்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 19,
+    "ec_page_end": 19,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "1552/2013",
+    "date": "27-Feb-2013 | 27-Feb-2013 | 27-Feb-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநான்",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "மரியா ஆன்கின்ஸ்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 19,
+    "ec_page_end": 19,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "1552/2013",
+    "date": "27-Feb-2013 | 27-Feb-2013 | 27-Feb-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகநான்",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முகசுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "மரியா ஆன்கின்ஸ்"
+    ],
+    "property_extent": "1200 ச அடி",
+    "consideration": "-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 19,
+    "ec_page_end": 19,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "4637/2013",
+    "date": "12-Jun-2013 | 12-Jun-2013 | 12-Jun-2013",
+    "nature_of_document": "Power of Attorney-authorizing not more than 5-general",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M. கண்ணம்மாள்",
+      "M. ரங்கநாதன்",
+      "G. சாந்தி",
+      "V. அலமேலு"
+    ],
+    "buyers": [
+      "A. வெங்கடேசன்"
+    ],
+    "property_extent": "0.64 Cents",
+    "consideration": "-",
+    "market_value": "-",
+    "ec_page_start": 19,
+    "ec_page_end": 19,
+    "survey_number": "63/2",
+    "survey_raw": "63/2",
+    "involved_surveys": [
+      "63/2"
+    ],
+    "survey_base": "63",
+    "sub_division": "2"
+  },
+  {
+    "document_number": "5111/2013",
+    "date": "28-Jun-2013 | 28-Jun-2013 | 28-Jun-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "M. கண்ணம்மாள் (முதல்வர்)",
+      "M. ரங்கநாதன் (முதல்வர்)",
+      "A. வெங்கடேசன் (முகவர்)",
+      "G. சாந்தி (முதல்வர்)",
+      "V. அலமேலு (முதல்வர்)"
+    ],
+    "buyers": [
+      "T. அமுதா"
+    ],
+    "property_extent": "0.64 Cents",
+    "consideration": "Rs. 3,52,000/-",
+    "market_value": "Rs. 3,52,000/-",
+    "ec_page_start": 20,
+    "ec_page_end": 20,
+    "survey_number": "63/2",
+    "survey_raw": "63/2",
+    "involved_surveys": [
+      "63/2"
+    ],
+    "survey_base": "63",
+    "sub_division": "2"
+  },
+  {
+    "document_number": "5548/2013",
+    "date": "15-Jul-2013 | 15-Jul-2013 | 15-Jul-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "பு. பிரசன்ன பாபு"
+    ],
+    "property_extent": "1843 சஅடி",
+    "consideration": "Rs. 1,38,300/-",
+    "market_value": "Rs. 1,38,300/-",
+    "ec_page_start": 20,
+    "ec_page_end": 20,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "5548/2013",
+    "date": "15-Jul-2013 | 15-Jul-2013 | 15-Jul-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "பு. பிரசன்ன பாபு"
+    ],
+    "property_extent": "1843 சஅடி",
+    "consideration": "Rs. 1,38,300/-",
+    "market_value": "Rs. 1,38,300/-",
+    "ec_page_start": 20,
+    "ec_page_end": 20,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "5548/2013",
+    "date": "15-Jul-2013 | 15-Jul-2013 | 15-Jul-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)"
+    ],
+    "buyers": [
+      "பு. பிரசன்ன பாபு"
+    ],
+    "property_extent": "1843 சஅடி",
+    "consideration": "Rs. 1,38,300/-",
+    "market_value": "Rs. 1,38,300/-",
+    "ec_page_start": 20,
+    "ec_page_end": 20,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "5550/2013",
+    "date": "15-Jul-2013 | 15-Jul-2013 | 15-Jul-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "Not in provided pages",
+    "sellers": [
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "K. சண்முக சுந்தரம் (முகவர்)"
+    ],
+    "buyers": [
+      "பு. ஹரிகிருஷ்ணன்"
+    ],
+    "property_extent": "Not in provided pages",
+    "consideration": "Rs. 1,41,200/-",
+    "market_value": "Rs. 1,41,200/-",
+    "ec_page_start": 20,
+    "ec_page_end": 20,
+    "survey_number": "Notinprovidedpages",
+    "survey_raw": "Not in provided pages",
+    "involved_surveys": [
+      "Notinprovidedpages"
+    ],
+    "survey_base": "Notinprovidedpages",
+    "sub_division": null
+  },
+  {
+    "document_number": "6570/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for ஜெகன்நாதன்",
+      "மாணிக்கம்",
+      "வஜ்ஜிரம்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "ஸ்டெல்லா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 21,
+    "ec_page_end": 21,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "6570/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for ஜெகன்நாதன்",
+      "மாணிக்கம்",
+      "வஜ்ஜிரம்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "ஸ்டெல்லா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 21,
+    "ec_page_end": 21,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "6570/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for ஜெகன்நாதன்",
+      "மாணிக்கம்",
+      "வஜ்ஜிரம்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)",
+      "வஜ்ஜிரம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "ஸ்டெல்லா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 21,
+    "ec_page_end": 21,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "6571/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "ஸ்டெல்லா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 21,
+    "ec_page_end": 21,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "6571/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "ஸ்டெல்லா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 21,
+    "ec_page_end": 21,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "6571/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "ஸ்டெல்லா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 21,
+    "ec_page_end": 21,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "6572/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "C B. டார்வின் பிரைட்"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "6572/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "C B. டார்வின் பிரைட்"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "6572/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "C B. டார்வின் பிரைட்"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "6573/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "CB. சில்வியா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "6573/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "CB. சில்வியா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "6573/2013",
+    "date": "23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "CB. சில்வியா"
+    ],
+    "property_extent": "1200 சஅடி",
+    "consideration": "Rs. 90,000/-",
+    "market_value": "Rs. 90,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "9397/2013",
+    "date": "25-Nov-2013 | 29-Nov-2013 | 29-Nov-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "சுப்பிரிதா கிஷோர்"
+    ],
+    "property_extent": "2400 ச அடி",
+    "consideration": "Rs. 1,80,000/-",
+    "market_value": "Rs. 1,80,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "9397/2013",
+    "date": "25-Nov-2013 | 29-Nov-2013 | 29-Nov-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "சுப்பிரிதா கிஷோர்"
+    ],
+    "property_extent": "2400 ச அடி",
+    "consideration": "Rs. 1,80,000/-",
+    "market_value": "Rs. 1,80,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "9397/2013",
+    "date": "25-Nov-2013 | 29-Nov-2013 | 29-Nov-2013",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "சுப்பிரிதா கிஷோர்"
+    ],
+    "property_extent": "2400 ச அடி",
+    "consideration": "Rs. 1,80,000/-",
+    "market_value": "Rs. 1,80,000/-",
+    "ec_page_start": 22,
+    "ec_page_end": 22,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "5185/2014",
+    "date": "30-Jun-2014 | 30-Jun-2014 | 30-Jun-2014",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "B. உஷாநந்தினி"
+    ],
+    "buyers": [
+      "N. அப்துல் ரஹிம்"
+    ],
+    "property_extent": "1200 சஅடி (Schedule 1), 1200 சஅடி (Schedule 2)",
+    "consideration": "Rs. 1,80,597/-",
+    "market_value": "Rs. 3,61,194/-",
+    "ec_page_start": 23,
+    "ec_page_end": 23,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/6"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "7161/2014",
+    "date": "10-Sep-2014 | 10-Sep-2014 | 10-Sep-2014",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "சிறைமீட்டான்"
+    ],
+    "property_extent": "2460 ச அடி",
+    "consideration": "Rs. 1,84,500/-",
+    "market_value": "Rs. 1,84,500/-",
+    "ec_page_start": 23,
+    "ec_page_end": 23,
+    "survey_number": "63/1",
+    "survey_raw": "63/1",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "7161/2014",
+    "date": "10-Sep-2014 | 10-Sep-2014 | 10-Sep-2014",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "சிறைமீட்டான்"
+    ],
+    "property_extent": "2460 ச அடி",
+    "consideration": "Rs. 1,84,500/-",
+    "market_value": "Rs. 1,84,500/-",
+    "ec_page_start": 23,
+    "ec_page_end": 23,
+    "survey_number": "63/6",
+    "survey_raw": "63/6",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "63",
+    "sub_division": "6"
+  },
+  {
+    "document_number": "7161/2014",
+    "date": "10-Sep-2014 | 10-Sep-2014 | 10-Sep-2014",
+    "nature_of_document": "Conveyance Non Metro/UA",
+    "property_type": "House Site",
+    "sellers": [
+      "K. சண்முகசுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம்",
+      "ஜெகன்நாதன்",
+      "மாணிக்கம்)",
+      "வஜ்ஜிரம் (முதல்வர்)",
+      "ஜெகன்நாதன் (முதல்வர்)",
+      "மாணிக்கம் (முதல்வர்)"
+    ],
+    "buyers": [
+      "சிறைமீட்டான்"
+    ],
+    "property_extent": "2460 ச அடி",
+    "consideration": "Rs. 1,84,500/-",
+    "market_value": "Rs. 1,84,500/-",
+    "ec_page_start": 23,
+    "ec_page_end": 23,
+    "survey_number": "66/5",
+    "survey_raw": "66/5",
+    "involved_surveys": [
+      "63/1",
+      "63/6",
+      "66/5"
+    ],
+    "survey_base": "66",
+    "sub_division": "5"
+  },
+  {
+    "document_number": "4939/2018",
+    "date": "20-Jul-2018 | 20-Jul-2018 | 31-Jul-2018",
+    "nature_of_document": "Sale deed",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "பிரபு (முகவர் / POA agent for ஜோதி",
+      "வெங்கடேசன்",
+      "கண்ணகி",
+      "கருணாவதி)",
+      "சுந்தர்ராஜி (முகவர் / POA agent for கெங்கம்மாள்",
+      "காசிநாதன்",
+      "திலகவதி",
+      "ரேணுகோபால்",
+      "பழனிவேல்",
+      "ராணி",
+      "காஞ்சனா",
+      "பௌலினா)",
+      "ஜோதி (முதல்வர்)",
+      "வெங்கடேசன் (முதல்வர்)",
+      "கண்ணகி (முதல்வர்)",
+      "கருணாவதி (முதல்வர்)",
+      "கெங்கம்மாள் (முதல்வர்)",
+      "காசிநாதன் (முதல்வர்)",
+      "திலகவதி (முதல்வர்)",
+      "ரேணுகோபால் (முதல்வர்)",
+      "பழனிவேல் (முதல்வர்)",
+      "ராணி (முதல்வர்)",
+      "காஞ்சனா (முதல்வர்)",
+      "பௌலினா (முதல்வர்)"
+    ],
+    "buyers": [
+      "அசோக்குமார்"
+    ],
+    "property_extent": "1 ACRE, 21.0 CENTS, 88.0 CENTS",
+    "consideration": "Rs. 7,73,300/-",
+    "market_value": "Rs. 7,73,300/-",
+    "ec_page_start": 24,
+    "ec_page_end": 24,
+    "survey_number": "63/3",
+    "survey_raw": "63/3",
+    "involved_surveys": [
+      "63/3",
+      "63/4"
+    ],
+    "survey_base": "63",
+    "sub_division": "3"
+  },
+  {
+    "document_number": "4939/2018",
+    "date": "20-Jul-2018 | 20-Jul-2018 | 31-Jul-2018",
+    "nature_of_document": "Sale deed",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "பிரபு (முகவர் / POA agent for ஜோதி",
+      "வெங்கடேசன்",
+      "கண்ணகி",
+      "கருணாவதி)",
+      "சுந்தர்ராஜி (முகவர் / POA agent for கெங்கம்மாள்",
+      "காசிநாதன்",
+      "திலகவதி",
+      "ரேணுகோபால்",
+      "பழனிவேல்",
+      "ராணி",
+      "காஞ்சனா",
+      "பௌலினா)",
+      "ஜோதி (முதல்வர்)",
+      "வெங்கடேசன் (முதல்வர்)",
+      "கண்ணகி (முதல்வர்)",
+      "கருணாவதி (முதல்வர்)",
+      "கெங்கம்மாள் (முதல்வர்)",
+      "காசிநாதன் (முதல்வர்)",
+      "திலகவதி (முதல்வர்)",
+      "ரேணுகோபால் (முதல்வர்)",
+      "பழனிவேல் (முதல்வர்)",
+      "ராணி (முதல்வர்)",
+      "காஞ்சனா (முதல்வர்)",
+      "பௌலினா (முதல்வர்)"
+    ],
+    "buyers": [
+      "அசோக்குமார்"
+    ],
+    "property_extent": "1 ACRE, 21.0 CENTS, 88.0 CENTS",
+    "consideration": "Rs. 7,73,300/-",
+    "market_value": "Rs. 7,73,300/-",
+    "ec_page_start": 24,
+    "ec_page_end": 24,
+    "survey_number": "63/4",
+    "survey_raw": "63/4",
+    "involved_surveys": [
+      "63/3",
+      "63/4"
+    ],
+    "survey_base": "63",
+    "sub_division": "4"
+  },
+  {
+    "document_number": "4506/2022",
+    "date": "19-Jul-2022 | 19-Jul-2022 | 19-Jul-2022",
+    "nature_of_document": "Deposit Of Title Deeds",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "அசோக்குமார்"
+    ],
+    "buyers": [
+      "ஐசிஐசிஐ பேங்க்"
+    ],
+    "property_extent": "62/1 - 36 ARE, 5.0 SQUARE METRE; 62/6A2 - 58 ARE, 5.0 SQUARE METRE; 63/4 - 35 ARE, 5.0 SQUARE METRE (Schedule 1), 63/3 - 49 ARE (Schedule 2)",
+    "consideration": "-",
+    "market_value": "Rs. 9,20,000/-",
+    "ec_page_start": 24,
+    "ec_page_end": 24,
+    "survey_number": "62/1",
+    "survey_raw": "62/1",
+    "involved_surveys": [
+      "62/1",
+      "62/6A2",
+      "63/4",
+      "63/3"
+    ],
+    "survey_base": "62",
+    "sub_division": "1"
+  },
+  {
+    "document_number": "4506/2022",
+    "date": "19-Jul-2022 | 19-Jul-2022 | 19-Jul-2022",
+    "nature_of_document": "Deposit Of Title Deeds",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "அசோக்குமார்"
+    ],
+    "buyers": [
+      "ஐசிஐசிஐ பேங்க்"
+    ],
+    "property_extent": "62/1 - 36 ARE, 5.0 SQUARE METRE; 62/6A2 - 58 ARE, 5.0 SQUARE METRE; 63/4 - 35 ARE, 5.0 SQUARE METRE (Schedule 1), 63/3 - 49 ARE (Schedule 2)",
+    "consideration": "-",
+    "market_value": "Rs. 9,20,000/-",
+    "ec_page_start": 24,
+    "ec_page_end": 24,
+    "survey_number": "62/6A2",
+    "survey_raw": "62/6A2",
+    "involved_surveys": [
+      "62/1",
+      "62/6A2",
+      "63/4",
+      "63/3"
+    ],
+    "survey_base": "62",
+    "sub_division": "6A2"
+  },
+  {
+    "document_number": "4506/2022",
+    "date": "19-Jul-2022 | 19-Jul-2022 | 19-Jul-2022",
+    "nature_of_document": "Deposit Of Title Deeds",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "அசோக்குமார்"
+    ],
+    "buyers": [
+      "ஐசிஐசிஐ பேங்க்"
+    ],
+    "property_extent": "62/1 - 36 ARE, 5.0 SQUARE METRE; 62/6A2 - 58 ARE, 5.0 SQUARE METRE; 63/4 - 35 ARE, 5.0 SQUARE METRE (Schedule 1), 63/3 - 49 ARE (Schedule 2)",
+    "consideration": "-",
+    "market_value": "Rs. 9,20,000/-",
+    "ec_page_start": 24,
+    "ec_page_end": 24,
+    "survey_number": "63/4",
+    "survey_raw": "63/4",
+    "involved_surveys": [
+      "62/1",
+      "62/6A2",
+      "63/4",
+      "63/3"
+    ],
+    "survey_base": "63",
+    "sub_division": "4"
+  },
+  {
+    "document_number": "4506/2022",
+    "date": "19-Jul-2022 | 19-Jul-2022 | 19-Jul-2022",
+    "nature_of_document": "Deposit Of Title Deeds",
+    "property_type": "Agricultural Land",
+    "sellers": [
+      "அசோக்குமார்"
+    ],
+    "buyers": [
+      "ஐசிஐசிஐ பேங்க்"
+    ],
+    "property_extent": "62/1 - 36 ARE, 5.0 SQUARE METRE; 62/6A2 - 58 ARE, 5.0 SQUARE METRE; 63/4 - 35 ARE, 5.0 SQUARE METRE (Schedule 1), 63/3 - 49 ARE (Schedule 2)",
+    "consideration": "-",
+    "market_value": "Rs. 9,20,000/-",
+    "ec_page_start": 24,
+    "ec_page_end": 24,
+    "survey_number": "63/3",
+    "survey_raw": "63/3",
+    "involved_surveys": [
+      "62/1",
+      "62/6A2",
+      "63/4",
+      "63/3"
+    ],
+    "survey_base": "63",
+    "sub_division": "3"
+  }
+]

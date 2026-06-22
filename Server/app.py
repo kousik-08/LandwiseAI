@@ -1,8 +1,30 @@
 import os
 import json
 import logging
+import tempfile
 import uuid
 from typing import Optional
+
+# ── Upload spool directory ────────────────────────────────────────────────
+# Starlette streams large multipart *file* parts into a SpooledTemporaryFile,
+# which rolls over to a real temp file in the system temp dir once it exceeds
+# its in-memory threshold. On this host the system temp dir lives on C:, which
+# can fill up — when it does, the spool write fails with OSError(ENOSPC) and
+# FastAPI surfaces it as the misleading 400 "There was an error parsing the
+# body", breaking every large upload.
+#
+# Point Python's temp dir at the app's own drive (D:, where the project lives
+# and there is ample free space) so uploads no longer depend on C: having room.
+_UPLOAD_TMPDIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tmp", "_spool")
+try:
+    os.makedirs(_UPLOAD_TMPDIR, exist_ok=True)
+    tempfile.tempdir = _UPLOAD_TMPDIR
+    # Child processes / libraries that read the env vars honour it too.
+    for _k in ("TMPDIR", "TEMP", "TMP"):
+        os.environ[_k] = _UPLOAD_TMPDIR
+    print(f"[+] Temp/upload spool directory set to {_UPLOAD_TMPDIR}")
+except OSError as _e:
+    print(f"[!] Could not set spool dir to {_UPLOAD_TMPDIR}: {_e} — using system default")
 
 from fastapi import FastAPI, APIRouter, Request, HTTPException, File, Form, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,7 +39,7 @@ from sqlalchemy.exc import OperationalError
 from api.download_ec.handler import handle_download_ec, ECRequest
 from api.validate.handler import (
     handle_validate, handle_validate_json, WorkflowRequest, 
-    handle_verify_supporting_doc, handle_chat_with_doc, handle_chat_overall, handle_mark_ec, handle_validate_single,
+    handle_verify_supporting_doc, handle_chat_with_doc, handle_chat_overall, handle_mark_ec, handle_marked_boxes, handle_validate_single,
     handle_get_global_hierarchy, handle_search_survey_timeline,
     handle_generate_report, handle_analyze_ec, handle_get_survey_ownership
 )
@@ -503,6 +525,21 @@ async def mark_ec_endpoint(
     return await handle_mark_ec(request_id, parcel_id, doc_no, mismatch_list)
 
 
+@router.post("/visual-debug/marked-boxes")
+async def marked_boxes_endpoint(
+    request: Request,
+    request_id: str = Form(...),
+    doc_no: str = Form(...),
+):
+    """
+    Return per-field box coordinates for a document's marked deed + EC PDFs,
+    recovered by reading the drawn rectangles/labels back out (no LLM). Drives
+    the spotlight + error-navigator on documents analyzed before coordinates
+    were captured inline.
+    """
+    return await handle_marked_boxes(request_id, doc_no)
+
+
 @router.post("/chat-overall")
 async def chat_overall_endpoint(
     request: Request,
@@ -511,13 +548,23 @@ async def chat_overall_endpoint(
     request_id: Optional[str] = Form(None),
     parcel_id: Optional[str] = Form(None),
     mentions: str = Form("[]"),
+    active_doc: Optional[str] = Form(None),
+    view_context: Optional[str] = Form(None),
+    screen_context: Optional[str] = Form(None),
 ):
     """
     Property-wide chatbot: answers over the whole EC chain for the analyze run,
     with optional @-mentioned document numbers to focus on. Mirrors
     /chat-with-doc but is not scoped to a single document.
+
+    `active_doc` / `view_context` / `screen_context` make the assistant
+    screen-aware. `active_doc` is the document open on screen (focus when no
+    @-mention is typed); `view_context` is a short label for the screen; and
+    `screen_context` is a text snapshot of what the screen is actually showing
+    (e.g. the Risk Score factors and values), so the user can ask about data
+    that lives outside the EC chain — like "what is this score factor?".
     """
-    print(f"[*] chat-overall: request_id={request_id}, parcel_id={parcel_id}")
+    print(f"[*] chat-overall: request_id={request_id}, parcel_id={parcel_id}, active_doc={active_doc}, view={view_context}")
     try:
         history_list = json.loads(history)
     except Exception:
@@ -543,7 +590,9 @@ async def chat_overall_endpoint(
         db.close()
 
     response_data = await handle_chat_overall(
-        message, history_list, request_id=request_id, parcel_id=parcel_id, mentions=mention_list
+        message, history_list, request_id=request_id, parcel_id=parcel_id,
+        mentions=mention_list, active_doc=active_doc, view_context=view_context,
+        screen_context=screen_context,
     )
 
     db = SessionLocal()

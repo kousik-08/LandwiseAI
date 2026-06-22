@@ -59,6 +59,88 @@ GRID_COLOR = (0, 120, 255)
 GRID_ALPHA = 70
 
 
+def extract_marked_boxes(pdf_path: str) -> list[dict]:
+    """
+    Recover the per-field boxes from an ALREADY-MARKED PDF by reading the vector
+    rectangles + red labels that ``mark_pdf_with_boxes`` drew, with NO LLM call.
+
+    This lets the frontend spotlight / navigate boxes on documents that were
+    analyzed before per-field coordinates were captured — the marked PDF itself
+    is the source of truth.
+
+    Each drawn box is a red-stroked rectangle with NO fill; its field name is a
+    red text label sitting just above it at the same left edge (the label pill
+    is a red-stroked rect WITH a white fill, so the fill flag distinguishes the
+    two). Returns ``[{"field", "page", "rect":[x0,y0,x1,y1]}]`` with rect
+    normalized to [0,1] (top-left origin).
+    """
+    out: list[dict] = []
+    try:
+        doc = fitz.open(pdf_path)
+    except Exception as e:
+        print(f"[VD] extract_marked_boxes: open failed for {pdf_path}: {e}")
+        return out
+
+    def _is_red(col) -> bool:
+        return bool(col) and len(col) == 3 and col[0] > 0.8 and col[1] < 0.2 and col[2] < 0.2
+
+    try:
+        for pno in range(len(doc)):
+            page = doc.load_page(pno)
+            W, H = page.rect.width, page.rect.height
+            if W <= 0 or H <= 0:
+                continue
+
+            value_rects = []   # red-stroked, no fill → the actual value boxes
+            for d in page.get_drawings():
+                r = d.get("rect")
+                if r is None:
+                    continue
+                if _is_red(d.get("color")) and not d.get("fill"):
+                    value_rects.append(r)
+
+            labels = []        # (x0, y0, text) for red label spans
+            try:
+                td = page.get_text("dict")
+            except Exception:
+                td = {"blocks": []}
+            for blk in td.get("blocks", []):
+                for line in blk.get("lines", []):
+                    for span in line.get("spans", []):
+                        c = span.get("color", 0)
+                        r8, g8, b8 = (c >> 16) & 255, (c >> 8) & 255, c & 255
+                        if r8 > 180 and g8 < 80 and b8 < 80:
+                            txt = (span.get("text") or "").strip()
+                            if txt:
+                                labels.append((span["bbox"][0], span["bbox"][1], txt))
+
+            for r in value_rects:
+                # Pair with the label nearest the box's top-left corner: same
+                # left edge (dx small) and sitting just above the box top.
+                best, best_score = "", 1e9
+                for lx, ly, txt in labels:
+                    dx = abs(lx - r.x0)
+                    dy = r.y0 - ly        # label is above the box → positive
+                    if dx > 45 or dy < -6 or dy > 45:
+                        continue
+                    score = dx + abs(dy)
+                    if score < best_score:
+                        best_score, best = score, txt
+                out.append({
+                    "field": best,
+                    "page": pno + 1,
+                    "rect": [
+                        round(max(0.0, min(1.0, r.x0 / W)), 5),
+                        round(max(0.0, min(1.0, r.y0 / H)), 5),
+                        round(max(0.0, min(1.0, r.x1 / W)), 5),
+                        round(max(0.0, min(1.0, r.y1 / H)), 5),
+                    ],
+                })
+    finally:
+        doc.close()
+    return out
+
+
 def draw_grid_overlay(src_image_path: str, out_path: str,
                       spacing_px: int = GRID_SPACING_PX) -> str:
     """
@@ -432,6 +514,11 @@ class VisualDebugger:
         self._coord_cache = self._load_cache()
         self.last_coverage_report = None
         self.last_marked_pages: list[int] = []
+        # Per-box coordinates for the most recent run, so callers can hand the
+        # frontend the exact location of every drawn box (not just the page).
+        # Each entry: {"field", "value", "page", "rect": [x0, y0, x1, y1]} where
+        # rect is NORMALIZED to [0, 1] relative to the page (origin top-left).
+        self.last_marked_boxes: list[dict] = []
 
     # ── Cache ────────────────────────────────────────────────────────────────
 
@@ -806,6 +893,35 @@ class VisualDebugger:
         return report
 
     @staticmethod
+    def _normalize_boxes(all_boxes: list[dict]) -> list[dict]:
+        """
+        Convert internal pixel boxes into normalized [0, 1] page coords for the
+        frontend. ``rect`` is ``[x0, y0, x1, y1]`` with a top-left origin, the
+        same orientation react-pdf-highlighter expects after viewport scaling.
+        """
+        out: list[dict] = []
+        for b in all_boxes:
+            img_w = b.get("img_width") or 0
+            img_h = b.get("img_height") or 0
+            px = b.get("pixel_box")
+            if not img_w or not img_h or not px or len(px) != 4:
+                continue
+            x0, y0, x1, y1 = px
+            rect = [
+                round(max(0.0, min(1.0, x0 / img_w)), 5),
+                round(max(0.0, min(1.0, y0 / img_h)), 5),
+                round(max(0.0, min(1.0, x1 / img_w)), 5),
+                round(max(0.0, min(1.0, y1 / img_h)), 5),
+            ]
+            out.append({
+                "field": b.get("field", "") or "",
+                "value": b.get("value", "") or "",
+                "page": b["page_num"],
+                "rect": rect,
+            })
+        return out
+
+    @staticmethod
     def _parse_pages(page_info, total_pages: int) -> list[int]:
         """Extract 1-indexed page numbers from a free-form page_info string.
 
@@ -856,6 +972,8 @@ class VisualDebugger:
         # surface "scoped but absent" cleanly in the coverage report.
         scoped_keys: set[tuple] = set()
         all_boxes: list[dict] = []
+        # Reset per-run box coords; populated once marking decides what to draw.
+        self.last_marked_boxes = []
 
         if not mismatches:
             yield f"No mismatches queued for {doc_no}"
@@ -1027,6 +1145,11 @@ class VisualDebugger:
                         "img_height": img_h,
                         "pdf_rect": pdf_rect,
                         "label": field or value,
+                        # Kept so callers can map a drawn box back to the
+                        # (field, value) it was located for — the frontend
+                        # spotlight matches comparison cards to boxes by field.
+                        "field": field,
+                        "value": value,
                     })
                     per_mismatch_boxes[key] += 1
 
@@ -1131,6 +1254,8 @@ class VisualDebugger:
         # Pages we actually drew a box on (1-indexed, ascending). Lets callers
         # jump the PDF viewer straight to the marked page instead of page 1.
         self.last_marked_pages = sorted({b["page_num"] for b in all_boxes})
+        # Normalized per-box coords (top-left origin) for the frontend spotlight.
+        self.last_marked_boxes = self._normalize_boxes(all_boxes)
 
         if not all_boxes:
             yield f"No occurrences found for any mismatch in {doc_no}"

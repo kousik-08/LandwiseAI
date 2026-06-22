@@ -1,0 +1,766 @@
+# OCR_VERSION=10
+### EC_PAGE start=1 end=20 ###
+--- TRANSACTION START ---
+Page: 1
+Document No: 1887/1990
+Date: 19-Jun-1990 | 19-Jun-1990 | 21-Jun-1990
+Sellers: பெருமாள், கண்ணன்
+Buyers: கண்ணம்மாள்
+Survey No: 63/3
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Mortgage
+Extent: 1.21 Acre
+Consideration: Rs. 3,000/-
+Market Value: Rs. 7,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 2
+Document No: 3732/1990
+Date: 11-Dec-1990 | 11-Dec-1990 | 13-Dec-1990
+Sellers: முத்துமாணிக்கம், லட்சுமி அம்மாள்
+Buyers: A. சுப்பிரமணி
+Survey No: 63/4
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Sale deed
+Extent: 0.88 Cents
+Consideration: Rs. 5,000/-
+Market Value: Rs. 5,280/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 2
+Document No: 2850/2004
+Date: 08-Jul-2004 | 08-Jul-2004 | 08-Jul-2004
+Sellers: Vajjiram, Jagannathan, Manickam, Rajasekaran, Dasarathan
+Buyers: M/s State Bank of India
+Survey No: 100/6, 118/17, 60/7, 61/5, 63/1, 86/1A, 86/1C, 88/2, 94
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Mortgage with possession Other property
+Extent: 3.11.0ஹெக்
+Consideration: Rs. 50,000/-
+Market Value: Rs. 50,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 2
+Document No: 1911/2009
+Date: 12-Mar-2009 | 17-Mar-2009 | 17-Mar-2009
+Sellers: M/s State Bank of India
+Buyers: Vajjiram, Jagannathan, Manickam, Rajasekaran, Dasarathan
+Survey No: 100/6, 118/17, 60/7, 61/5, 63/1, 86/1A, 86/1C, 88/2, 94
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Receipt
+Extent: 3.11.0ஹெக்
+Consideration: Rs. 50,000/-
+Market Value: Rs. 50,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 3
+Document No: 3092/2009
+Date: 04-May-2009 | 04-May-2009 | 04-May-2009
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகநாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: N. சிவகாமி
+Survey No: 63/1, 66/5
+Plot No: 147, 148, 149
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 3600 சதுரடி
+Consideration: Rs. 81,000/-
+Market Value: Rs. 81,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 3
+Document No: 3093/2009
+Date: 04-May-2009 | 04-May-2009 | 04-May-2009
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகநாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: B. சுதா
+Survey No: 63/1, 66/5
+Plot No: 156
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1565 சதுரடி
+Consideration: Rs. 35,300/-
+Market Value: Rs. 35,300/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 4
+Document No: 3094/2009
+Date: 04-May-2009 | 04-May-2009 | 04-May-2009
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகநாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: M. முரளி
+Survey No: 63/1, 66/5
+Plot No: 146
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சதுரடி
+Consideration: Rs. 27,000/-
+Market Value: Rs. 27,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 4
+Document No: 3095/2009
+Date: 04-May-2009 | 04-May-2009 | 04-May-2009
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகநாதன் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்), மாணிக்கம் (முதல்வர்)
+Buyers: U. கார்த்திக்
+Survey No: 63/1, 66/5
+Plot No: 157
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1783 சதுரடி
+Consideration: Rs. 40,120/-
+Market Value: Rs. 40,120/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 4
+Document No: 3096/2009
+Date: 04-May-2009 | 04-May-2009 | 04-May-2009
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகநாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: K. ராஜாமணி
+Survey No: 63/1, 66/5
+Plot No: 155
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1349 சதுரடி
+Consideration: Rs. 30,400/-
+Market Value: Rs. 40,120/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 5
+Document No: 5829/2010
+Date: 16-Aug-2010 | 16-Aug-2010 | 16-Aug-2010
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: P. சந்தோஷ்குமார்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 141, 140
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி (Schedule 2) & 1200 சஅடி (Schedule 1)
+Consideration: Rs. 48,000/-
+Market Value: Rs. 96,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 5
+Document No: 662/2011
+Date: 02-Feb-2011 | 02-Feb-2011 | 02-Feb-2011
+Sellers: ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), வஜ்ஜிரம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: G. கேசவன்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 95, 96
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 2400 சஅடி
+Consideration: Rs. 52,800/-
+Market Value: Rs. 52,800/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 6
+Document No: 4338/2011
+Date: 01-Jun-2011 | 01-Jun-2011 | 01-Jun-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), கே. சண்முகசுந்தரம் (முகவர்)
+Buyers: ஈ. ராஜாகன்னி
+Survey No: 63/6
+Plot No: 42
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 26,000/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 6
+Document No: 5238/2011
+Date: 30-Jun-2011 | 30-Jun-2011 | 30-Jun-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), கே. சண்முகசுந்தரம் (முகவர்)
+Buyers: பி. அம்பிகா
+Survey No: 63/6, 66/5
+Plot No: 120
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 26,000/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 7
+Document No: 5405/2011
+Date: 06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011
+Sellers: K. சண்முகசுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்)
+Buyers: M. சுமதி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 104, 105
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1005 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2)
+Consideration: Rs. 48,510/-
+Market Value: Rs. 97,020/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 7
+Document No: 5408/2011
+Date: 06-Jul-2011 | 06-Jul-2011 | 06-Jul-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: S. மணி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 121, 122
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி (Schedule 1) & 1845 ச அடி (Schedule 2)
+Consideration: Rs. 26,400/-
+Market Value: Rs. 52,800/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 8
+Document No: 7752/2011
+Date: 22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011
+Sellers: K. சண்முகசுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்)
+Buyers: V. சுமங்கலி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 119
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 8
+Document No: 7754/2011
+Date: 22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011
+Sellers: K. சண்முகசுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்)
+Buyers: S. அமுதா, K. சுப்பிரமணி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 116
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 9
+Document No: 7755/2011
+Date: 22-Sep-2011 | 22-Sep-2011 | 22-Sep-2011
+Sellers: K. சண்முகசுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்)
+Buyers: S. அமுதா, K. சுப்பிரமணி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 117
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 9
+Document No: 8799/2011
+Date: 09-Nov-2011 | 09-Nov-2011 | 09-Nov-2011
+Sellers: K. சண்முகசுந்தரம் (முகவர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), வஜ்ஜிரம் (முதல்வர்)
+Buyers: J. கீத்மொரிரா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 2, 44
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 999 சஅடி (Schedule 2) & 1200 சஅடி (Schedule 1)
+Consideration: Rs. 26,400/-
+Market Value: Rs. 71,170/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 10
+Document No: 9159/2011
+Date: 21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: S. கிறிஸிட்டாஜரின்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 111
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 10
+Document No: 9161/2011
+Date: 21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: S. கிறிஸ்ஜோகன்ஸ்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 112
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 11
+Document No: 9162/2011
+Date: 21-Nov-2011 | 21-Nov-2011 | 21-Nov-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: C. பிரட்ராபின்சன்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 40, 41
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2)
+Consideration: Rs. 52,800/-
+Market Value: Rs. 1,05,600/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 11
+Document No: 10159/2011
+Date: 14-Dec-2011 | 14-Dec-2011 | 14-Dec-2011
+Sellers: ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்)
+Buyers: V. தீபா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 109
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 12
+Document No: 10160/2011
+Date: 15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன், மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: L. அக்ஸிலியா வினோலா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 108
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2)
+Consideration: Rs. 26,400/-
+Market Value: Rs. 52,800/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 12
+Document No: 10161/2011
+Date: 15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: உஷாநந்தின்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 106, 107
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2)
+Consideration: Rs. 52,800/-
+Market Value: Rs. 1,05,600/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 13
+Document No: 10162/2011
+Date: 15-Dec-2011 | 15-Dec-2011 | 15-Dec-2011
+Sellers: வஜ்ஜிரம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்)
+Buyers: A. பீட்டர்பீ ர்ஜான்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 45, 106, 107
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1640 ச அடி (Schedule 1) & 1200 ச அடி (Schedule 2) & 1200 ச அடி (Schedule 3)
+Consideration: Rs. 36,080/-
+Market Value: Rs. 1,41,680/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 14
+Document No: 10403/2011
+Date: 14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011
+Sellers: K. சண்முக சுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்)
+Buyers: S. பால்மாரிஸ்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 124
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200சஅடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 14
+Document No: 10404/2011
+Date: 14-Dec-2011 | 21-Dec-2011 | 21-Dec-2011
+Sellers: K. சண்முக சுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்)
+Buyers: S. மனோன்மணி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 127
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200சஅடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 15
+Document No: 1561/2012
+Date: 24-Feb-2012 | 24-Feb-2012 | 24-Feb-2012
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: B. அஜய்மேத்யூஸ்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 125, 126
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி (Schedule 1) & 1200 சஅடி (Schedule 2)
+Consideration: Rs. 52,800/-
+Market Value: Rs. 1,05,600/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 15
+Document No: 1986/2012
+Date: 08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012
+Sellers: K. சண்முகசுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்)
+Buyers: M. செல்வி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 94
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 16
+Document No: 1989/2012
+Date: 08-Mar-2012 | 08-Mar-2012 | 08-Mar-2012
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: B. அஜய் மேத்யூஸ்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 128, 129
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி (Schedule 1) & 1200 சஅடி (Schedule 2)
+Consideration: Rs. 52,800/-
+Market Value: Rs. 1,05,600/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 16
+Document No: 2708/2012
+Date: 28-Mar-2012 | 28-Mar-2012 | 28-Mar-2012
+Sellers: P. முருகேஷ் (எ) முருகேசன் (முதல்வர்), P. குப்புசாமி (முதல்வர்), A. வெங்கடேசன் (முகவர்)
+Buyers: B. புகழேந்தி
+Survey No: 63/5
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Conveyance Non Metro/UA
+Extent: 2.27 Acres
+Consideration: Rs. 4,50,000/-
+Market Value: Rs. 4,54,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 17
+Document No: 2714/2012
+Date: 28-Mar-2012 | 28-Mar-2012 | 28-Mar-2012
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: G. கணேசன்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 43
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: Rs. 26,400/-
+Market Value: Rs. 26,400/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 17
+Document No: 3184/2012
+Date: 11-Apr-2012 | 11-Apr-2012 | 11-Apr-2012
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: T. ஷாயமளா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 139, 129
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி (Schedule 1) & 1200 சஅடி (Schedule 2)
+Consideration: Rs. 90,000/-
+Market Value: Rs. 1,42,800/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 18
+Document No: 3716/2012
+Date: 30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: P. கோபிநாத்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 158
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1984 ச அடி
+Consideration: Rs. 1,48,800/-
+Market Value: Rs. 1,48,800/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 18
+Document No: 3717/2012
+Date: 30-Apr-2012 | 30-Apr-2012 | 30-Apr-2012
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: P. ராதாபாய்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 150
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1802 ச அடி
+Consideration: Rs. 1,35,150/-
+Market Value: Rs. 1,35,150/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 18
+Document No: 5175/2012
+Date: 02-Jul-2012 | 02-Jul-2012 | 02-Jul-2012
+Sellers: K. சண்முகசுந்தரம் (முகவர்), P. ஏசு (முதல்வர்)
+Buyers: ரத்தினகுமார் மாஜி
+Survey No: 63/1, 63/6, 66/5
+Plot No: 102, 103
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 5555 ச அடி
+Consideration: Rs. 4,16,625/-
+Market Value: Rs. 4,16,625/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 19
+Document No: 1552/2013
+Date: 27-Feb-2013 | 27-Feb-2013 | 27-Feb-2013
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நான், மாணிக்கம் (முதல்வர்), K. சண்முகசுந்தரம் (முகவர்)
+Buyers: மரியா ஆன்கின்ஸ்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 39
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 ச அடி
+Consideration: -
+Market Value: Rs. 90,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 19
+Document No: 4637/2013
+Date: 12-Jun-2013 | 12-Jun-2013 | 12-Jun-2013
+Sellers: M. கண்ணம்மாள், M. ரங்கநாதன், G. சாந்தி, V. அலமேலு
+Buyers: A. வெங்கடேசன்
+Survey No: 63/2
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Power of Attorney authorizing not more than 5-general
+Extent: 0.64 Cents
+Consideration: -
+Market Value: -
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 20
+Document No: 5111/2013
+Date: 28-Jun-2013 | 28-Jun-2013 | 28-Jun-2013
+Sellers: M. கண்ணம்மாள் (முதல்வர்), M. ரங்கநாதன் (முதல்வர்), A. வெங்கடேசன் (முகவர்), G. சாந்தி (முதல்வர்), V. அலமேலு (முதல்வர்)
+Buyers: T. அமுதா
+Survey No: 63/2
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Conveyance Non Metro/UA
+Extent: 0.64 Cents
+Consideration: Rs. 3,52,000/-
+Market Value: Rs. 3,52,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 20
+Document No: 5548/2013
+Date: 15-Jul-2013 | 15-Jul-2013 | 15-Jul-2013
+Sellers: மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்), வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்)
+Buyers: பு. பிரசன்ன பாபு
+Survey No: 63/1, 63/6, 66/5
+Plot No: 151
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1843 சஅடி
+Consideration: Rs. 1,38,300/-
+Market Value: Rs. 1,38,300/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 20
+Document No: 5550/2013
+Date: 15-Jul-2013 | 15-Jul-2013 | 15-Jul-2013
+Sellers: வஜ்ஜிரம் (முதல்வர்), ஜெகன்நாதன் (முதல்வர்), மாணிக்கம் (முதல்வர்), K. சண்முக சுந்தரம் (முகவர்)
+Buyers: பு. ஹரிகிருஷ்ணன்
+Survey No: -
+Plot No: -
+Nature of the land: -
+Nature of Document: Conveyance Non Metro/UA
+Extent: -
+Consideration: Rs. 1,41,200/-
+Market Value: Rs. 1,41,200/-
+--- TRANSACTION END ---
+### EC_PAGE start=21 end=25 ###
+--- TRANSACTION START ---
+Page: 1
+Document No: 6570/2013
+Date: 23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013
+Sellers: K. சண்முக சுந்தரம் (முகவர் / POA agent for ஜெகன்நாதன், மாணிக்கம், வஜ்ஜிரம்)
+Buyers: ஸ்டெல்லா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 115
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 90,000/-
+Market Value: Rs. 90,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 1
+Document No: 6571/2013
+Date: 23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013
+Sellers: K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம், ஜெகன்நாதன், மாணிக்கம்)
+Buyers: ஸ்டெல்லா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 153
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 90,000/-
+Market Value: Rs. 90,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 2
+Document No: 6572/2013
+Date: 23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013
+Sellers: K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம், ஜெகன்நாதன், மாணிக்கம்)
+Buyers: C B. டார்வின் பிரைட்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 131
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 90,000/-
+Market Value: Rs. 90,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 2
+Document No: 6573/2013
+Date: 23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013
+Sellers: K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம், ஜெகன்நாதன், மாணிக்கம்)
+Buyers: CB. சில்வியா
+Survey No: 63/1, 63/6, 66/5
+Plot No: 130
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி
+Consideration: Rs. 90,000/-
+Market Value: Rs. 90,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 2
+Document No: 9397/2013
+Date: 25-Nov-2013 | 29-Nov-2013 | 29-Nov-2013
+Sellers: K. சண்முக சுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம், ஜெகன்நாதன், மாணிக்கம்)
+Buyers: சுப்பிரிதா கிஷோர்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 144.145
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 2400 ச அடி
+Consideration: Rs. 1,80,000/-
+Market Value: Rs. 1,80,000/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 3
+Document No: 5185/2014
+Date: 30-Jun-2014 | 30-Jun-2014 | 30-Jun-2014
+Sellers: B. உஷாநந்தினி
+Buyers: N. அப்துல் ரஹிம்
+Survey No: 63/6
+Plot No: 106.107, 107
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 1200 சஅடி, 1200 சஅடி
+Consideration: Rs. 1,80,597/-
+Market Value: Rs. 3,61,194/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 3
+Document No: 7161/2014
+Date: 10-Sep-2014 | 10-Sep-2014 | 10-Sep-2014
+Sellers: K. சண்முகசுந்தரம் (முகவர் / POA agent for வஜ்ஜிரம், ஜெகன்நாதன், மாணிக்கம்)
+Buyers: சிறைமீட்டான்
+Survey No: 63/1, 63/6, 66/5
+Plot No: 113.38
+Nature of the land: House Site
+Nature of Document: Conveyance Non Metro/UA
+Extent: 2460 ச அடி
+Consideration: Rs. 1,84,500/-
+Market Value: Rs. 1,84,500/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 4
+Document No: 4939/2018
+Date: 20-Jul-2018 | 20-Jul-2018 | 31-Jul-2018
+Sellers: பிரபு (முகவர் / POA agent for ஜோதி, வெங்கடேசன், கண்ணகி, கருணாவதி), சுந்தர்ராஜி (முகவர் / POA agent for கெங்கம்மாள், காசிநாதன், திலகவதி, ரேணுகோபால், பழனிவேல், ராணி, காஞ்சனா, பௌலினா)
+Buyers: அசோக்குமார்
+Survey No: 63/3, 63/4
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Sale deed
+Extent: 1 ACRE, 21.0 CENTS, 88.0 CENTS
+Consideration: Rs. 7,73,300/-
+Market Value: Rs. 7,73,300/-
+--- TRANSACTION END ---
+
+--- TRANSACTION START ---
+Page: 4
+Document No: 4506/2022
+Date: 19-Jul-2022 | 19-Jul-2022 | 19-Jul-2022
+Sellers: அசோக்குமார்
+Buyers: ஐசிஐசிஐ பேங்க்
+Survey No: 62/1, 62/6A2, 63/4, 63/3
+Plot No: -
+Nature of the land: Agricultural Land
+Nature of Document: Deposit Of Title Deeds
+Extent: 36 ARE, 5.0 SQUARE METRE; 58 ARE, 5.0 SQUARE METRE; 35 ARE, 5.0 SQUARE METRE (Schedule 1) | 49 ARE (Schedule 2)
+Consideration: -
+Market Value: Rs. 9,20,000/-
+--- TRANSACTION END ---

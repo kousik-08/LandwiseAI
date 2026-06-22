@@ -1,0 +1,80 @@
+[
+  {
+    "date": "29-Dec-2008",
+    "buyers": [
+      "Survey No: 45/4",
+      "46/1C",
+      "46/1D"
+    ],
+    "sellers": [
+      "Buyers:"
+    ],
+    "survey_raw": "45/4",
+    "survey_base": "45",
+    "market_value": "₹ 26,400/-",
+    "sub_division": "4",
+    "consideration": "₹ 26,400/-",
+    "property_type": "வீட்டுமனை",
+    "survey_number": "45/4",
+    "document_number": "257/2009",
+    "property_extent": "1200 ச அடி",
+    "involved_surveys": [
+      "45/4",
+      "46/1C",
+      "46/1D"
+    ],
+    "nature_of_document": "உரிமை மாற்றம்"
+  },
+  {
+    "date": "29-Dec-2008",
+    "buyers": [
+      "Survey No: 45/4",
+      "46/1C",
+      "46/1D"
+    ],
+    "sellers": [
+      "Buyers:"
+    ],
+    "survey_raw": "46/1C",
+    "survey_base": "46",
+    "market_value": "₹ 26,400/-",
+    "sub_division": "1C",
+    "consideration": "₹ 26,400/-",
+    "property_type": "வீட்டுமனை",
+    "survey_number": "46/1C",
+    "document_number": "257/2009",
+    "property_extent": "1200 ச அடி",
+    "involved_surveys": [
+      "45/4",
+      "46/1C",
+      "46/1D"
+    ],
+    "nature_of_document": "உரிமை மாற்றம்"
+  },
+  {
+    "date": "29-Dec-2008",
+    "buyers": [
+      "Survey No: 45/4",
+      "46/1C",
+      "46/1D"
+    ],
+    "sellers": [
+      "Buyers:"
+    ],
+    "survey_raw": "46/1D",
+    "survey_base": "46",
+    "market_value": "₹ 26,400/-",
+    "sub_division": "1D",
+    "consideration": "₹ 26,400/-",
+    "property_type": "வீட்டுமனை",
+    "survey_number": "46/1D",
+    "document_number": "257/2009",
+    "property_extent": "1200 ச அடி",
+    "involved_surveys": [
+      "45/4",
+      "46/1C",
+      "46/1D"
+    ],
+    "nature_of_document": "உரிமை மாற்றம்"
+  }
+]
