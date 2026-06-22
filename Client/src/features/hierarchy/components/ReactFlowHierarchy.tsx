@@ -1,9 +1,8 @@
 
-import React, { useMemo, useCallback, useState, useEffect } from 'react';
+import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import ReactFlow, {
     Background,
     Controls,
-    MiniMap,
     Node,
     Edge,
     ConnectionMode,
@@ -12,23 +11,52 @@ import ReactFlow, {
     Position,
     useReactFlow,
 } from 'reactflow';
-import { Plus, Minus, Info, FileText, User, MapPin, Minimize2, Ruler } from "lucide-react";
+import { Plus, Minus, Info, FileText, MapPin, Ruler, Home, Banknote, Gift, Split, Landmark, ScrollText, FileSignature, ArrowRight, CheckCircle2, AlertTriangle } from "lucide-react";
 import 'reactflow/dist/style.css';
 import './FlowStyles.css';
 import { Badge } from "@/components/ui/badge";
 
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { cn } from "@/lib/utils";
 
 // Normalize a document number for tolerant matching against validation
 // results ("3765/2008" -> "37652008"). Mirrors the server _normalize_docno.
 const normDocNo = (s: any): string => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
+// Maps a transaction "nature" string to a premium visual treatment — a left
+// accent strip hue + a representative icon + a soft label chip. Keyword-matched
+// so variants ("Sale deed", "Conveyance on Sale") collapse to one style. Static
+// class strings (no template hues) so Tailwind's purge keeps them.
+type NatureStyle = { label: string; Icon: any; strip: string; iconWrap: string; chip: string };
+const NATURE_STYLES: Array<{ test: RegExp } & NatureStyle> = [
+    { test: /deposit of title|mortgage/i, label: 'Mortgage', Icon: Banknote, strip: 'bg-rose-500', iconWrap: 'bg-rose-100 text-rose-600', chip: 'bg-rose-50 text-rose-700 ring-rose-200/70' },
+    { test: /sale|conveyance/i, label: 'Sale', Icon: Home, strip: 'bg-emerald-500', iconWrap: 'bg-emerald-100 text-emerald-600', chip: 'bg-emerald-50 text-emerald-700 ring-emerald-200/70' },
+    { test: /gift/i, label: 'Gift', Icon: Gift, strip: 'bg-violet-500', iconWrap: 'bg-violet-100 text-violet-600', chip: 'bg-violet-50 text-violet-700 ring-violet-200/70' },
+    { test: /settle/i, label: 'Settlement', Icon: FileSignature, strip: 'bg-blue-500', iconWrap: 'bg-blue-100 text-blue-600', chip: 'bg-blue-50 text-blue-700 ring-blue-200/70' },
+    { test: /release/i, label: 'Release', Icon: ScrollText, strip: 'bg-orange-500', iconWrap: 'bg-orange-100 text-orange-600', chip: 'bg-orange-50 text-orange-700 ring-orange-200/70' },
+    { test: /partition/i, label: 'Partition', Icon: Split, strip: 'bg-teal-500', iconWrap: 'bg-teal-100 text-teal-600', chip: 'bg-teal-50 text-teal-700 ring-teal-200/70' },
+    { test: /power|poa|agent/i, label: 'Power', Icon: Landmark, strip: 'bg-slate-500', iconWrap: 'bg-slate-100 text-slate-600', chip: 'bg-slate-50 text-slate-700 ring-slate-200/70' },
+];
+const resolveNature = (nature?: string): NatureStyle => {
+    const n = nature || '';
+    const hit = NATURE_STYLES.find(s => s.test.test(n));
+    return hit ?? { label: nature || 'Document', Icon: FileText, strip: 'bg-slate-400', iconWrap: 'bg-slate-100 text-slate-600', chip: 'bg-slate-50 text-slate-600 ring-slate-200/70' };
+};
+
 // Custom Node Component to support Collapse/Expand and Tooltip
 const HierarchyNode = ({ data, id }: any) => {
     const isCollapsed = data.isCollapsed;
     const hasChildren = data.hasChildren;
     const [showTooltip, setShowTooltip] = useState(false);
+
+    // A "document" node carries the rich glass-card treatment; survey-anchor
+    // nodes and the "NO TRANSACTION FOUND" placeholder keep the plain label.
+    const isDocNode = data.document_number && data.document_number !== 'NO TRANSACTION FOUND';
+    const ns = resolveNature(data.nature);
+    const NatureIcon = ns.Icon;
+    const matched = data.matchStatus === 'matched';
+    const mismatch = data.matchStatus === 'mismatch';
+    const survey = data.survey_number || data.KIDE || data.kide;
 
     return (
         <motion.div
@@ -129,11 +157,60 @@ const HierarchyNode = ({ data, id }: any) => {
                     </button>
                 )}
 
-                <div className="flex flex-col">
-                    <div className="whitespace-pre-wrap text-[11px] leading-relaxed pr-10">
-                        {data.label}
+                {isDocNode ? (
+                    <div className="relative">
+                        {/* Left accent strip — hue carries the transaction nature. */}
+                        <span className={cn("absolute left-0 top-0.5 bottom-0.5 w-1 rounded-full", ns.strip)} />
+
+                        <div className="pl-3 pr-9">
+                            {/* Nature badge row */}
+                            <div className="flex items-center gap-1.5 mb-1.5">
+                                <span className={cn("inline-flex items-center justify-center w-5 h-5 rounded-md shrink-0", ns.iconWrap)}>
+                                    <NatureIcon className="w-3 h-3" strokeWidth={2.5} />
+                                </span>
+                                <span className={cn("inline-flex items-center px-1.5 py-0.5 rounded text-[8px] font-extrabold uppercase tracking-[0.12em] ring-1", ns.chip)}>
+                                    {ns.label}
+                                </span>
+                            </div>
+
+                            {/* Document number — the anchor identity. */}
+                            <div className="text-[13px] font-extrabold text-slate-900 leading-tight truncate font-mono tracking-tight">
+                                {data.document_number}
+                            </div>
+
+                            {/* Survey · date */}
+                            <div className="text-[10px] text-slate-500 font-semibold mt-0.5 truncate">
+                                {survey ? `S.No ${survey}` : 'S.No —'}{data.date ? ` · ${data.date}` : ''}
+                            </div>
+
+                            {/* Parties chain executant → claimant */}
+                            {(data.executant || data.claimant) && (
+                                <div className="mt-1.5 flex items-center gap-1 text-[9px] leading-tight">
+                                    <span className="truncate text-slate-500 max-w-[42%]">{data.executant || '—'}</span>
+                                    <ArrowRight className="w-2.5 h-2.5 shrink-0 text-slate-300" />
+                                    <span className="truncate font-bold text-slate-700 flex-1">{data.claimant || '—'}</span>
+                                </div>
+                            )}
+
+                            {/* Validation status pill */}
+                            {(matched || mismatch) && (
+                                <div className={cn(
+                                    "mt-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-extrabold uppercase tracking-[0.1em]",
+                                    matched ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                                )}>
+                                    {matched ? <CheckCircle2 className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
+                                    {matched ? "Matched" : "Mismatch"}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="flex flex-col">
+                        <div className="whitespace-pre-wrap text-[11px] leading-relaxed pr-10 text-center font-bold text-slate-600">
+                            {data.label}
+                        </div>
+                    </div>
+                )}
 
                 <Handle type="source" position={Position.Bottom} className="opacity-0" />
 
@@ -346,8 +423,28 @@ const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNo
         }
     }, [onNodeClick]);
 
+    // Re-fit the viewport whenever the canvas changes size. This keeps the
+    // hierarchy fitted inside its tab when the right split panel opens/closes
+    // (the container animates from full width → half width over 500ms) and on
+    // window resize. We snap (duration 0) so the fit tracks the animating
+    // container frame-by-frame instead of lagging behind it.
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el || typeof ResizeObserver === 'undefined') return;
+        let raf = 0;
+        const ro = new ResizeObserver(() => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => {
+                try { fitView({ padding: 0.2, duration: 0 }); } catch { /* instance not ready */ }
+            });
+        });
+        ro.observe(el);
+        return () => { cancelAnimationFrame(raf); ro.disconnect(); };
+    }, [fitView]);
+
     return (
-        <div className="w-full h-full min-h-[500px] bg-slate-50/50 relative">
+        <div ref={containerRef} className="w-full h-full min-h-[500px] bg-slate-50/50 relative">
             {/* Bulk expand/collapse controls. The "Deed Registry (TN)" deed-type
                 legend was removed — node colours are now driven by validation
                 match status (green = matched, red = mismatch), not deed type, so
@@ -385,19 +482,6 @@ const ReactFlowHierarchyInner: React.FC<ReactFlowHierarchyProps> = ({ data, onNo
             >
                 <Background gap={20} color="#e2e8f0" />
                 <Controls />
-                <MiniMap
-                    nodeColor={(node) => {
-                        if (node.className?.includes('sale')) return '#16a34a';
-                        if (node.className?.includes('mortgage')) return '#dc2626';
-                        if (node.className?.includes('gift')) return '#9333ea';
-                        if (node.className?.includes('settlement')) return '#2563eb';
-                        if (node.className?.includes('release')) return '#ea580c';
-                        if (node.className?.includes('partition')) return '#0d9488';
-                        if (node.className?.includes('power')) return '#4b5563';
-                        return '#94a3b8';
-                    }}
-                    maskColor="rgba(248, 250, 252, 0.7)"
-                />
             </ReactFlow>
         </div>
     );

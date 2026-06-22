@@ -9,7 +9,7 @@ import {
     Popup,
     AreaHighlight,
 } from "react-pdf-highlighter";
-import { Trash2, MessageSquare, Loader2, AlertCircle } from "lucide-react";
+import { Trash2, MessageSquare, Loader2, AlertCircle, ZoomIn, ZoomOut, Maximize2, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import "./PdfAnnotator.css";
@@ -51,6 +51,10 @@ interface PdfAnnotatorProps {
      *  staring at the top of page 1. */
     focusHighlightId?: { id: string; page?: number; timestamp: number };
     externalHighlights?: IHighlight[];
+    /** Click handler for the validation overlay boxes (ids prefixed
+     *  `vd-spotlight-` / `vd-box-`). Lets the parent cross-navigate to the
+     *  matching box in the sibling viewer. Receives the highlight id. */
+    onHighlightClick?: (id: string) => void;
 }
 
 const FLASH_KEY = "__pdf_focused__";
@@ -63,10 +67,18 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
     scrollToPage,
     focusHighlightId,
     externalHighlights = [],
+    onHighlightClick,
 }) => {
     const [highlights, setHighlights] = useState<IHighlight[]>([]);
     const [selectionMode, setSelectionMode] = useState<"text" | "area">("text");
     const [flashedId, setFlashedId] = useState<string | null>(null);
+    // Zoom label shown in the toolbar. The document loads fitted to the pane
+    // width ("Fit"); once the user zooms it switches to a percentage. The
+    // actual scale lives on the pdf.js viewer (highlighterRef.current.viewer);
+    // we drive it directly because PdfHighlighter doesn't re-scale on a
+    // pdfScaleValue prop change after the initial mount.
+    const [zoomLabel, setZoomLabel] = useState("Fit");
+    const [downloading, setDownloading] = useState(false);
     const highlighterRef = useRef<any>(null);
     const scrollViewerRef = useRef<any>(null);
     // Mirror of the latest highlights array so the focus effect's retry
@@ -80,6 +92,14 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
     useEffect(() => {
         highlightsRef.current = highlights;
     }, [highlights]);
+    // Mirror of externalHighlights too, so the focus effect can scroll to a
+    // SPOTLIGHT overlay (fed in via externalHighlights) and not just a saved
+    // note. Without this the focus lookup misses every external highlight and
+    // silently falls back to a page-level scroll.
+    const externalHighlightsRef = useRef<IHighlight[]>(externalHighlights);
+    useEffect(() => {
+        externalHighlightsRef.current = externalHighlights;
+    }, [externalHighlights]);
     // Latches that scrollTo+flash already ran for a given focusHighlightId
     // signature; prevents the duplicate calls that produced the warning
     // and "highlight not visible" symptoms.
@@ -432,7 +452,9 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
             // Read FRESH highlights via the ref so we don't have to be in
             // the effect's deps. Highlights can arrive after this effect
             // started; the retry loop keeps polling them.
-            const target = highlightsRef.current.find((h) => h.id === focusHighlightId.id);
+            const target = [...highlightsRef.current, ...externalHighlightsRef.current].find(
+                (h) => h.id === focusHighlightId.id,
+            );
             if (target && highlighterRef.current) {
                 try {
                     highlighterRef.current.scrollTo(target);
@@ -466,8 +488,102 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
         };
     }, [focusHighlightId]);
 
+    // ── Zoom controls ────────────────────────────────────────────────────
+    // Drive the pdf.js viewer's scale directly. `currentScaleValue` accepts a
+    // numeric string (e.g. "1.25") or a keyword ("page-width"); setting it
+    // re-renders the pages and updates `currentScale`.
+    const MIN_SCALE = 0.25;
+    const MAX_SCALE = 4;
+    const stepZoom = (factor: number) => {
+        const viewer = highlighterRef.current?.viewer;
+        if (!viewer) return;
+        const current = viewer.currentScale || 1;
+        const next = Math.min(MAX_SCALE, Math.max(MIN_SCALE, +(current * factor).toFixed(3)));
+        viewer.currentScaleValue = String(next);
+        setZoomLabel(`${Math.round(next * 100)}%`);
+    };
+    const fitWidth = () => {
+        const viewer = highlighterRef.current?.viewer;
+        if (!viewer) return;
+        viewer.currentScaleValue = "page-width";
+        setZoomLabel("Fit");
+    };
+
+    // ── Download ─────────────────────────────────────────────────────────
+    // Fetch the PDF as a blob (the viewer already loads it over the same
+    // CORS-enabled GET) and save it with a clean filename derived from docId.
+    const downloadPdf = async () => {
+        if (!url || downloading) return;
+        setDownloading(true);
+        try {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = objectUrl;
+            a.download = `${(docId || "document").replace(/[^\w.-]+/g, "_").replace(/_+$/, "")}.pdf`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(objectUrl);
+        } catch (e) {
+            console.error("PDF download failed", e);
+            toast.error("Couldn't download the PDF — please retry");
+        } finally {
+            setDownloading(false);
+        }
+    };
+
     return (
         <div className={cn("pdf-annotator-wrapper relative", selectionMode === "area" && "draw-mode")}>
+            {/* Zoom + download toolbar (top-left). Per-pane: each DEED / EC
+                viewer manages its own scale and download. */}
+            <div className="absolute top-4 left-4 z-[100] flex items-center gap-1 bg-white/90 backdrop-blur shadow-xl border border-slate-200 p-1 rounded-full animate-in slide-in-from-top-4 duration-500">
+                <button
+                    type="button"
+                    title="Zoom out"
+                    onClick={() => stepZoom(1 / 1.2)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:text-primary hover:bg-slate-100 transition-colors"
+                >
+                    <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <button
+                    type="button"
+                    title="Fit to width"
+                    onClick={fitWidth}
+                    className="min-w-[42px] h-7 px-1.5 flex items-center justify-center rounded-full text-[10px] font-bold uppercase tracking-wide text-slate-600 hover:text-primary hover:bg-slate-100 transition-colors tabular-nums"
+                >
+                    {zoomLabel}
+                </button>
+                <button
+                    type="button"
+                    title="Zoom in"
+                    onClick={() => stepZoom(1.2)}
+                    className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:text-primary hover:bg-slate-100 transition-colors"
+                >
+                    <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                <button
+                    type="button"
+                    title="Fit to width"
+                    onClick={fitWidth}
+                    className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:text-primary hover:bg-slate-100 transition-colors"
+                >
+                    <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                    type="button"
+                    title="Download PDF"
+                    onClick={downloadPdf}
+                    disabled={downloading || !url}
+                    className="w-7 h-7 flex items-center justify-center rounded-full text-slate-500 hover:text-primary hover:bg-slate-100 transition-colors disabled:opacity-50"
+                >
+                    {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                </button>
+            </div>
+
             {/* Mode Toggle UI */}
             <div className="absolute top-4 right-4 z-[100] flex bg-white/90 backdrop-blur shadow-xl border border-slate-200 p-1 rounded-full animate-in slide-in-from-top-4 duration-500">
                 <button
@@ -508,6 +624,9 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                 {(pdfDocument) => (
                     <PdfHighlighter
                         pdfDocument={pdfDocument}
+                        // Fit the page to the pane width on load so the document
+                        // fills the available space instead of opening tiny.
+                        pdfScaleValue="page-width"
                         enableAreaSelection={(event) => selectionMode === "area" || event.altKey}
                         onScrollChange={() => { }}
                         scrollRef={(ref) => { scrollViewerRef.current = ref; }}
@@ -577,6 +696,31 @@ const PdfAnnotator: React.FC<PdfAnnotatorProps> = ({
                         ) => {
                             const isTextHighlight = !Boolean(highlight.content.image);
                             const isFlashed = flashedId === highlight.id;
+                            // Validation overlays (fed via externalHighlights) mark a
+                            // field's box on the already-marked PDF. `vd-spotlight-`
+                            // is the ACTIVE box (glowing); `vd-box-` is an inactive,
+                            // transparent-but-clickable hit target over a red box.
+                            // Both are transient — no popup, no delete. Clicking one
+                            // cross-navigates to its pair in the sibling viewer.
+                            const hid = String(highlight.id);
+                            const isSpotlight = hid.startsWith("vd-spotlight-");
+                            const isBox = hid.startsWith("vd-box-");
+                            if (isSpotlight || isBox) {
+                                return (
+                                    <div
+                                        key={index}
+                                        className={cn(isSpotlight ? "vd-spotlight" : "vd-box", isFlashed && FLASH_KEY)}
+                                        style={{ display: "contents" }}
+                                        onClick={onHighlightClick ? () => onHighlightClick(hid) : undefined}
+                                    >
+                                        <Highlight
+                                            isScrolledTo={isScrolledTo}
+                                            position={highlight.position}
+                                            comment={highlight.comment}
+                                        />
+                                    </div>
+                                );
+                            }
 
                             const component = isTextHighlight ? (
                                 <Highlight

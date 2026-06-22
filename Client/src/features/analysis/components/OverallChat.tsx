@@ -23,6 +23,15 @@ interface OverallChatProps {
     parcelId?: string;
     /** All document numbers in the property — drives @-mention autocomplete. */
     docNumbers: string[];
+    /** Document the user currently has open on screen (compare view, etc.).
+     *  When the user asks without an explicit @-mention, the assistant focuses
+     *  this document — making answers screen-aware. */
+    activeDocNo?: string;
+    /** Short label describing the current screen, e.g. "Comparing DEED vs EC". */
+    viewLabel?: string;
+    /** Text snapshot of what the current screen shows (risk factors, stats…),
+     *  so the assistant can answer about on-screen data outside the EC chain. */
+    screenContext?: string;
     onClose?: () => void;
     /** When set/changed, inserts "@<doc> " into the input (from a node click). */
     pendingMention?: PendingMention | null;
@@ -34,6 +43,9 @@ const OverallChat: React.FC<OverallChatProps> = ({
     requestId,
     parcelId,
     docNumbers,
+    activeDocNo,
+    viewLabel,
+    screenContext,
     onClose,
     pendingMention,
 }) => {
@@ -150,6 +162,14 @@ const OverallChat: React.FC<OverallChatProps> = ({
             if (parcelId) formData.append("parcel_id", parcelId);
             formData.append("history", JSON.stringify(messages.slice(-6)));
             formData.append("mentions", JSON.stringify(extractMentions(text)));
+            // Screen context: the document the user is looking at + a label for
+            // the current view. Lets the backend focus the open document when no
+            // explicit @-mention is typed.
+            if (activeDocNo) formData.append("active_doc", activeDocNo);
+            if (viewLabel) formData.append("view_context", viewLabel);
+            // Snapshot of the live screen (risk factors, stats, …) so the AI can
+            // answer about what's actually on screen, not just the EC chain.
+            if (screenContext) formData.append("screen_context", screenContext);
 
             const response = await fetch(`${API_BASE_URL}/api/v1/chat-overall`, {
                 method: "POST",
@@ -192,6 +212,26 @@ const OverallChat: React.FC<OverallChatProps> = ({
                     </Button>
                 )}
             </CardHeader>
+
+            {(activeDocNo || viewLabel) && (
+                <div className="shrink-0 px-4 py-1.5 bg-indigo-50/80 border-b border-indigo-100 flex items-center gap-1.5">
+                    <MessageSquare className="w-3 h-3 text-indigo-500 shrink-0" />
+                    <span className="text-[11px] text-slate-600 leading-tight truncate">
+                        {activeDocNo ? (
+                            <>
+                                {viewLabel ? `${viewLabel} — ` : "Viewing "}
+                                <span className="font-bold text-indigo-700 font-mono">{activeDocNo}</span>
+                                <span className="text-slate-400"> · answers focus this document</span>
+                            </>
+                        ) : (
+                            <>
+                                <span className="font-bold text-indigo-700">{viewLabel}</span>
+                                <span className="text-slate-400"> · I can see this screen</span>
+                            </>
+                        )}
+                    </span>
+                </div>
+            )}
 
             <CardContent className="flex-1 overflow-y-auto p-4 space-y-4 chat-scrollbar bg-white/50" ref={scrollRef}>
                 {messages.length === 0 && (

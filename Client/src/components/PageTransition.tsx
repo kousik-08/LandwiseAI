@@ -19,7 +19,14 @@ export default function PageTransition({ children }: PageTransitionProps) {
       exit="exit"
       variants={variants}
       transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-      style={{ minHeight: "100%" }}
+      // height: 100% (not just min-height) so pages that opt into `h-full`
+      // (the dashboard's fixed sidebar + internally-scrolling content) can
+      // resolve their height against this wrapper. Without a definite height
+      // here, `h-full` collapses, the page grows with its content, and the
+      // shell's <main> scrolls the entire page — dragging the left sidebar
+      // along with it. Content taller than the viewport still scrolls via the
+      // shell's overflow-y-auto.
+      style={{ height: "100%" }}
     >
       {children}
     </motion.div>

@@ -1,12 +1,12 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import { motion, AnimatePresence, useDragControls } from "framer-motion";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Search, Calendar, MapPin, ArrowRight, Filter, X, FileText, Maximize2, Minimize2, User, Maximize, ShieldCheck, AlertCircle, MessageSquare, Plus, StickyNote, ExternalLink, Loader2, Sparkles, Network, Eye } from "lucide-react";
+import { Search, Calendar, MapPin, ArrowRight, X, FileText, Maximize2, Minimize2, User, Maximize, ShieldCheck, AlertCircle, Plus, StickyNote, ExternalLink, Loader2, Sparkles, Network } from "lucide-react";
 import {
     Select,
     SelectContent,
@@ -15,9 +15,8 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { ReactFlowHierarchy } from "@/features/hierarchy/components/ReactFlowHierarchy";
-import DocChat from "@/features/analysis/components/DocChat";
-import OverallChat from "@/features/analysis/components/OverallChat";
 import PdfAnnotator from "@/features/analysis/components/PdfAnnotator";
+import { useAskAi } from "@/components/AppShell";
 import { cn } from "@/lib/utils";
 import { API_BASE_URL } from "@/lib/api";
 import { landwiseApi } from "@/lib/landwise-api";
@@ -111,7 +110,6 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
     const [uploadFile, setUploadFile] = useState<File | null>(null);
     const [verifyingDoc, setVerifyingDoc] = useState(false);
     const [verificationResult, setVerificationResult] = useState<any>(null);
-    const [activeTab, setActiveTab] = useState<"summary" | "chat" | "annotations">("summary");
     const [isNotesVisible, setIsNotesVisible] = useState(false);
     const [pdfAnnotations, setPdfAnnotations] = useState<any[]>([]);
     const [validatingSingle, setValidatingSingle] = useState(false);
@@ -120,26 +118,20 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
     // Triggers a precise scroll-to-highlight + amber flash in PdfAnnotator
     // when a PAGE button is clicked from the annotations panel.
     const [focusHighlightId, setFocusHighlightId] = useState<{ id: string; timestamp: number } | undefined>(undefined);
-    // Floating PDF popup. Replaces the inline PDF iframe that previously
-    // filled the bottom half of the right pane. The metadata + tabs stay
-    // visible while the PDF lives in a draggable window the user can
-    // position anywhere on screen (including a second monitor).
-    const [isPdfPopupOpen, setIsPdfPopupOpen] = useState(false);
-    const pdfPopupDragControls = useDragControls();
 
-    // Property-wide ("overall") chatbot launched from near the search bar.
-    const [overallChatOpen, setOverallChatOpen] = useState(false);
-    // Injects "@<doc>" into the overall chat when a node's "Mention" is picked.
-    const [pendingMention, setPendingMention] = useState<{ doc: string; nonce: number } | null>(null);
-    // Small two-option chooser popup anchored at a clicked graph node.
-    const [nodeChooser, setNodeChooser] = useState<{ docNo: string; x: number; y: number } | null>(null);
+    // The right split panel shows the document PDF by default; the Summary
+    // toggle swaps it for the full-panel deed summary (metadata + validation +
+    // notes + verifier). One docked panel, no floating cards.
+    const [showSummary, setShowSummary] = useState(false);
 
-    // Close the popup when the user picks a different document, so they
-    // don't accidentally read doc A's PDF while the right pane's metadata
-    // updates to doc B.
-    useEffect(() => {
-        setIsPdfPopupOpen(false);
-    }, [previewDoc?.docNo]);
+    // Global Ask AI — the shell hosts ONE assistant; we publish the clicked
+    // node as the active document so it answers about that node (replaces the
+    // old inline OverallChat + node "mention" chooser).
+    const { setAskAiActiveDoc } = useAskAi();
+
+    // Clear the global Ask AI active-doc focus when this Timeline unmounts
+    // (parcel switch / tab change) so the next screen starts clean.
+    useEffect(() => () => setAskAiActiveDoc(null), [setAskAiActiveDoc]);
 
     // Click handler for the per-document "PAGE N" buttons in the notes panel.
     // We only fire focusHighlightId — NOT scrollToPage — because the latter
@@ -212,6 +204,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
         setError(null);
         setTimeline(null);
         setPanelOpen(false);
+        setShowSummary(false);
         setPreviewDoc(null);
         setValidationCache({});
 
@@ -404,11 +397,20 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
 
     const handleNodeClick = useCallback((docNo: string, txData?: Transaction | any, position?: { x: number; y: number }) => {
         console.log("Handling click for doc:", docNo);
+
+        // Survey-anchor / placeholder nodes carry no deed. Clicking one should
+        // CLOSE the split panel (deselect) rather than open an empty
+        // "no document preview" view.
+        if (!docNo || docNo === 'NO TRANSACTION FOUND') {
+            setPanelOpen(false);
+            setShowSummary(false);
+            setPreviewDoc(null);
+            setAskAiActiveDoc(null);
+            return;
+        }
+
         setVerificationResult(null);
         setUploadFile(null);
-        setActiveTab("summary");
-        setIsNotesVisible(false);
-        setActiveTab("summary");
         setIsNotesVisible(false);
         setPdfAnnotations([]);
         setScrollToPage(undefined);
@@ -503,31 +505,13 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
             validation
         });
         setPanelOpen(true);
+        // Open the split panel on the document first; the user can flip to the
+        // Summary view from the panel header.
+        setShowSummary(false);
 
-        // When invoked from a graph node click (position present), show the
-        // small chooser popup anchored at the node. Table-row clicks pass no
-        // position and simply open the panel as before — behaviour unchanged.
-        if (position) {
-            setNodeChooser({ docNo, x: position.x, y: position.y });
-        } else {
-            setNodeChooser(null);
-        }
-    }, [timeline, results, validationCache, masterTimeline, findVaultPdfUrl]);
-
-    // All document numbers across the active + master timelines — feeds the
-    // overall chatbot's @-mention autocomplete.
-    const docNumbers = useMemo(() => {
-        const set = new Set<string>();
-        const collect = (tl: any) => {
-            (tl?.react_flow_data?.nodes || []).forEach((n: any) => {
-                const d = n?.data?.document_number;
-                if (d && d !== "NO TRANSACTION FOUND") set.add(d);
-            });
-        };
-        collect(timeline);
-        collect(masterTimeline);
-        return Array.from(set).sort();
-    }, [timeline, masterTimeline]);
+        // Make the shell-hosted Ask AI context-aware of this exact node.
+        setAskAiActiveDoc({ docNo, viewLabel: `Timeline · ${docNo}` });
+    }, [timeline, results, validationCache, masterTimeline, findVaultPdfUrl, setAskAiActiveDoc]);
 
     const getFullSurveyNumber = (data: any): string | undefined => {
         if (!data) return undefined;
@@ -883,16 +867,6 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                         Master Network Overview
                     </span>
                 </button>
-
-                {/* Property-wide AI assistant launcher — opens a floating chat. */}
-                <button
-                    onClick={() => setOverallChatOpen(true)}
-                    className="shrink-0 inline-flex items-center gap-1.5 font-bold text-[11px] sm:text-xs h-9 px-3 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md shadow-violet-500/30 hover:from-violet-700 hover:to-indigo-700 transition-all"
-                    title="Ask the property AI assistant"
-                >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Ask AI
-                </button>
             </motion.div>
 
 
@@ -930,52 +904,58 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                             validation_results data and naturally belongs on
                             the dashboard summary page. */}
 
+                        {/* Lineage Path Breadcrumbs — kept ABOVE the split grid so
+                            the graph and document panels start at the same Y and
+                            read as equal-height panes. */}
+                        {timeline.lineage_path && timeline.lineage_path.length > 0 && (
+                            <div className="flex items-center gap-2 px-1 mb-4 overflow-x-auto pb-2 scrollbar-hide">
+                                {timeline.lineage_path.map((path, idx) => (
+                                    <div key={idx} className="flex items-center gap-2 shrink-0">
+                                        <Badge
+                                            variant={idx === timeline.lineage_path.length - 1 ? "default" : "outline"}
+                                            className={cn(
+                                                "px-3 py-1 font-bold tracking-tight transition-all",
+                                                idx === timeline.lineage_path.length - 1
+                                                    ? "bg-primary shadow-md scale-105"
+                                                    : "bg-background hover:bg-muted"
+                                            )}
+                                        >
+                                            {idx === 0 ? "Mother: " : idx === 1 ? "Child: " : idx === 2 ? "Grandchild: " : "Sub: "}
+                                            {path}
+                                        </Badge>
+                                        {idx < timeline.lineage_path.length - 1 && (
+                                            <ArrowRight className="w-4 h-4 text-muted-foreground/50" />
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <div className={cn(
-                            "grid gap-6 transition-all duration-500",
+                            "grid gap-6 transition-all duration-500 items-start",
                             panelOpen ? "grid-cols-1 lg:grid-cols-12" : "grid-cols-1"
                         )}>
-                            {/* Left Side: Hierarchy & Timeline.
-                                Widened to 9/12 (75%) — the per-doc preview
-                                panel only needs 25% now that its header row
-                                wraps and its badges have whitespace-nowrap /
-                                shrink-0 guards (see the earlier overflow fix
-                                in the summary card). */}
+                            {/* Left Side: Hierarchy & Timeline. Splits 8/4 with
+                                the docked PDF panel when a document is open so
+                                the user reads the deed and the graph together;
+                                the summary + notes float over the graph beside
+                                the clicked node. */}
                             <div className={cn(
                                 "space-y-6 transition-all duration-500",
-                                panelOpen ? "lg:col-span-9 xl:col-span-9" : "w-full"
+                                panelOpen ? "lg:col-span-6 xl:col-span-6" : "w-full"
                             )}>
-                                {/* Lineage Path Breadcrumbs */}
-                                {timeline.lineage_path && timeline.lineage_path.length > 0 && (
-                                    <div className="flex items-center gap-2 px-1 mb-2 overflow-x-auto pb-2 scrollbar-hide">
-                                        {timeline.lineage_path.map((path, idx) => (
-                                            <div key={idx} className="flex items-center gap-2 shrink-0">
-                                                <Badge
-                                                    variant={idx === timeline.lineage_path.length - 1 ? "default" : "outline"}
-                                                    className={cn(
-                                                        "px-3 py-1 font-bold tracking-tight transition-all",
-                                                        idx === timeline.lineage_path.length - 1
-                                                            ? "bg-primary shadow-md scale-105"
-                                                            : "bg-background hover:bg-muted"
-                                                    )}
-                                                >
-                                                    {idx === 0 ? "Mother: " : idx === 1 ? "Child: " : idx === 2 ? "Grandchild: " : "Sub: "}
-                                                    {path}
-                                                </Badge>
-                                                {idx < timeline.lineage_path.length - 1 && (
-                                                    <ArrowRight className="w-4 h-4 text-muted-foreground/50" />
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
                                 {timeline?.react_flow_data && (
                                     <motion.div
                                         initial={{ opacity: 0, y: 16 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
                                     >
-                                    <Card className="relative border-indigo-100 shadow-2xl shadow-indigo-500/10 overflow-hidden group/flow rounded-2xl sm:rounded-3xl">
+                                    <Card className={cn(
+                                        "relative border-indigo-100 shadow-2xl shadow-indigo-500/10 overflow-hidden group/flow rounded-2xl sm:rounded-3xl flex flex-col",
+                                        // Match the docked panel's height so the split reads as an
+                                        // even two-pane grid when a document is open.
+                                        panelOpen ? "h-[calc(100vh-6rem)]" : ""
+                                    )}>
                                         {/* Top accent strip */}
                                         <div className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 z-20" />
                                         <CardHeader className="relative bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 border-b border-indigo-500/20 py-4 px-5 sm:px-7 flex flex-row items-center justify-between gap-4 flex-wrap space-y-0 text-white overflow-hidden">
@@ -1027,7 +1007,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                 </Button>
                                             </div>
                                         </CardHeader>
-                                        <CardContent className="p-0 relative h-[750px]">
+                                        <CardContent className={cn("p-0 relative", panelOpen ? "flex-1 min-h-0" : "h-[750px]")}>
                                             <ReactFlowHierarchy
                                                 data={timeline.react_flow_data}
                                                 onNodeClick={handleNodeClick}
@@ -1126,205 +1106,147 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                 </Card>
                             </div>
 
-                            {/* Right Side: Preview Side Panel */}
-                            {panelOpen && (
+                            {/* Right Side: docked DOCUMENT split panel. Shows the
+                                deed PDF beside the graph; the Summary toggle in the
+                                header swaps this same panel for the full deed
+                                summary (no floating cards). */}
+                            {panelOpen && !showSummary && (
                                 <div className={cn(
                                     "transition-all duration-500 relative",
-                                    fullScreenPreview ? "fixed inset-0 z-50 bg-background" : "lg:col-span-3 xl:col-span-3"
+                                    fullScreenPreview ? "fixed inset-0 z-[120] bg-background" : "lg:col-span-6 xl:col-span-6"
                                 )}>
-                                    {/* Non-fullscreen height switched from the hardcoded `h-[800px]`
-                                        to `h-auto max-h-[calc(100vh-6rem)]`. The 800px was sized for the
-                                        old inline PDF iframe; now that the PDF lives in a draggable
-                                        floating popup, the Card was leaving ~500px of empty whitespace
-                                        below the buttons. `h-auto` lets it hug the metadata + tabs +
-                                        compact source strip; the max-height cap keeps it from scrolling
-                                        the page on very tall content. */}
                                     <Card className={cn(
-                                        "border-primary/20 shadow-2xl flex flex-col overflow-hidden sticky top-6",
-                                        fullScreenPreview
-                                            ? "h-screen border-none rounded-none"
-                                            // Summary view hugs its content (h-auto) so the compact panel
-                                            // doesn't leave whitespace. But the Chatbot / Notes overlays are
-                                            // absolutely positioned (top-0 bottom-0) and contribute no height
-                                            // to an h-auto parent — they collapsed to ~0px, which is why the
-                                            // chat "wouldn't open". Give the panel the full available height
-                                            // whenever a non-summary tab is active so the overlay has room.
-                                            : activeTab === "summary"
-                                                ? "h-auto max-h-[calc(100vh-6rem)]"
-                                                : "h-[calc(100vh-6rem)]"
+                                        "border-indigo-200 shadow-2xl flex flex-col overflow-hidden sticky top-6 bg-slate-900",
+                                        fullScreenPreview ? "h-screen border-none rounded-none" : "h-[calc(100vh-6rem)]"
                                     )}>
-                                        {/* Header tightened to match the slimmer 25% panel:
-                                            padding py-3 px-4 → py-2 px-3, icon tile p-1.5 → p-1,
-                                            doc-no font text-sm → text-xs, buttons h-8 w-8 → h-7 w-7.
-                                            max-w on the docNo drops from 150 → 110 since the row
-                                            has less available width. */}
-                                        <CardHeader className="bg-primary text-primary-foreground py-2 px-3 flex flex-row items-center justify-between space-y-0">
-                                            <div className="flex items-center gap-1.5 min-w-0">
-                                                <div className="p-1 bg-white/20 rounded-md shrink-0">
+                                        <CardHeader className="relative bg-gradient-to-r from-indigo-700 via-indigo-600 to-violet-600 text-white py-2.5 px-3 flex flex-row items-center justify-between space-y-0 shrink-0">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <div className="p-1.5 bg-white/20 rounded-md shrink-0">
                                                     <FileText className="w-3.5 h-3.5" />
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
-                                                    <span className="text-[9px] opacity-70 leading-none">PROPERTIES OF</span>
-                                                    <span className="text-xs font-bold truncate max-w-[110px]">{previewDoc?.docNo}</span>
+                                                    <span className="text-[9px] opacity-80 leading-none uppercase tracking-[0.18em] font-bold">Document</span>
+                                                    <span className="text-xs font-bold truncate max-w-[160px]">{previewDoc?.docNo}</span>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-0.5 shrink-0">
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                {previewDoc?.url && (
+                                                    <Button
+                                                        size="sm"
+                                                        className="h-7 bg-white/15 hover:bg-white/25 text-white font-bold text-[10px] uppercase tracking-wider gap-1.5 px-2.5 border border-white/20"
+                                                        onClick={handleSinglePdfMatch}
+                                                        disabled={validatingSingle}
+                                                        title="Re-match this PDF against the EC"
+                                                    >
+                                                        {validatingSingle ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
+                                                        {validatingSingle ? "Matching" : "Match"}
+                                                    </Button>
+                                                )}
                                                 <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-7 w-7 hover:bg-white/20 text-white"
-                                                    onClick={() => setFullScreenPreview(!fullScreenPreview)}
+                                                    size="sm"
+                                                    className="h-7 bg-white/15 hover:bg-white/25 text-white font-bold text-[10px] uppercase tracking-wider gap-1.5 px-2.5 border border-white/20"
+                                                    onClick={() => setShowSummary(true)}
+                                                    title="Show the deed summary"
                                                 >
+                                                    <FileText className="w-3 h-3" />
+                                                    Summary
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-white/20 text-white" onClick={() => setFullScreenPreview(!fullScreenPreview)} title={fullScreenPreview ? "Exit full screen" : "Full screen"}>
                                                     {fullScreenPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
                                                 </Button>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className={cn(
-                                                        "h-7 w-7 hover:bg-white/20 text-white transition-all relative",
-                                                        isNotesVisible ? "bg-amber-400 text-amber-950 shadow-inner" : ""
-                                                    )}
-                                                    onClick={() => setIsNotesVisible(!isNotesVisible)}
-                                                    title={isNotesVisible ? "Hide Notes" : "View/Add Notes"}
-                                                >
-                                                    <StickyNote className={cn("w-3.5 h-3.5 transition-all duration-300", isNotesVisible ? "scale-110" : "")} />
-                                                    {!isNotesVisible && timeline?.react_flow_data.nodes.find(n => n.data.document_number === previewDoc?.docNo)?.data.notes && (
-                                                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full border border-primary animate-pulse" />
-                                                    )}
-                                                </Button>
-                                                <Button
-                                                    size="icon"
-                                                    variant="ghost"
-                                                    className="h-7 w-7 hover:bg-white/20 text-white"
-                                                    onClick={() => { setPanelOpen(false); setFullScreenPreview(false); }}
-                                                >
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-white/20 text-white" onClick={() => { setPanelOpen(false); setFullScreenPreview(false); setShowSummary(false); setAskAiActiveDoc(null); }} title="Close document">
                                                     <X className="w-3.5 h-3.5" />
                                                 </Button>
                                             </div>
                                         </CardHeader>
-                                        <div className="flex bg-primary/5 p-1 mx-4 mt-3 rounded-lg border border-primary/10">
-                                            <button
-                                                className={cn(
-                                                    "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-md transition-all",
-                                                    activeTab === "summary" ? "bg-white shadow-sm text-primary" : "text-slate-500 hover:text-primary/70"
-                                                )}
-                                                onClick={() => setActiveTab("summary")}
-                                            >
-                                                <FileText className="w-3.5 h-3.5" />
-                                                Summary
-                                            </button>
-                                            <button
-                                                className={cn(
-                                                    "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-md transition-all",
-                                                    activeTab === "annotations" ? "bg-white shadow-sm text-primary" : "text-slate-500 hover:text-primary/70"
-                                                )}
-                                                onClick={() => setActiveTab("annotations")}
-                                            >
-                                                <StickyNote className="w-3.5 h-3.5" />
-                                                Notes
-                                            </button>
-                                            <button
-                                                className={cn(
-                                                    "flex-1 flex items-center justify-center gap-1.5 py-1.5 text-[10px] font-bold rounded-md transition-all",
-                                                    activeTab === "chat" ? "bg-white shadow-sm text-primary" : "text-slate-500 hover:text-primary/70"
-                                                )}
-                                                onClick={() => setActiveTab("chat")}
-                                            >
-                                                <MessageSquare className="w-3.5 h-3.5" />
-                                                Chatbot
-                                            </button>
+                                        <div className="flex-1 min-h-0 bg-slate-900 relative">
+                                            {previewDoc?.url ? (
+                                                <PdfAnnotator
+                                                    url={previewDoc.url}
+                                                    docId={previewDoc.docNo}
+                                                    parcelId={parcelId}
+                                                    onAnnotationChange={(h) => setPdfAnnotations(h)}
+                                                    scrollToPage={scrollToPage}
+                                                    focusHighlightId={focusHighlightId}
+                                                />
+                                            ) : (
+                                                <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center bg-white">
+                                                    <div className="relative w-16 h-16 mb-4">
+                                                        <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-blue-500 rounded-2xl blur-xl opacity-30" />
+                                                        <div className="relative w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-lg border border-slate-100">
+                                                            <FileText className="w-7 h-7 text-indigo-300" strokeWidth={1.4} />
+                                                        </div>
+                                                    </div>
+                                                    <h3 className="text-sm font-display font-extrabold text-slate-700">No document preview</h3>
+                                                    <p className="text-[11px] text-slate-500 font-medium mt-1.5 max-w-[240px] leading-relaxed">
+                                                        We couldn&apos;t locate the source PDF for this deed. Upload it to the Document Repository to enable the preview.
+                                                    </p>
+                                                </div>
+                                            )}
                                         </div>
+                                    </Card>
+                                </div>
+                            )}
 
-                                        <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/20 overflow-hidden mt-2">
-                                            {activeTab === "chat" && previewDoc && (
-                                                // z-[150] sits above PdfAnnotator's TEXT/DRAW toggle (z-100) and the
-                                                // Single-PDF-Matching button (z-30) so the chat overlay isn't
-                                                // pierced by PDF chrome. Buttons stay in the DOM and reappear
-                                                // when the chat tab closes.
-                                                <div className="absolute inset-x-0 top-0 bottom-0 z-[150] animate-in slide-in-from-right duration-300">
-                                                    <DocChat
-                                                        docNo={previewDoc.docNo}
-                                                        requestId={requestId}
-                                                        onClose={() => setActiveTab("summary")}
-                                                        onPageClick={(page) => {
-                                                            // Same pattern as the in-summary page pills:
-                                                            // chatbot citations now open the PDF popup so
-                                                            // the user actually lands on the cited page.
-                                                            setIsPdfPopupOpen(true);
-                                                            setScrollToPage({ page, timestamp: Date.now() });
-                                                        }}
-                                                    />
+                            {/* Right Side: docked SUMMARY split panel — same slot
+                                as the document panel, flipped in via the header
+                                Summary button. Full-panel deed summary + notes +
+                                validation; the Document button flips back. */}
+                            {panelOpen && showSummary && previewDoc && (
+                                <div className={cn(
+                                    "transition-all duration-500 relative",
+                                    fullScreenPreview ? "fixed inset-0 z-[120] bg-background" : "lg:col-span-6 xl:col-span-6"
+                                )}>
+                                    <Card className={cn(
+                                        "border-indigo-200 shadow-2xl flex flex-col overflow-hidden sticky top-6 bg-white",
+                                        fullScreenPreview ? "h-screen border-none rounded-none" : "h-[calc(100vh-6rem)]"
+                                    )}>
+                                        <CardHeader className="relative bg-gradient-to-r from-indigo-700 via-indigo-600 to-violet-600 text-white py-2.5 px-3 flex flex-row items-center justify-between space-y-0 shrink-0">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <div className="p-1.5 bg-white/20 rounded-md shrink-0">
+                                                    <FileText className="w-3.5 h-3.5" />
                                                 </div>
-                                            )}
-
-                                            {activeTab === "annotations" && previewDoc && (
-                                                <div className="absolute inset-x-0 top-0 bottom-0 z-[150] animate-in slide-in-from-right duration-300 bg-white flex flex-col p-4 border-b">
-                                                    <div className="flex items-center justify-between mb-3">
-                                                        <h3 className="text-[10px] font-extra-bold uppercase tracking-wider text-slate-400">PDF Annotations</h3>
-                                                        <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setActiveTab("summary")}><X className="w-3 h-3" /></Button>
-                                                    </div>
-                                                    <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar">
-                                                        {pdfAnnotations.length === 0 ? (
-                                                            <div className="flex flex-col items-center justify-center py-6 opacity-30 grayscale">
-                                                                <StickyNote className="w-6 h-6 mb-1" />
-                                                                <p className="text-[9px] font-bold">Highlight text to add notes</p>
-                                                            </div>
-                                                        ) : (
-                                                            pdfAnnotations.map((anno: any) => {
-                                                                const pageNum = anno.position?.pageNumber;
-                                                                return (
-                                                                    <Card
-                                                                        key={anno.id}
-                                                                        className="p-2 border-primary/5 bg-slate-50/50 hover:border-primary/30 hover:shadow-sm transition-all cursor-pointer group"
-                                                                        onClick={() => handleFocusLocalNote(anno)}
-                                                                        role="button"
-                                                                        tabIndex={0}
-                                                                        onKeyDown={(e) => {
-                                                                            if (e.key === "Enter" || e.key === " ") {
-                                                                                e.preventDefault();
-                                                                                handleFocusLocalNote(anno);
-                                                                            }
-                                                                        }}
-                                                                        title={`Open page ${pageNum ?? "?"} in the PDF`}
-                                                                    >
-                                                                        <div className="flex flex-col gap-1">
-                                                                            <div className="flex items-center justify-between">
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={(e) => {
-                                                                                        e.stopPropagation();
-                                                                                        handleFocusLocalNote(anno);
-                                                                                    }}
-                                                                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[9px] font-extra-bold uppercase tracking-wider bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 text-white shadow-sm hover:shadow hover:scale-[1.03] active:scale-[0.97] transition-all"
-                                                                                    title={`Open page ${pageNum ?? "?"} in the PDF`}
-                                                                                >
-                                                                                    <ArrowRight className="w-2.5 h-2.5" />
-                                                                                    PAGE {pageNum ?? "?"}
-                                                                                </button>
-                                                                                <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity">
-                                                                                    Click to jump
-                                                                                </span>
-                                                                            </div>
-                                                                            <p className="text-[10px] font-bold text-slate-800 line-clamp-2 mt-1">"{anno.content?.text || 'Area selection'}"</p>
-                                                                            <div className="flex items-start gap-1.5 mt-1 p-1.5 bg-white rounded border border-slate-100">
-                                                                                <MessageSquare className="w-2.5 h-2.5 text-primary shrink-0 mt-0.5" />
-                                                                                <p className="text-[9px] text-slate-600 italic leading-snug">{anno.comment?.text}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    </Card>
-                                                                );
-                                                            })
-                                                        )}
-                                                    </div>
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className="text-[9px] opacity-80 leading-none uppercase tracking-[0.18em] font-bold">Summary</span>
+                                                    <span className="text-xs font-bold truncate max-w-[160px]">{previewDoc.docNo}</span>
                                                 </div>
-                                            )}
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <Button
+                                                    size="icon"
+                                                    className={cn(
+                                                        "h-7 w-7 relative",
+                                                        isNotesVisible ? "bg-amber-400 text-amber-950 hover:bg-amber-400" : "bg-white/15 hover:bg-white/25 text-white border border-white/20"
+                                                    )}
+                                                    onClick={() => setIsNotesVisible(!isNotesVisible)}
+                                                    title={isNotesVisible ? "Hide Notes" : "View/Add Notes"}
+                                                >
+                                                    <StickyNote className="w-3.5 h-3.5" />
+                                                    {!isNotesVisible && timeline?.react_flow_data.nodes.find(n => n.data.document_number === previewDoc?.docNo)?.data.notes && (
+                                                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-amber-400 rounded-full border border-white animate-pulse" />
+                                                    )}
+                                                </Button>
+                                                <Button
+                                                    size="sm"
+                                                    className="h-7 bg-white/15 hover:bg-white/25 text-white font-bold text-[10px] uppercase tracking-wider gap-1.5 px-2.5 border border-white/20"
+                                                    onClick={() => setShowSummary(false)}
+                                                    title="Back to the document"
+                                                >
+                                                    <FileText className="w-3 h-3" />
+                                                    Document
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-white/20 text-white" onClick={() => setFullScreenPreview(!fullScreenPreview)} title={fullScreenPreview ? "Exit full screen" : "Full screen"}>
+                                                    {fullScreenPreview ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+                                                </Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 hover:bg-white/20 text-white" onClick={() => { setPanelOpen(false); setFullScreenPreview(false); setShowSummary(false); setAskAiActiveDoc(null); }} title="Close">
+                                                    <X className="w-3.5 h-3.5" />
+                                                </Button>
+                                            </div>
+                                        </CardHeader>
 
-                                            {/* Document Summary Section */}
-                                            <div className={cn(
-                                                "bg-white border-b p-4 space-y-3 shadow-sm z-10 transition-all duration-300",
-                                                activeTab === "chat" ? "h-[100px] opacity-40 grayscale pointer-events-none overflow-hidden" : "max-h-[40%] overflow-y-auto custom-scrollbar"
-                                            )}>
-                                                {previewDoc?.data && (
+                                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-white">
+                                        <div className="p-4 space-y-3">
+                                            {previewDoc?.data && (
                                                     <>
                                                         <div className="flex items-center justify-between">
                                                             <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-tight">
@@ -1445,7 +1367,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                                                             size="sm"
                                                                                             className="h-6 mt-2 text-[10px] font-bold bg-white/50 hover:bg-white text-slate-600 border border-slate-200"
                                                                                             onClick={() => {
-                                                                                                setIsPdfPopupOpen(true);
+                                                                                                // PDF is docked in the right split — just jump it.
                                                                                                 setScrollToPage({ page: pg, timestamp: Date.now() });
                                                                                             }}
                                                                                         >
@@ -1529,15 +1451,9 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                                                                         className="flex items-center gap-1 bg-white px-1.5 py-0.5 rounded-md border border-slate-200 shadow-sm cursor-pointer hover:bg-blue-50 hover:border-blue-200 transition-all active:scale-95"
                                                                                                         onClick={(e) => {
                                                                                                             e.stopPropagation();
-                                                                                                            // Open the draggable PDF popup AND tell its
-                                                                                                            // PdfAnnotator to land on this page. Previously
-                                                                                                            // the click only set scrollToPage, which did
-                                                                                                            // nothing when the popup was closed — the user
-                                                                                                            // saw the "Jump to Page N" tooltip but nothing
-                                                                                                            // visible happened. React 18 batches both state
-                                                                                                            // updates, so PdfAnnotator mounts with the
-                                                                                                            // scrollToPage prop already set.
-                                                                                                            setIsPdfPopupOpen(true);
+                                                                                                            // The PDF is docked in the right split panel
+                                                                                                            // and always mounted while a doc is open, so
+                                                                                                            // a page jump just updates scrollToPage.
                                                                                                             setScrollToPage({ page: pg, timestamp: Date.now() });
                                                                                                         }}
                                                                                                         title={`Jump to Page ${pg}`}
@@ -1736,86 +1652,7 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                                                 )}
                                             </div>
 
-                                            {/* Dropped the `flex-1` here. Previously the child was a
-                                                full-height <PdfAnnotator> that genuinely needed to stretch
-                                                — now it's a 50px-tall horizontal strip, and `flex-1`
-                                                was producing the empty whitespace below the buttons.
-                                                Use `shrink-0` so this strip sits at its natural height
-                                                and the column above it can take whatever space remains. */}
-                                            <div className="shrink-0 relative group">
-                                                {previewDoc?.url ? (
-                                                    /* Compact source-document footer. Stacked vertically
-                                                       (docNo row → button row) because at the current
-                                                       25% panel width the inline layout truncated the
-                                                       docNo to zero — the Preview + Match buttons claimed
-                                                       all the horizontal space. Keeping the strip at the
-                                                       same total height by using tight gaps. */
-                                                    <div className="px-3 py-2 flex flex-col gap-1.5 border-t border-slate-100">
-                                                        <div className="flex items-center gap-2 min-w-0">
-                                                            <div className="w-5 h-5 rounded-md bg-indigo-50 flex items-center justify-center shrink-0">
-                                                                <FileText className="w-3 h-3 text-indigo-600" />
-                                                            </div>
-                                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 shrink-0">
-                                                                Source
-                                                            </span>
-                                                            <span className="text-[11px] font-black text-slate-900 tabular-nums truncate">
-                                                                {previewDoc.docNo}
-                                                            </span>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => setIsPdfPopupOpen(true)}
-                                                            className="w-full inline-flex items-center justify-center gap-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] uppercase tracking-wider px-2 h-7 rounded-md shadow-sm transition-all"
-                                                            title="Open the document in a draggable preview window"
-                                                        >
-                                                            <Eye className="w-3 h-3" />
-                                                            Preview
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, y: 8 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                                                        className="relative w-full h-full flex flex-col items-center justify-center p-8 text-center overflow-hidden"
-                                                    >
-                                                        <div className="pointer-events-none absolute inset-0 opacity-50">
-                                                            <div className="absolute -top-32 -left-20 w-72 h-72 rounded-full bg-gradient-to-br from-indigo-200/30 to-blue-200/30 blur-3xl animate-blob-slow" />
-                                                            <div className="absolute -bottom-32 -right-20 w-72 h-72 rounded-full bg-gradient-to-br from-violet-200/25 to-indigo-200/25 blur-3xl animate-blob" />
-                                                        </div>
-                                                        <motion.div
-                                                            initial={{ scale: 0.7, opacity: 0 }}
-                                                            animate={{ scale: 1, opacity: 1 }}
-                                                            transition={{ delay: 0.05, duration: 0.55, ease: [0.34, 1.56, 0.64, 1] }}
-                                                            className="relative w-20 h-20 mb-5"
-                                                        >
-                                                            <div className="absolute inset-0 bg-gradient-to-br from-indigo-400 to-blue-500 rounded-3xl blur-2xl opacity-30 animate-pulse-glow" />
-                                                            <div className="relative w-20 h-20 bg-white rounded-3xl flex items-center justify-center shadow-xl border border-slate-100 ring-4 ring-white animate-float">
-                                                                <FileText className="w-9 h-9 text-indigo-300" strokeWidth={1.4} />
-                                                            </div>
-                                                            <motion.div
-                                                                initial={{ scale: 0 }}
-                                                                animate={{ scale: 1 }}
-                                                                transition={{ delay: 0.4, duration: 0.4, ease: [0.34, 1.56, 0.64, 1] }}
-                                                                className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md ring-2 ring-white"
-                                                            >
-                                                                <AlertCircle className="w-3.5 h-3.5 text-white" />
-                                                            </motion.div>
-                                                        </motion.div>
-                                                        <h3 className="relative text-base font-display font-extrabold text-slate-700 tracking-tight">
-                                                            <span className="text-gradient-primary">No preview</span>
-                                                            <span className="text-slate-700"> available</span>
-                                                        </h3>
-                                                        <p className="relative text-xs text-slate-500 font-medium mt-2 max-w-xs leading-relaxed">
-                                                            We couldn&apos;t locate the source PDF for this deed. It may not have been uploaded to the vault, or the file path is unresolved.
-                                                        </p>
-                                                        <div className="relative mt-4 inline-flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-                                                            <Sparkles className="w-3 h-3 text-amber-400" />
-                                                            Upload to PDF Vault to enable preview
-                                                        </div>
-                                                    </motion.div>
-                                                )}
-                                            </div>
-                                        </CardContent>
+                                        </div>
                                     </Card>
                                 </div>
                             )}
@@ -1879,135 +1716,6 @@ export function SurveyTimeline({ requestId, results, parcelId }: SurveyTimelineP
                 </div>
             )}
 
-            {/* ─── Floating draggable PDF popup ────────────────────────────
-                Mounted at the component root so it floats above everything,
-                including the master-network-map and the right-pane card.
-                Same architecture as the HierarchyTab popup:
-                  - dragListener={false} + onPointerDown on the header strip
-                    means only the header drags; the PDF body keeps normal
-                    scroll / text-selection / annotation behavior
-                  - dragMomentum={false} so it stops where you release
-                  - AnimatePresence handles the scale-from-0.92 enter/exit
-                  - Auto-closes on previewDoc.docNo change (see useEffect)
-            */}
-            <AnimatePresence>
-                {isPdfPopupOpen && previewDoc?.url && (
-                    <motion.div
-                        drag
-                        dragControls={pdfPopupDragControls}
-                        dragListener={false}
-                        dragMomentum={false}
-                        dragElastic={0}
-                        initial={{ opacity: 0, scale: 0.92 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.92 }}
-                        transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                        className="fixed top-20 right-8 z-[200] w-[680px] max-w-[92vw] h-[82vh] rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/30 overflow-hidden flex flex-col select-none"
-                    >
-                        <div
-                            onPointerDown={(e) => pdfPopupDragControls.start(e)}
-                            className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-slate-100 bg-gradient-to-r from-indigo-50/70 via-white to-violet-50/70 cursor-move"
-                        >
-                            <div className="flex items-center gap-2 min-w-0">
-                                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-600 to-violet-600 flex items-center justify-center shrink-0 shadow-sm">
-                                    <FileText className="w-3.5 h-3.5 text-white" />
-                                </div>
-                                <div className="min-w-0">
-                                    <p className="text-[9px] font-black uppercase tracking-widest text-indigo-700 leading-none">
-                                        Document Preview
-                                    </p>
-                                    <p className="text-xs font-black text-slate-900 truncate">
-                                        {previewDoc.docNo}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                                <Button
-                                    size="sm"
-                                    className="h-7 bg-primary hover:bg-primary/90 text-white font-bold text-[10px] uppercase tracking-wider gap-1.5 px-2.5"
-                                    onClick={handleSinglePdfMatch}
-                                    disabled={validatingSingle}
-                                    title="Re-match this PDF against the EC"
-                                >
-                                    {validatingSingle ? <Loader2 className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3 h-3" />}
-                                    {validatingSingle ? "Matching" : "Match"}
-                                </Button>
-                                <button
-                                    onClick={() => setIsPdfPopupOpen(false)}
-                                    className="p-1.5 hover:bg-white rounded-lg transition-all text-slate-400 hover:text-indigo-600"
-                                    title="Close preview"
-                                >
-                                    <X className="w-4 h-4" />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex-1 min-h-0 bg-slate-900 relative">
-                            <PdfAnnotator
-                                url={previewDoc.url}
-                                docId={previewDoc.docNo}
-                                parcelId={parcelId}
-                                onAnnotationChange={(h) => setPdfAnnotations(h)}
-                                scrollToPage={scrollToPage}
-                                focusHighlightId={focusHighlightId}
-                            />
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Node-click chooser — two options anchored at the clicked node.
-                The detail side-panel still opens on click (handleNodeClick); this
-                popup is purely additive. */}
-            {nodeChooser && (
-                <>
-                    <div className="fixed inset-0 z-[290]" onClick={() => setNodeChooser(null)} />
-                    <div
-                        className="fixed z-[295] bg-white rounded-xl border border-primary/20 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 min-w-[210px]"
-                        style={{
-                            left: Math.min(nodeChooser.x, window.innerWidth - 230),
-                            top: Math.min(nodeChooser.y, window.innerHeight - 120),
-                        }}
-                    >
-                        <div className="px-3 py-2 text-[9px] font-extra-bold uppercase tracking-wider text-slate-400 border-b font-mono">
-                            {nodeChooser.docNo}
-                        </div>
-                        <button
-                            onClick={() => {
-                                setOverallChatOpen(true);
-                                setPendingMention({ doc: nodeChooser.docNo, nonce: Date.now() });
-                                setNodeChooser(null);
-                            }}
-                            className="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-violet-50 hover:text-violet-700 flex items-center gap-2 transition-colors"
-                        >
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Mention in chatbot
-                        </button>
-                        <button
-                            onClick={() => {
-                                setActiveTab("chat");
-                                setPanelOpen(true);
-                                setNodeChooser(null);
-                            }}
-                            className="w-full text-left px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-primary/5 hover:text-primary flex items-center gap-2 border-t transition-colors"
-                        >
-                            <MessageSquare className="w-3.5 h-3.5" />
-                            Open document chat
-                        </button>
-                    </div>
-                </>
-            )}
-
-            {/* Property-wide floating AI assistant (launched from the "Ask AI"
-                button near the search bar). */}
-            {overallChatOpen && (
-                <OverallChat
-                    requestId={requestId}
-                    parcelId={parcelId}
-                    docNumbers={docNumbers}
-                    pendingMention={pendingMention}
-                    onClose={() => setOverallChatOpen(false)}
-                />
-            )}
         </div>
     );
 }

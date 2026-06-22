@@ -30,6 +30,8 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/searchable-select";
+import { getDistricts } from "@/data/tamilNaduLocations";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { format } from "date-fns";
@@ -409,22 +411,19 @@ const LandingPage = () => {
                       <div className="grid grid-cols-2 gap-2.5">
                         <div className="space-y-1">
                           <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">District</Label>
-                          <Select value={newProject.district} onValueChange={(val) => setNewProject({...newProject, district: val})}>
-                            <SelectTrigger className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md">
-                              <SelectValue placeholder="Select district" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white border-slate-200">
-                              <SelectItem value="Chennai">Chennai</SelectItem>
-                              <SelectItem value="Coimbatore">Coimbatore</SelectItem>
-                              <SelectItem value="Madurai">Madurai</SelectItem>
-                              <SelectItem value="Trichy">Trichy</SelectItem>
-                              <SelectItem value="Salem">Salem</SelectItem>
-                            </SelectContent>
-                          </Select>
+                          <SearchableSelect
+                            options={getDistricts(newProject.state)}
+                            value={newProject.district}
+                            onChange={(val) => setNewProject({ ...newProject, district: val })}
+                            placeholder="Select district"
+                            searchPlaceholder="Search district..."
+                            emptyText={newProject.state === "Tamil Nadu" ? "No district found." : "Districts available for Tamil Nadu only."}
+                            allowCustomValue={newProject.state !== "Tamil Nadu"}
+                          />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">State</Label>
-                          <Select value={newProject.state} onValueChange={(val) => setNewProject({...newProject, state: val})}>
+                          <Select value={newProject.state} onValueChange={(val) => setNewProject({...newProject, state: val, district: ""})}>
                             <SelectTrigger className="bg-slate-50 border-slate-200 h-8 text-xs rounded-md">
                               <SelectValue placeholder="Select state" />
                             </SelectTrigger>

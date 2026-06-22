@@ -13,7 +13,7 @@
  * tab. Reuses `ValidationResultItem`'s field rendering by inlining the
  * per-comparison cards directly — fewer wrappers, no accordion toggle.
  */
-import React, { useMemo, useState, useCallback, useEffect } from "react";
+import React, { useMemo, useState, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { coerceMatchCount } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +28,30 @@ import {
     StickyNote,
     Loader2,
     ChevronDown,
+    ChevronLeft,
     Circle,
     ListChecks,
+    Columns2,
+    X,
+    ChevronUp,
+    AlertTriangle,
 } from "lucide-react";
 import PdfAnnotator from "./PdfAnnotator";
+import { useAskAi } from "@/components/AppShell";
 import { API_BASE_URL } from "@/lib/api";
 import { LANDWISE_CHECKS, getSelectedChecks, type LandwiseCheck } from "@/lib/landwise-checks";
+
+// A located box on a marked PDF, normalized to [0,1] page coords (top-left
+// origin). Produced by the server's visual debugger and handed to the viewer so
+// a clicked field can spotlight its exact box. `field` is present on EC boxes
+// (used to match them back to a comparison); deed boxes inherit their field
+// from the comparison they hang off.
+interface BoxRef {
+    page: number;
+    rect: [number, number, number, number];
+    field?: string;
+    value?: string;
+}
 
 interface Comparison {
     field: string;
@@ -42,7 +60,101 @@ interface Comparison {
     status: string;
     reason: string;
     page_number?: string;
+    // Normalized boxes drawn on the marked deed for this field (header/body/
+    // sign-off repeats → several). Absent for parcels analyzed before boxes
+    // were captured — those fall back to page-level navigation.
+    bounding_boxes?: BoxRef[];
 }
+
+// Minimal react-pdf-highlighter highlight shape we synthesize for spotlights.
+type SpotlightHighlight = {
+    id: string;
+    content: { text: string };
+    position: { boundingRect: any; rects: any[]; pageNumber: number };
+    comment: { text: string; emoji: string };
+};
+type Spotlight = {
+    highlights: SpotlightHighlight[];
+    focus?: { id: string; page?: number; timestamp: number };
+};
+// Spotlight a set of fields' boxes; falls back to a page jump when no box
+// coords are available (older parcels).
+type SpotlightFn = (fields: string[], deedBoxes: BoxRef[] | undefined, fallbackPage: number | null) => void;
+
+// Pad (in normalized page units) added around a box so the glowing spotlight
+// ring surrounds the value with a little breathing room, like the baked-in box.
+const SPOT_PAD = 0.008;
+
+// Convert a normalized BoxRef into a react-pdf-highlighter highlight. We store
+// the rect in a 0..1 reference frame (width = height = 1); the library scales it
+// to the live viewport, so it lands correctly at any zoom.
+function boxToHighlight(box: BoxRef, id: string): SpotlightHighlight {
+    const [a, b, c, d] = box.rect;
+    const x1 = Math.max(0, Math.min(a, c) - SPOT_PAD);
+    const y1 = Math.max(0, Math.min(b, d) - SPOT_PAD);
+    const x2 = Math.min(1, Math.max(a, c) + SPOT_PAD);
+    const y2 = Math.min(1, Math.max(b, d) + SPOT_PAD);
+    const boundingRect = { x1, y1, x2, y2, width: 1, height: 1, pageNumber: box.page };
+    return {
+        id,
+        content: { text: "" },
+        position: { boundingRect, rects: [{ ...boundingRect }], pageNumber: box.page },
+        comment: { text: "", emoji: "" },
+    };
+}
+
+const EMPTY_SPOTLIGHT: Spotlight = { highlights: [] };
+
+// Build a spotlight (overlay highlights + a focus target) from a set of boxes.
+// `keyPrefix` keeps ids stable per field+pane so re-clicking the same field
+// re-fires the flash (focus effect keys on id + timestamp).
+function buildSpotlight(boxes: BoxRef[] | undefined, keyPrefix: string, ts: number): Spotlight {
+    const valid = (boxes || []).filter(
+        (b) => b && Array.isArray(b.rect) && b.rect.length === 4 && typeof b.page === "number",
+    );
+    if (valid.length === 0) return EMPTY_SPOTLIGHT;
+    const highlights = valid.map((b, i) => boxToHighlight(b, `vd-spotlight-${keyPrefix}-${b.page}-${i}`));
+    return { highlights, focus: { id: highlights[0].id, page: valid[0].page, timestamp: ts } };
+}
+
+const slugFields = (fields: string[]): string =>
+    (fields.join("-").replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "field");
+
+// One mismatched field with its located boxes on each side. Drives the synced
+// error navigator in compare mode.
+type ErrorField = { field: string; deedBoxes: BoxRef[]; ecBoxes: BoxRef[] };
+
+// Build the overlay set for ONE pane (deed or EC) in compare mode: every error
+// field's boxes are rendered as clickable hit targets; the active field's boxes
+// use the `vd-spotlight-` prefix (glowing) and become the focus/scroll target,
+// the rest use `vd-box-` (transparent, clickable to cross-navigate). The error
+// index is encoded in each id (`-e<idx>-`) so a click maps straight back to it.
+function buildPaneOverlays(
+    errorFields: ErrorField[],
+    activeIdx: number,
+    pane: "deed" | "ec",
+    tick: number,
+): Spotlight {
+    const highlights: SpotlightHighlight[] = [];
+    let focus: Spotlight["focus"];
+    errorFields.forEach((ef, idx) => {
+        const boxes = pane === "deed" ? ef.deedBoxes : ef.ecBoxes;
+        const active = idx === activeIdx;
+        boxes.forEach((box, i) => {
+            if (!box || !Array.isArray(box.rect) || box.rect.length !== 4 || typeof box.page !== "number") return;
+            const id = `${active ? "vd-spotlight" : "vd-box"}-${pane}-e${idx}-${box.page}-${i}`;
+            highlights.push(boxToHighlight(box, id));
+            if (active && !focus) focus = { id, page: box.page, timestamp: tick };
+        });
+    });
+    return { highlights, focus };
+}
+
+// Parse the error index encoded in an overlay highlight id (`...-e<idx>-...`).
+const errorIdxFromId = (id: string): number | null => {
+    const m = /-e(\d+)-/.exec(id);
+    return m ? parseInt(m[1], 10) : null;
+};
 
 interface ValidationResult {
     match: boolean;
@@ -74,7 +186,18 @@ interface Props {
     focusDocNo?: string;
 }
 
-type FilterMode = "all" | "review" | "matched";
+type FilterMode = "all" | "review" | "matched" | "mismatched";
+
+// A document is "mismatched" when at least one of its field comparisons came
+// back as a real conflict (NOT MATCHED / MISMATCH) — distinct from "review",
+// which is simply any document that isn't a clean overall match.
+const hasFieldMismatch = (r: any): boolean => {
+    const comps = r?.validation_result?.comparisons || [];
+    return comps.some((c: any) => {
+        const s = String(c?.status || "").toUpperCase();
+        return (s.includes("NOT") && s.includes("MATCH")) || s.includes("MISMATCH");
+    });
+};
 
 const getPdfUrl = (relPath: string | undefined): string | undefined => {
     if (!relPath) return undefined;
@@ -89,22 +212,61 @@ const isCleanMatch = (status: string): boolean => {
 };
 
 export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInMap, focusDocNo }: Props) {
-    const [selectedDocNo, setSelectedDocNo] = useState<string | null>(
-        results.length > 0 ? results[0].document_number : null,
-    );
+    // Start with NO document selected — the details + PDF panels stay hidden
+    // until the user explicitly clicks a document in the list.
+    const [selectedDocNo, setSelectedDocNo] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [filterMode, setFilterMode] = useState<FilterMode>("all");
     const [scrollToPage, setScrollToPage] = useState<{ page: number; timestamp: number } | undefined>(undefined);
-    // PDF preview source: the marked DEED or the marked EC.
-    const [pdfView, setPdfView] = useState<"deed" | "ec">("deed");
+    // Side-by-side compare mode: when on, the DEED and EC PDFs fill the screen
+    // and the details (checklist + comparison cards) drop below them.
+    const [compareMode, setCompareMode] = useState(false);
     // Per-document marked-EC state, fetched on demand (the EC scan is slow).
     // docNo -> { status: "loading" | "done" | "error", url?, reason?, page?, ts? }
     // `page` is the EC page the value was boxed on, so the viewer can jump
     // straight to it; `ts` makes the scroll fire once when the mark completes.
-    const [ecMark, setEcMark] = useState<Record<string, { status: string; url?: string; reason?: string; page?: number; ts?: number }>>({});
+    const [ecMark, setEcMark] = useState<Record<string, { status: string; url?: string; reason?: string; page?: number; ts?: number; boxes?: BoxRef[] }>>({});
+    // Spotlight overlays for the DEED and EC viewers — the glowing box drawn on
+    // top of the baked-in red boxes when a field card / checklist item is
+    // clicked. Cleared whenever the selected document changes.
+    const [deedSpot, setDeedSpot] = useState<Spotlight>(EMPTY_SPOTLIGHT);
+    const [ecSpot, setEcSpot] = useState<Spotlight>(EMPTY_SPOTLIGHT);
+    // Synced error navigator (compare mode): `activeErrorIdx` is the shared
+    // pointer both panes track; `navTick` increments on every user nav/click so
+    // the viewers re-scroll + flash even when the index lands on the same field.
+    const [activeErrorIdx, setActiveErrorIdx] = useState<number>(0);
+    const [navTick, setNavTick] = useState<number>(1);
+    // Per-document boxes recovered from the MARKED pdfs (deed + EC). This is the
+    // fallback that makes the spotlight / navigator work on documents analyzed
+    // before per-field coordinates were captured inline — the marked PDFs are
+    // read back on the server. docNo -> { deed: BoxRef[], ec: BoxRef[] }.
+    const [markedBoxes, setMarkedBoxes] = useState<Record<string, { deed: BoxRef[]; ec: BoxRef[] }>>({});
+    const requestedBoxesRef = useRef<Set<string>>(new Set());
 
-    // Reset to the deed view whenever the selected document changes.
-    useEffect(() => { setPdfView("deed"); }, [selectedDocNo]);
+    // Publish the open document to the shell-hosted Ask AI so it becomes
+    // screen-aware: a question with no explicit @-mention focuses whatever
+    // document is on screen (and the compare view labels itself "DEED vs EC").
+    // Cleared on unmount / when no document is open.
+    const { setAskAiActiveDoc } = useAskAi();
+    useEffect(() => {
+        if (selectedDocNo) {
+            setAskAiActiveDoc({
+                docNo: selectedDocNo,
+                viewLabel: compareMode ? "Comparing DEED vs EC" : "Reviewing document",
+            });
+        } else {
+            setAskAiActiveDoc(null);
+        }
+        return () => setAskAiActiveDoc(null);
+    }, [selectedDocNo, compareMode, setAskAiActiveDoc]);
+
+    // Leave compare mode whenever the selected document changes.
+    useEffect(() => { setCompareMode(false); }, [selectedDocNo]);
+    // Drop any active spotlight when switching documents.
+    useEffect(() => { setDeedSpot(EMPTY_SPOTLIGHT); setEcSpot(EMPTY_SPOTLIGHT); }, [selectedDocNo]);
+    // Reset the error pointer to the first error whenever the doc changes or we
+    // enter/leave compare mode; bump the tick so the panes center on it.
+    useEffect(() => { setActiveErrorIdx(0); setNavTick((t) => t + 1); }, [selectedDocNo, compareMode]);
 
     // Parent asked us to focus a specific document (e.g. a failed doc from the
     // Risk Score tab). Match leniently so "3765/2008" lands even if the caller
@@ -124,13 +286,14 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
         const total = results.length;
         const matched = results.filter(r => r.match).length;
         const review = total - matched;
+        const mismatched = results.filter(hasFieldMismatch).length;
         const trustScores = results
             .map(r => r.validation_result?.trustability_score)
             .filter((s): s is number => typeof s === "number");
         const avgTrust = trustScores.length
             ? Math.round(trustScores.reduce((sum, s) => sum + s, 0) / trustScores.length)
             : null;
-        return { total, matched, review, avgTrust };
+        return { total, matched, review, mismatched, avgTrust };
     }, [results]);
 
     // Filter the list by mode + search query.
@@ -139,6 +302,7 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
         return results.filter(r => {
             if (filterMode === "matched" && !r.match) return false;
             if (filterMode === "review" && r.match) return false;
+            if (filterMode === "mismatched" && !hasFieldMismatch(r)) return false;
             if (!q) return true;
             return r.document_number.toLowerCase().includes(q);
         });
@@ -154,9 +318,163 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
         setScrollToPage(undefined);
     }, []);
 
+    // Return from the detail view back to the document list. When a document is
+    // selected the list collapses to give the details + PDF the full width, so
+    // "Back" is the way to re-open the list and pick another document.
+    const handleBack = useCallback(() => {
+        setSelectedDocNo(null);
+        setScrollToPage(undefined);
+    }, []);
+
     const handlePageJump = useCallback((page: number) => {
         setScrollToPage({ page, timestamp: Date.now() });
     }, []);
+
+    // Recover per-field boxes from a document's marked deed + EC PDFs (read-only,
+    // no LLM). Fetched once per doc; the result powers the spotlight/navigator
+    // for documents that lack inline coordinates (analyzed before that change).
+    const loadMarkedBoxes = useCallback(async (docNo: string) => {
+        if (!docNo || !requestId || requestedBoxesRef.current.has(docNo)) return;
+        requestedBoxesRef.current.add(docNo);
+        try {
+            const fd = new FormData();
+            fd.append("request_id", requestId);
+            fd.append("doc_no", docNo);
+            const r = await fetch(`${API_BASE_URL}/api/v1/visual-debug/marked-boxes`, { method: "POST", body: fd });
+            const data = await r.json();
+            setMarkedBoxes((prev) => ({
+                ...prev,
+                [docNo]: {
+                    deed: Array.isArray(data?.deed_boxes) ? data.deed_boxes : [],
+                    ec: Array.isArray(data?.ec_boxes) ? data.ec_boxes : [],
+                },
+            }));
+        } catch {
+            // Leave the doc out of markedBoxes; the UI falls back to page jumps.
+            requestedBoxesRef.current.delete(docNo);
+        }
+    }, [requestId]);
+
+    // Fetch marked boxes as soon as a document is opened, so both the normal
+    // spotlight and the compare navigator have coordinates ready.
+    useEffect(() => {
+        if (selectedDocNo) loadMarkedBoxes(selectedDocNo);
+    }, [selectedDocNo, loadMarkedBoxes]);
+
+    // Ordered list of mismatched fields that carry at least one located box on
+    // the deed or the EC — the set the compare-mode navigator steps through.
+    const errorFields = useMemo<ErrorField[]>(() => {
+        if (!selectedResult) return [];
+        const comps = selectedResult.validation_result?.comparisons || [];
+        const ecBoxesAll = ecMark[selectedDocNo || ""]?.boxes || [];
+        const mb = markedBoxes[selectedDocNo || ""] || { deed: [], ec: [] };
+        const byField = (boxes: BoxRef[], fl: string) =>
+            boxes.filter((b) => (b.field || "").trim().toLowerCase() === fl);
+        return comps
+            .filter((c) => !isCleanMatch(c.status))
+            .map((c) => {
+                const fl = (c.field || "").trim().toLowerCase();
+                // Prefer inline coords (new parcels); fall back to the boxes
+                // recovered from the marked PDF (older parcels).
+                const deedBoxes = c.bounding_boxes && c.bounding_boxes.length
+                    ? c.bounding_boxes
+                    : byField(mb.deed, fl);
+                const ecFromMark = byField(ecBoxesAll, fl);
+                const ecBoxes = ecFromMark.length ? ecFromMark : byField(mb.ec, fl);
+                return { field: c.field, deedBoxes, ecBoxes };
+            })
+            .filter((e) => e.deedBoxes.length > 0 || e.ecBoxes.length > 0);
+    }, [selectedResult, ecMark, selectedDocNo, markedBoxes]);
+
+    // Clamp the pointer in case the error list shrank (e.g. doc switch).
+    const activeIdx = errorFields.length ? Math.min(activeErrorIdx, errorFields.length - 1) : 0;
+
+    // Overlay sets per pane for compare mode (all boxes clickable, active glows).
+    const compareDeedSpot = useMemo(
+        () => (compareMode && errorFields.length ? buildPaneOverlays(errorFields, activeIdx, "deed", navTick) : EMPTY_SPOTLIGHT),
+        [compareMode, errorFields, activeIdx, navTick],
+    );
+    const compareEcSpot = useMemo(
+        () => (compareMode && errorFields.length ? buildPaneOverlays(errorFields, activeIdx, "ec", navTick) : EMPTY_SPOTLIGHT),
+        [compareMode, errorFields, activeIdx, navTick],
+    );
+    // Compare mode drives the panes off the synced navigator; normal mode uses
+    // the single-field spotlight from a card/checklist click.
+    const effDeedSpot = compareMode ? compareDeedSpot : deedSpot;
+    const effEcSpot = compareMode ? compareEcSpot : ecSpot;
+
+    // Step the shared error pointer (wraps around) and re-center both panes.
+    const stepError = useCallback((delta: number) => {
+        setActiveErrorIdx((cur) => {
+            const n = errorFields.length;
+            if (n === 0) return cur;
+            return (((cur + delta) % n) + n) % n;
+        });
+        setNavTick((t) => t + 1);
+    }, [errorFields.length]);
+
+    // Click on an overlay box → sync the pointer to that error so BOTH panes
+    // move to it (deed click reveals the EC box and vice versa).
+    const handleBoxClick = useCallback((id: string) => {
+        const idx = errorIdxFromId(id);
+        if (idx === null) return;
+        setActiveErrorIdx(idx);
+        setNavTick((t) => t + 1);
+    }, []);
+
+    // Once the EC finishes marking, re-center it on the active error.
+    useEffect(() => {
+        if (compareMode && ecMark[selectedDocNo || ""]?.status === "done") {
+            setNavTick((t) => t + 1);
+        }
+    }, [compareMode, selectedDocNo, ecMark]);
+
+    // Spotlight a field's box(es) on the deed (and the EC, when it's marked).
+    // `fields` are the comparison field names involved — used to match EC boxes
+    // back to the right value. `deedBoxes` are the deed-side boxes for those
+    // fields. When no box is available (older parcels with no captured coords)
+    // we fall back to today's page-level jump so the click still does something.
+    const handleSpotlight = useCallback(
+        (fields: string[], deedBoxes: BoxRef[] | undefined, fallbackPage: number | null) => {
+            // In compare mode the panes are driven by the synced navigator — point
+            // it at the clicked field so both viewers move together.
+            if (compareMode) {
+                const fieldSet = new Set(fields.map((f) => (f || "").trim().toLowerCase()));
+                const idx = errorFields.findIndex((e) => fieldSet.has((e.field || "").trim().toLowerCase()));
+                if (idx >= 0) {
+                    setActiveErrorIdx(idx);
+                    setNavTick((t) => t + 1);
+                    return;
+                }
+                if (fallbackPage != null) handlePageJump(fallbackPage);
+                return;
+            }
+
+            const ts = Date.now();
+            const slug = slugFields(fields);
+            const fieldSet = new Set(fields.map((f) => (f || "").trim().toLowerCase()));
+            const mb = markedBoxes[selectedDocNo || ""] || { deed: [], ec: [] };
+            const inField = (b: BoxRef) => fieldSet.has((b.field || "").trim().toLowerCase());
+
+            // Prefer the boxes passed in (inline coords); fall back to the marked
+            // PDF boxes for older parcels.
+            const effDeedBoxes = deedBoxes && deedBoxes.length ? deedBoxes : mb.deed.filter(inField);
+            const deed = buildSpotlight(effDeedBoxes, `deed-${slug}`, ts);
+            setDeedSpot(deed);
+
+            // EC boxes — from a fresh EC mark if available, else the marked-PDF read.
+            const ecFromMark = (ecMark[selectedDocNo || ""]?.boxes || []).filter(inField);
+            const ecBoxes = ecFromMark.length ? ecFromMark : mb.ec.filter(inField);
+            const ec = buildSpotlight(ecBoxes, `ec-${slug}`, ts);
+            setEcSpot(ec);
+
+            // No deed box placed → keep the viewer useful by jumping to the page.
+            if (deed.highlights.length === 0 && fallbackPage != null) {
+                handlePageJump(fallbackPage);
+            }
+        },
+        [compareMode, errorFields, ecMark, selectedDocNo, markedBoxes, handlePageJump],
+    );
 
     // Lazily fetch a MARKED EC for the selected document: the backend scans the
     // EC for this deed's mismatched ec_values and boxes them. Cached per doc;
@@ -192,7 +510,8 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
             const data = await r.json();
             if (data?.url) {
                 const page = typeof data.page === "number" && data.page > 0 ? data.page : undefined;
-                setEcMark((prev) => ({ ...prev, [docNo]: { status: "done", url: getPdfUrl(data.url), page, ts: Date.now() } }));
+                const boxes: BoxRef[] = Array.isArray(data.boxes) ? data.boxes : [];
+                setEcMark((prev) => ({ ...prev, [docNo]: { status: "done", url: getPdfUrl(data.url), page, ts: Date.now(), boxes } }));
             } else {
                 setEcMark((prev) => ({ ...prev, [docNo]: { status: "error", reason: data?.reason || "Could not mark the EC." } }));
             }
@@ -200,6 +519,86 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
             setEcMark((prev) => ({ ...prev, [docNo]: { status: "error", reason: "Failed to mark the EC. Please try again." } }));
         }
     }, [ecMark, requestId, parcelId]);
+
+    // Render the DEED PDF for the selected doc (page-jump aware).
+    const renderDeedPane = () => {
+        if (!selectedResult) return null;
+        const url = getPdfUrl(selectedResult.file_path);
+        if (!url) {
+            return (
+                <div className="h-full flex items-center justify-center text-xs text-slate-400 italic px-6 text-center">
+                    No DEED PDF artifact recorded for this document.
+                </div>
+            );
+        }
+        return (
+            <PdfAnnotator
+                url={url}
+                docId={selectedResult.document_number}
+                parcelId={parcelId}
+                scrollToPage={scrollToPage}
+                externalHighlights={effDeedSpot.highlights as any}
+                focusHighlightId={effDeedSpot.focus}
+                onHighlightClick={handleBoxClick}
+            />
+        );
+    };
+
+    // Render the EC PDF for the selected doc: prefer the EC marked during
+    // analysis, else fall back to the on-demand marking flow (loading / error /
+    // done). Used by the side-by-side compare view.
+    const renderEcPane = () => {
+        if (!selectedResult) return null;
+        const preMarked = selectedResult.ec_file_path ? getPdfUrl(selectedResult.ec_file_path) : null;
+        if (preMarked) {
+            return (
+                <PdfAnnotator
+                    url={preMarked}
+                    docId={`EC_${selectedResult.document_number}`}
+                    parcelId={parcelId}
+                    externalHighlights={effEcSpot.highlights as any}
+                    focusHighlightId={effEcSpot.focus}
+                    onHighlightClick={handleBoxClick}
+                />
+            );
+        }
+        const m = ecMark[selectedResult.document_number];
+        if (!m || m.status === "loading") {
+            return (
+                <div className="h-full flex flex-col items-center justify-center gap-3 text-white/70 text-center px-6">
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                    <p className="text-xs font-medium max-w-[260px]">
+                        Marking the EC — scanning pages for the mismatched values. This can take a moment.
+                    </p>
+                </div>
+            );
+        }
+        if (m.status === "done" && m.url) {
+            return (
+                <PdfAnnotator
+                    url={m.url}
+                    docId={`EC_${selectedResult.document_number}`}
+                    parcelId={parcelId}
+                    scrollToPage={m.page ? { page: m.page, timestamp: m.ts || 0 } : undefined}
+                    externalHighlights={effEcSpot.highlights as any}
+                    focusHighlightId={effEcSpot.focus}
+                    onHighlightClick={handleBoxClick}
+                />
+            );
+        }
+        return (
+            <div className="h-full flex flex-col items-center justify-center gap-2 text-white/60 text-center px-6">
+                <p className="text-xs italic max-w-[280px]">{m.reason || "Could not mark the EC."}</p>
+                <button
+                    type="button"
+                    onClick={() => loadEcMark(selectedResult)}
+                    className="text-[10px] font-bold uppercase tracking-wide text-indigo-300 hover:text-indigo-200"
+                >
+                    Retry
+                </button>
+            </div>
+        );
+    };
 
     // Empty state when the parcel hasn't been audited yet.
     if (!results || results.length === 0) {
@@ -259,9 +658,83 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                 </div>
             </div>
 
-            {/* 3-COLUMN BODY */}
-            <div className="flex-1 min-h-0 flex">
-                {/* LEFT: DOC LIST */}
+            {/* BODY — the doc list collapses once a document is selected, so the
+                details + PDF expand to fill the freed space. "Back" re-opens it. */}
+            <div className="flex-1 min-h-0 flex flex-col">
+                {/* COMPARE MODE — DEED & EC side by side fill the screen; the
+                    checklist + comparison cards drop below the documents. */}
+                {compareMode && selectedResult && (
+                    <div className="flex-1 min-h-0 flex flex-col">
+                        <div className="shrink-0 px-3 py-2 border-b border-slate-200 bg-white flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-xs font-bold text-slate-900 tabular-nums truncate">
+                                    {selectedResult.document_number}
+                                </span>
+                                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-indigo-600">
+                                    Compare · Deed vs EC
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setCompareMode(false)}
+                                className="inline-flex items-center gap-1 h-7 px-2.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                                Close compare
+                            </button>
+                        </div>
+                        {/* Scroll container: the two PDFs fill the viewport, the
+                            details sit below the fold (scroll down to reach them). */}
+                        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-100">
+                            <div className="h-full min-h-[520px] flex">
+                                <div className="flex-1 min-w-0 flex flex-col border-r border-slate-300">
+                                    <div className="shrink-0 px-3 py-1.5 bg-white border-b border-slate-200 flex items-center gap-2">
+                                        <Badge className="bg-primary text-white text-[9px] font-bold px-1.5 py-0 h-4">DEED</Badge>
+                                        <span className="text-[10px] text-slate-500 font-medium truncate">{selectedResult.document_number}</span>
+                                        <ErrorNav
+                                            index={activeIdx}
+                                            total={errorFields.length}
+                                            field={errorFields[activeIdx]?.field}
+                                            onPrev={() => stepError(-1)}
+                                            onNext={() => stepError(1)}
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-h-0 bg-slate-900 relative">{renderDeedPane()}</div>
+                                </div>
+                                <div className="flex-1 min-w-0 flex flex-col">
+                                    <div className="shrink-0 px-3 py-1.5 bg-white border-b border-slate-200 flex items-center gap-2">
+                                        <Badge className="bg-indigo-600 text-white text-[9px] font-bold px-1.5 py-0 h-4">EC</Badge>
+                                        <span className="text-[10px] text-slate-500 font-medium truncate">Encumbrance Certificate</span>
+                                        <ErrorNav
+                                            index={activeIdx}
+                                            total={errorFields.length}
+                                            field={errorFields[activeIdx]?.field}
+                                            onPrev={() => stepError(-1)}
+                                            onNext={() => stepError(1)}
+                                        />
+                                    </div>
+                                    <div className="flex-1 min-h-0 bg-slate-900 relative">{renderEcPane()}</div>
+                                </div>
+                            </div>
+                            {/* Details below the documents */}
+                            <div className="bg-white border-t border-slate-200">
+                                <DetailsPanel
+                                    result={selectedResult}
+                                    onMapClick={onOpenInMap}
+                                    onPageJump={handlePageJump}
+                                    onSpotlight={handleSpotlight}
+                                    parcelId={parcelId}
+                                />
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* NORMAL 3-COLUMN BODY (unmounted while comparing) */}
+                {!(compareMode && selectedResult) && (
+                <div className="flex-1 min-h-0 flex">
+                {/* LEFT: DOC LIST (hidden while a document is open) */}
+                {!selectedResult && (
                 <aside className="w-[260px] shrink-0 border-r border-slate-200 bg-slate-50/40 flex flex-col">
                     <div className="px-3 py-2.5 border-b border-slate-200 bg-white">
                         <div className="flex items-center justify-between mb-2">
@@ -282,17 +755,18 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                 className="w-full h-8 pl-8 pr-2 rounded-lg bg-slate-50 hover:bg-white focus:bg-white border border-slate-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 text-xs font-medium placeholder:text-slate-400 outline-none transition-all"
                             />
                         </div>
-                        <div className="flex items-center gap-1 mt-2 bg-slate-100 p-0.5 rounded-lg">
+                        <div className="grid grid-cols-2 gap-1 mt-2 bg-slate-100 p-0.5 rounded-lg">
                             {([
-                                { id: "all" as FilterMode, label: "All", count: stats.total },
-                                { id: "review" as FilterMode, label: "Review", count: stats.review },
-                                { id: "matched" as FilterMode, label: "Matched", count: stats.matched },
+                                { id: "all" as FilterMode, label: "All", count: stats.total, accent: "indigo" },
+                                { id: "review" as FilterMode, label: "Review", count: stats.review, accent: "indigo" },
+                                { id: "matched" as FilterMode, label: "Matched", count: stats.matched, accent: "indigo" },
+                                { id: "mismatched" as FilterMode, label: "Mismatched", count: stats.mismatched, accent: "rose" },
                             ]).map(opt => (
                                 <button
                                     key={opt.id}
                                     onClick={() => setFilterMode(opt.id)}
                                     className={cn(
-                                        "flex-1 flex items-center justify-center gap-1 h-6 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all",
+                                        "flex items-center justify-center gap-1 h-6 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all",
                                         filterMode === opt.id
                                             ? "bg-white text-slate-900 shadow-sm"
                                             : "text-slate-500 hover:text-slate-700",
@@ -301,7 +775,9 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                     <span>{opt.label}</span>
                                     <span className={cn(
                                         "text-[8px] font-bold rounded px-1",
-                                        filterMode === opt.id ? "bg-indigo-100 text-indigo-700" : "bg-slate-200 text-slate-600",
+                                        filterMode === opt.id
+                                            ? (opt.accent === "rose" ? "bg-rose-100 text-rose-700" : "bg-indigo-100 text-indigo-700")
+                                            : "bg-slate-200 text-slate-600",
                                     )}>
                                         {opt.count}
                                     </span>
@@ -361,6 +837,7 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                         )}
                     </div>
                 </aside>
+                )}
 
                 {/* MIDDLE: DETAILS */}
                 <section className="flex-1 min-w-0 border-r border-slate-200 overflow-y-auto custom-scrollbar bg-white">
@@ -369,10 +846,20 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                             result={selectedResult}
                             onMapClick={onOpenInMap}
                             onPageJump={handlePageJump}
+                            onSpotlight={handleSpotlight}
+                            onBack={handleBack}
                             parcelId={parcelId}
                         />
                     ) : (
-                        <div className="p-8 text-center text-sm text-slate-400">Select a document to view its analysis.</div>
+                        <div className="h-full flex flex-col items-center justify-center text-center px-8 py-12">
+                            <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center mb-3">
+                                <FileText className="w-6 h-6 text-slate-400" />
+                            </div>
+                            <h3 className="text-sm font-bold text-slate-700">Select a document</h3>
+                            <p className="text-xs text-slate-400 mt-1 max-w-[260px]">
+                                Click any document on the left to view its forensic analysis and PDF preview.
+                            </p>
+                        </div>
                     )}
                 </section>
 
@@ -404,25 +891,18 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                         >
                                             {selectedResult.match ? "MATCHED" : "REVIEW"}
                                         </Badge>
-                                        {!selectedResult.match && (
-                                            <div className="flex items-center rounded-md border border-slate-200 overflow-hidden ml-1 shrink-0">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPdfView("deed")}
-                                                    className={cn("px-2 h-5 text-[9px] font-bold uppercase tracking-wide transition-colors", pdfView === "deed" ? "bg-primary text-white" : "bg-white text-slate-500 hover:text-primary")}
-                                                >
-                                                    Deed
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => { setPdfView("ec"); if (!selectedResult.ec_file_path) loadEcMark(selectedResult); }}
-                                                    className={cn("px-2 h-5 text-[9px] font-bold uppercase tracking-wide transition-colors", pdfView === "ec" ? "bg-primary text-white" : "bg-white text-slate-500 hover:text-primary")}
-                                                    title="Mark this document's mismatched values on the EC"
-                                                >
-                                                    EC
-                                                </button>
-                                            </div>
-                                        )}
+                                        {/* Compare replaces the old Deed/EC toggle — opens
+                                            both documents side by side, loading the EC on
+                                            demand when it wasn't marked during analysis. */}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setCompareMode(true); if (!selectedResult.ec_file_path) loadEcMark(selectedResult); }}
+                                            className="inline-flex items-center gap-1 h-5 px-2 ml-1 rounded-md border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[9px] font-bold uppercase tracking-wide transition-colors shrink-0"
+                                            title="Compare the DEED and EC side by side"
+                                        >
+                                            <Columns2 className="w-3 h-3" />
+                                            Compare
+                                        </button>
                                     </div>
                                     <button
                                         type="button"
@@ -434,67 +914,14 @@ export function DocumentAnalysisRevamp({ results, requestId, parcelId, onOpenInM
                                     </button>
                                 </div>
                                 <div className="flex-1 min-h-0 bg-slate-900 relative">
-                                    {pdfView === "deed" ? (
-                                        <PdfAnnotator
-                                            url={url}
-                                            docId={selectedResult.document_number}
-                                            parcelId={parcelId}
-                                            scrollToPage={scrollToPage}
-                                        />
-                                    ) : (() => {
-                                        // Prefer the EC marked during analysis (no on-demand call);
-                                        // fall back to the on-demand result for older parcels.
-                                        const preMarked = selectedResult.ec_file_path
-                                            ? getPdfUrl(selectedResult.ec_file_path)
-                                            : null;
-                                        if (preMarked) {
-                                            return (
-                                                <PdfAnnotator
-                                                    url={preMarked}
-                                                    docId={`EC_${selectedResult.document_number}`}
-                                                    parcelId={parcelId}
-                                                />
-                                            );
-                                        }
-                                        const m = ecMark[selectedResult.document_number];
-                                        if (!m || m.status === "loading") {
-                                            return (
-                                                <div className="h-full flex flex-col items-center justify-center gap-3 text-white/70 text-center px-6">
-                                                    <Loader2 className="w-6 h-6 animate-spin" />
-                                                    <p className="text-xs font-medium max-w-[260px]">
-                                                        Marking the EC — scanning pages for the mismatched values. This can take a moment.
-                                                    </p>
-                                                </div>
-                                            );
-                                        }
-                                        if (m.status === "done" && m.url) {
-                                            return (
-                                                <PdfAnnotator
-                                                    url={m.url}
-                                                    docId={`EC_${selectedResult.document_number}`}
-                                                    parcelId={parcelId}
-                                                    scrollToPage={m.page ? { page: m.page, timestamp: m.ts || 0 } : undefined}
-                                                />
-                                            );
-                                        }
-                                        return (
-                                            <div className="h-full flex flex-col items-center justify-center gap-2 text-white/60 text-center px-6">
-                                                <p className="text-xs italic max-w-[280px]">{m.reason || "Could not mark the EC."}</p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => loadEcMark(selectedResult)}
-                                                    className="text-[10px] font-bold uppercase tracking-wide text-indigo-300 hover:text-indigo-200"
-                                                >
-                                                    Retry
-                                                </button>
-                                            </div>
-                                        );
-                                    })()}
+                                    {renderDeedPane()}
                                 </div>
                             </>
                         );
                     })()}
                 </aside>
+                </div>
+                )}
             </div>
         </div>
     );
@@ -541,6 +968,59 @@ function deriveCheckStatus(check: LandwiseCheck, result: ResultItem): CheckStatu
     return relevant.every((c) => isCleanMatch(c.status)) ? "verified" : "issue";
 }
 
+// First source page that backs a checklist item, so clicking it can jump the
+// document preview to where the evidence lives. Field-mapped checks use the
+// page of their first relevant comparison; overall checks fall back to the
+// first available comparison page.
+function deriveCheckPage(check: LandwiseCheck, result: ResultItem): number | null {
+    const comps = result.validation_result?.comparisons || [];
+    const pageOf = (c: { page_number?: string }): number | null => {
+        const m = c.page_number ? String(c.page_number).match(/\d+/) : null;
+        return m ? parseInt(m[0]) : null;
+    };
+    if (OVERALL_CHECK_IDS.has(check.id)) {
+        for (const c of comps) {
+            const p = pageOf(c);
+            if (p !== null) return p;
+        }
+        return null;
+    }
+    const subs = CHECK_FIELD_MAP[check.id];
+    if (!subs) return null;
+    for (const c of comps) {
+        const f = (c.field || "").toLowerCase();
+        if (subs.some((s) => f.includes(s))) {
+            const p = pageOf(c);
+            if (p !== null) return p;
+        }
+    }
+    return null;
+}
+
+// Fields + located boxes backing a checklist item, so clicking it can spotlight
+// the same boxes its mapped comparisons carry. Only mismatched comparisons hold
+// boxes (the deed pass marks NOT-MATCHED values), so we gather from those.
+function deriveCheckSpotlight(check: LandwiseCheck, result: ResultItem): { fields: string[]; boxes: BoxRef[] } {
+    const comps = result.validation_result?.comparisons || [];
+    let relevant: Comparison[];
+    if (OVERALL_CHECK_IDS.has(check.id)) {
+        relevant = comps;
+    } else {
+        const subs = CHECK_FIELD_MAP[check.id];
+        if (!subs) return { fields: [], boxes: [] };
+        relevant = comps.filter((c) => {
+            const f = (c.field || "").toLowerCase();
+            return subs.some((s) => f.includes(s));
+        });
+    }
+    const mismatched = relevant.filter((c) => !isCleanMatch(c.status));
+    const fields = mismatched.map((c) => c.field);
+    const boxes: BoxRef[] = mismatched.flatMap((c) =>
+        (c.bounding_boxes || []).map((b) => ({ ...b, field: c.field })),
+    );
+    return { fields, boxes };
+}
+
 const STATUS_META: Record<CheckStatus, { label: string; chip: string; icon: React.ReactNode; rank: number }> = {
     issue:    { label: "Issue",      chip: "bg-rose-500 text-white",                          icon: <AlertCircle className="w-3 h-3" />,  rank: 0 },
     verified: { label: "Verified",   chip: "bg-emerald-500 text-white",                       icon: <CheckCircle2 className="w-3 h-3" />, rank: 1 },
@@ -549,13 +1029,13 @@ const STATUS_META: Record<CheckStatus, { label: string; chip: string; icon: Reac
     manual:   { label: "Verify offline", chip: "bg-slate-100 text-slate-500 border border-slate-200", icon: <Circle className="w-3 h-3" />, rank: 4 },
 };
 
-function ChecklistVerification({ result, parcelId }: { result: ResultItem; parcelId?: string }) {
+function ChecklistVerification({ result, parcelId, onPageJump, onSpotlight }: { result: ResultItem; parcelId?: string; onPageJump?: (page: number) => void; onSpotlight?: SpotlightFn }) {
     const [open, setOpen] = useState(true);
     const items = useMemo(() => {
         const ids = new Set(getSelectedChecks(parcelId));
         return LANDWISE_CHECKS
             .filter((c) => ids.has(c.id))
-            .map((c) => ({ check: c, status: deriveCheckStatus(c, result) }))
+            .map((c) => ({ check: c, status: deriveCheckStatus(c, result), page: deriveCheckPage(c, result), spot: deriveCheckSpotlight(c, result) }))
             // Only show checks with a REAL per-document solution. Parcel-level
             // AI placeholders ("AI · parcel") and offline manual items carry no
             // verdict for this document, so they are dropped from the tab.
@@ -586,16 +1066,53 @@ function ChecklistVerification({ result, parcelId }: { result: ResultItem; parce
             </button>
             {open && (
                 <ul className="divide-y divide-slate-50">
-                    {items.map(({ check, status }) => {
+                    {items.map(({ check, status, page, spot }) => {
                         const meta = STATUS_META[status];
+                        const hasBoxes = spot.boxes.length > 0;
+                        // Only failing checks are clickable — a verified check has
+                        // no discrepancy to inspect on the page. Clickable when we
+                        // can spotlight a box OR at least jump to its page.
+                        const clickable = status === "issue" && (hasBoxes || page !== null) && (!!onSpotlight || !!onPageJump);
+                        // Spotlight the check's boxes when available; else fall back
+                        // to the page jump (older parcels carry no box coords).
+                        const activate = () => {
+                            if (onSpotlight && (hasBoxes || page !== null)) {
+                                onSpotlight(spot.fields, spot.boxes, page);
+                            } else if (onPageJump && page !== null) {
+                                onPageJump(page);
+                            }
+                        };
                         return (
-                            <li key={check.id} className="flex items-center gap-2 px-3 py-1.5">
+                            <li
+                                key={check.id}
+                                onClick={clickable ? activate : undefined}
+                                role={clickable ? "button" : undefined}
+                                tabIndex={clickable ? 0 : undefined}
+                                onKeyDown={clickable ? (e) => {
+                                    if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        activate();
+                                    }
+                                } : undefined}
+                                title={clickable ? (hasBoxes ? `Spotlight ${check.label} on the document` : `Jump to page ${page}`) : check.label}
+                                className={cn(
+                                    "group flex items-center gap-2 px-3 py-1.5",
+                                    clickable && "cursor-pointer hover:bg-indigo-50/60 transition-colors",
+                                )}
+                            >
                                 <span className={cn(
                                     "text-sm font-medium flex-1 min-w-0 truncate",
                                     status === "issue" ? "text-rose-900" : status === "verified" ? "text-slate-800" : "text-slate-500",
-                                )} title={check.label}>
+                                    clickable && "group-hover:underline",
+                                )}>
                                     {check.label}
                                 </span>
+                                {clickable && page !== null && (
+                                    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wide text-indigo-500 shrink-0">
+                                        <ExternalLink className="w-2.5 h-2.5" />
+                                        Pg {page}
+                                    </span>
+                                )}
                                 <span className="text-[8px] font-bold uppercase tracking-wide px-1 py-0 rounded border bg-slate-50 text-slate-400 border-slate-200 shrink-0">
                                     {check.automated ? "AI" : "Manual"}
                                 </span>
@@ -619,11 +1136,15 @@ function DetailsPanel({
     result,
     onMapClick,
     onPageJump,
+    onSpotlight,
+    onBack,
     parcelId,
 }: {
     result: ResultItem;
     onMapClick?: (docNo: string) => void;
     onPageJump: (page: number) => void;
+    onSpotlight?: SpotlightFn;
+    onBack?: () => void;
     parcelId?: string;
 }) {
     const vr = result.validation_result;
@@ -633,6 +1154,18 @@ function DetailsPanel({
 
     return (
         <div className="px-4 py-3 space-y-3">
+            {/* Back to the document list — only present when the list is collapsed. */}
+            {onBack && (
+                <button
+                    type="button"
+                    onClick={onBack}
+                    className="inline-flex items-center gap-1 h-7 px-2 -ml-1 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 text-[11px] font-bold uppercase tracking-wider transition-all"
+                >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    Back to documents
+                </button>
+            )}
+
             {/* Header row */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0">
@@ -688,7 +1221,7 @@ function DetailsPanel({
 
             {/* Per-document checklist verification — every selected check,
                 auto-derived for AI fields, manual ones flagged for offline. */}
-            <ChecklistVerification result={result} parcelId={parcelId} />
+            <ChecklistVerification result={result} parcelId={parcelId} onPageJump={onPageJump} onSpotlight={onSpotlight} />
 
             {/* Comparison cards */}
             <div className="space-y-2">
@@ -696,14 +1229,40 @@ function DetailsPanel({
                     const matched = isCleanMatch(c.status);
                     const pageMatch = c.page_number ? String(c.page_number).match(/\d+/) : null;
                     const pg = pageMatch ? parseInt(pageMatch[0]) : null;
+                    const boxes = c.bounding_boxes;
+                    const hasBoxes = !!(boxes && boxes.length > 0);
+                    // Only a NOT-MATCHED field has a discrepancy worth inspecting.
+                    // Clickable when we can either spotlight its box or at least
+                    // jump to its source page.
+                    const cardClickable = !matched && (hasBoxes || pg !== null);
+                    // Spotlight the box when we have coords; else fall back to a
+                    // page jump (older parcels carry no box coordinates).
+                    const activate = () => {
+                        if (onSpotlight && (hasBoxes || pg !== null)) {
+                            onSpotlight([c.field], boxes, pg);
+                        } else if (pg !== null) {
+                            onPageJump(pg);
+                        }
+                    };
                     return (
                         <div
                             key={`${c.field}-${idx}`}
+                            onClick={cardClickable ? activate : undefined}
+                            role={cardClickable ? "button" : undefined}
+                            tabIndex={cardClickable ? 0 : undefined}
+                            onKeyDown={cardClickable ? (e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    activate();
+                                }
+                            } : undefined}
+                            title={cardClickable ? (hasBoxes ? `Spotlight ${c.field} on the document` : `Jump to page ${pg}`) : undefined}
                             className={cn(
                                 "rounded-lg border p-3 transition-all",
                                 matched
                                     ? "bg-emerald-50/40 border-emerald-200"
                                     : "bg-rose-50/40 border-rose-200",
+                                cardClickable && "cursor-pointer hover:border-rose-300 hover:bg-rose-50/70 hover:shadow-sm",
                             )}
                         >
                             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
@@ -717,9 +1276,9 @@ function DetailsPanel({
                                     {pg !== null && (
                                         <button
                                             type="button"
-                                            onClick={() => onPageJump(pg)}
+                                            onClick={(e) => { e.stopPropagation(); if (hasBoxes && onSpotlight) onSpotlight([c.field], boxes, pg); else onPageJump(pg); }}
                                             className="inline-flex items-center gap-1 h-5 px-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-[9px] font-bold text-slate-600 uppercase tracking-wider transition-all"
-                                            title={`Jump to page ${pg}`}
+                                            title={hasBoxes ? `Spotlight ${c.field} on the document` : `Jump to page ${pg}`}
                                         >
                                             <ExternalLink className="w-2.5 h-2.5" />
                                             Source · Page {pg}
@@ -756,6 +1315,59 @@ function DetailsPanel({
                         </div>
                     );
                 })}
+            </div>
+        </div>
+    );
+}
+
+// Compact up/down error stepper shown in each compare pane header. Both panes
+// render one; they drive the SAME shared pointer, so stepping either moves both
+// the deed and the EC to the matching box at once.
+function ErrorNav({
+    index,
+    total,
+    field,
+    onPrev,
+    onNext,
+}: {
+    index: number;
+    total: number;
+    field?: string;
+    onPrev: () => void;
+    onNext: () => void;
+}) {
+    if (total <= 0) return null;
+    return (
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-rose-600">
+                <AlertTriangle className="w-3 h-3" />
+                <span className="tabular-nums">{index + 1}/{total}</span>
+            </span>
+            {field && (
+                <span className="hidden md:inline text-[10px] font-semibold text-slate-600 max-w-[140px] truncate" title={field}>
+                    {field}
+                </span>
+            )}
+            <div className="flex items-center rounded-md border border-slate-200 overflow-hidden">
+                <button
+                    type="button"
+                    onClick={onPrev}
+                    title="Previous error"
+                    aria-label="Previous error"
+                    className="h-6 w-6 flex items-center justify-center text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                >
+                    <ChevronUp className="w-3.5 h-3.5" />
+                </button>
+                <span className="w-px h-4 bg-slate-200" />
+                <button
+                    type="button"
+                    onClick={onNext}
+                    title="Next error"
+                    aria-label="Next error"
+                    className="h-6 w-6 flex items-center justify-center text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                >
+                    <ChevronDown className="w-3.5 h-3.5" />
+                </button>
             </div>
         </div>
     );

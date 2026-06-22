@@ -54,12 +54,34 @@ export interface AskAiContextData {
   parcelId?: string;
   /** Property document numbers — drives the @-mention autocomplete. */
   docNumbers: string[];
+  /** Short label for the screen the user is on, e.g. "Risk Score · SN 63". */
+  screenLabel?: string;
+  /** A text snapshot of what the current screen is actually showing (score
+   *  factors and values, gap analysis, ownership stats, …). Lets the assistant
+   *  answer about on-screen data that lives outside the EC chain. Published by
+   *  the active section alongside the base context. */
+  screenSummary?: string;
+}
+/**
+ * The document the user is currently looking at, plus a short label describing
+ * the screen (e.g. "Comparing DEED vs EC"). Published by deep views like the
+ * Document Analysis compare pane so the assistant becomes screen-aware: a
+ * question like "what's the issue in market value?" focuses the open document
+ * even without an explicit @-mention. Kept SEPARATE from the base context so
+ * the page-level `setAskAiContext` (parcel/tab changes) can't clobber it on a
+ * racing re-render.
+ */
+export interface AskAiActiveDoc {
+  docNo: string;
+  viewLabel?: string;
 }
 interface AskAiContextValue {
   setAskAiContext: (ctx: AskAiContextData | null) => void;
+  setAskAiActiveDoc: (doc: AskAiActiveDoc | null) => void;
 }
 const AskAiContext = createContext<AskAiContextValue>({
   setAskAiContext: () => {},
+  setAskAiActiveDoc: () => {},
 });
 export const useAskAi = () => useContext(AskAiContext);
 
@@ -70,13 +92,24 @@ const AppShell: React.FC<AppShellProps> = ({ children, fullBleed = false }) => {
 
   // Global Ask AI — context published by the active section, chat hosted here.
   const [askAiCtx, setAskAiCtx] = useState<AskAiContextData | null>(null);
+  // The document currently open on screen (compare view, etc.) — published
+  // separately so a base-context refresh never wipes it mid-render.
+  const [askAiActiveDoc, setAskAiActiveDoc] = useState<AskAiActiveDoc | null>(null);
   const [askAiOpen, setAskAiOpen] = useState(false);
-  const askAiCtxValue = useMemo(() => ({ setAskAiContext: setAskAiCtx }), []);
+  const askAiCtxValue = useMemo(
+    () => ({ setAskAiContext: setAskAiCtx, setAskAiActiveDoc }),
+    [],
+  );
 
   return (
     <AskAiContext.Provider value={askAiCtxValue}>
     <HeaderSlotContext.Provider value={ctxValue}>
-      <div className={cn("min-h-screen flex flex-col bg-background", fullBleed && "h-screen overflow-hidden")}>
+      {/* Fixed-height app shell: the viewport is locked to one screen and the
+          main content area scrolls internally. This lets a child page use
+          `h-full` to fill exactly the space below the header (header height is
+          no longer guessed), so dashboard tabs fit without spilling off the
+          bottom of the screen. */}
+      <div className={cn("h-screen overflow-hidden flex flex-col bg-background")}>
         <motion.header
           initial={{ y: -16, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -121,8 +154,11 @@ const AppShell: React.FC<AppShellProps> = ({ children, fullBleed = false }) => {
           </div>
         </motion.header>
 
-        {/* Main content. fullBleed adds top padding so fixed header doesn't overlap. */}
-        <main className={cn("flex-1 min-h-0", fullBleed && "pt-14 h-full overflow-hidden")}>
+        {/* Main content. fullBleed adds top padding so the fixed header doesn't
+            overlap and keeps its own internal scrolling; otherwise the main
+            area scrolls vertically while pages that opt into `h-full` fill it
+            exactly and manage their own internal scroll. */}
+        <main className={cn("flex-1 min-h-0", fullBleed ? "pt-14 h-full overflow-hidden" : "overflow-y-auto")}>
           {children}
         </main>
 
@@ -148,6 +184,9 @@ const AppShell: React.FC<AppShellProps> = ({ children, fullBleed = false }) => {
                 requestId={askAiCtx.requestId}
                 parcelId={askAiCtx.parcelId}
                 docNumbers={askAiCtx.docNumbers}
+                activeDocNo={askAiActiveDoc?.docNo}
+                viewLabel={askAiActiveDoc?.viewLabel ?? askAiCtx.screenLabel}
+                screenContext={askAiCtx.screenSummary}
                 onClose={() => setAskAiOpen(false)}
               />
             )}
