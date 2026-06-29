@@ -1,0 +1,148 @@
+@keyframes pulse-glow {
+    0% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.4);
+    }
+
+    50% {
+        box-shadow: 0 0 30px rgba(59, 130, 246, 0.9);
+    }
+
+    100% {
+        box-shadow: 0 0 5px rgba(59, 130, 246, 0.4);
+    }
+}
+
+.react-flow__node {
+    padding: 0 !important;
+    /* Let inner div handle padding */
+    border-radius: 16px;
+    font-size: 11px;
+    text-align: left;
+    white-space: pre-wrap;
+    width: 244px;
+    box-shadow: none;
+    border: none !important;
+    /* Remove default border */
+    background: transparent !important;
+    /* Let inner div handle background */
+    z-index: 10;
+}
+
+.react-flow__node:hover {
+    z-index: 1000 !important;
+}
+
+/* Inner Custom Node Styling — frosted glass card. A translucent white wash over
+   a soft blur, a hairline border and a layered shadow give the premium depth;
+   the deed-type / match rules below override the background tint per nature. */
+.hierarchy-node-content {
+    padding: 12px 13px;
+    border-radius: 16px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    background: rgba(255, 255, 255, 0.82);
+    -webkit-backdrop-filter: blur(10px) saturate(1.3);
+    backdrop-filter: blur(10px) saturate(1.3);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 20px -8px rgba(15, 23, 42, 0.18);
+    transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+    width: 100%;
+    height: 100%;
+}
+
+.react-flow__node:hover .hierarchy-node-content {
+    transform: translateY(-5px) scale(1.025);
+    border-color: rgba(99, 102, 241, 0.55);
+    box-shadow: 0 26px 40px -16px rgba(49, 46, 129, 0.45), 0 10px 18px -10px rgba(15, 23, 42, 0.22);
+}
+
+.sn-node .hierarchy-node-content {
+    background: #f8fafc;
+    border-color: #3b82f6;
+    border-style: dashed;
+    color: #1d4ed8;
+    font-weight: 800;
+    font-size: 14px;
+    text-align: center;
+}
+
+/* Tamil Nadu Registry Deed Type Colors — translucent washes so the frosted
+   blur reads through while the nature still tints the card. */
+.sale-node .hierarchy-node-content {
+    border-color: rgba(22, 163, 74, 0.45) !important;
+    background: rgba(240, 253, 244, 0.82) !important;
+}
+
+.mortgage-node .hierarchy-node-content {
+    border-color: rgba(220, 38, 38, 0.45) !important;
+    background: rgba(254, 242, 242, 0.82) !important;
+}
+
+.gift-node .hierarchy-node-content {
+    border-color: rgba(147, 51, 234, 0.45) !important;
+    background: rgba(250, 245, 255, 0.82) !important;
+}
+
+.settlement-node .hierarchy-node-content {
+    border-color: rgba(37, 99, 235, 0.45) !important;
+    background: rgba(239, 246, 255, 0.82) !important;
+}
+
+.release-node .hierarchy-node-content {
+    border-color: rgba(234, 88, 12, 0.45) !important;
+    background: rgba(255, 247, 237, 0.82) !important;
+}
+
+.partition-node .hierarchy-node-content {
+    border-color: rgba(13, 148, 136, 0.45) !important;
+    background: rgba(240, 253, 250, 0.82) !important;
+}
+
+.power-node .hierarchy-node-content {
+    border-color: rgba(75, 85, 99, 0.4) !important;
+    background: rgba(249, 250, 251, 0.82) !important;
+}
+
+.base-node .hierarchy-node-content {
+    border-color: rgba(148, 163, 184, 0.45) !important;
+    background: rgba(248, 250, 252, 0.82) !important;
+}
+
+/* Validation match status — tints a node GREEN when its document matched the
+   EC/registry and RED when it mismatched. Declared AFTER the deed-type rules
+   so it wins the equal-specificity !important tie-break and the match signal
+   takes visual priority over the deed-type tint for validated documents. */
+.node-matched .hierarchy-node-content {
+    border-color: rgba(22, 163, 74, 0.6) !important;
+    background: rgba(236, 253, 245, 0.85) !important;
+    box-shadow: 0 0 0 1.5px rgba(22, 163, 74, 0.4), 0 10px 22px -10px rgba(22, 163, 74, 0.5) !important;
+}
+
+.node-mismatch .hierarchy-node-content {
+    border-color: rgba(220, 38, 38, 0.6) !important;
+    background: rgba(254, 242, 242, 0.85) !important;
+    box-shadow: 0 0 0 1.5px rgba(220, 38, 38, 0.4), 0 10px 22px -10px rgba(220, 38, 38, 0.5) !important;
+}
+
+.react-flow__handle {
+    width: 8px;
+    height: 8px;
+    background: #3b82f6;
+    border: 2px solid white;
+}
+
+.react-flow__edge-path {
+    stroke-width: 2.5;
+    stroke: #94a3b8;
+}
+
+.vertical-edge .react-flow__edge-path {
+    stroke-dasharray: 6 4;
+    stroke: #64748b;
+}
+
+.branch-edge .react-flow__edge-path {
+    stroke: #94a3b8;
+}
+
+.react-flow__attribution {
+    display: none;
+}

@@ -1,0 +1,114 @@
+import { Toaster } from "@/components/ui/toaster";
+import { Toaster as Sonner } from "@/components/ui/sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import { AnimatePresence } from "framer-motion";
+import Index from "./pages/Index";
+import MapPage from "./pages/MapPage";
+import LandingPage from "./pages/LandingPage";
+import HierarchyPage from "./pages/HierarchyPage";
+import LegalDashboard from "./pages/LegalDashboard";
+import LoginPage from "./pages/LoginPage";
+import SignupPage from "./pages/SignupPage";
+import NotFound from "./pages/NotFound";
+import { AuthProvider } from "./context/AuthContext";
+import { TranslationProvider } from "./lib/translation";
+import ProtectedRoute from "./components/ProtectedRoute";
+import PageTransition from "./components/PageTransition";
+import AppShell from "./components/AppShell";
+
+// Global React Query defaults tuned for the LandwiseAI workspace.
+//
+// - staleTime 60s: most dashboard reads are safe to serve from cache for a
+//   minute; mutations already invalidate the relevant keys explicitly.
+// - gcTime 5m: keep recently-used data hot across tab switches without
+//   ballooning memory.
+// - refetchOnWindowFocus/Reconnect: OFF. The previous defaults fired a
+//   refetch storm of 5-8 parcel-scoped queries every time the user
+//   alt-tabbed back to the app, which was a major contributor to the
+//   ~10s perceived load on warm navigation.
+// - retry: 1. The old default (3 with exponential backoff) turned a single
+//   transient 5xx into a multi-second hang on first paint.
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      retry: 1,
+    },
+  },
+});
+
+// Wrap protected routes in the persistent app shell so navigation, breadcrumbs
+// and the user menu remain visible across the workspace. Canvas-style pages
+// (map, hierarchy graph) get fullBleed so the header overlays without
+// reserving vertical space.
+const Shell = ({ children, fullBleed = false }: { children: React.ReactNode; fullBleed?: boolean }) => (
+  <ProtectedRoute>
+    <AppShell fullBleed={fullBleed}>
+      <PageTransition>{children}</PageTransition>
+    </AppShell>
+  </ProtectedRoute>
+);
+
+const AnimatedRoutes = () => {
+  const location = useLocation();
+  return (
+    <AnimatePresence mode="wait" initial={false}>
+      <Routes location={location} key={location.pathname}>
+        <Route
+          path="/login"
+          element={
+            <PageTransition>
+              <LoginPage />
+            </PageTransition>
+          }
+        />
+        <Route
+          path="/signup"
+          element={
+            <PageTransition>
+              <SignupPage />
+            </PageTransition>
+          }
+        />
+
+        <Route path="/" element={<Shell><LandingPage /></Shell>} />
+        <Route path="/map" element={<Shell fullBleed><MapPage /></Shell>} />
+        <Route path="/verify" element={<Shell><Index /></Shell>} />
+        <Route path="/hierarchy" element={<Shell fullBleed><HierarchyPage /></Shell>} />
+        <Route path="/dashboard" element={<Shell><LegalDashboard /></Shell>} />
+
+        <Route
+          path="*"
+          element={
+            <PageTransition>
+              <NotFound />
+            </PageTransition>
+          }
+        />
+      </Routes>
+    </AnimatePresence>
+  );
+};
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <AuthProvider>
+      <TranslationProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner position="top-right" richColors />
+          <BrowserRouter>
+            <AnimatedRoutes />
+          </BrowserRouter>
+        </TooltipProvider>
+      </TranslationProvider>
+    </AuthProvider>
+  </QueryClientProvider>
+);
+
+export default App;

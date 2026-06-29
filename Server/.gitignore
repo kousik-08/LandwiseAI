@@ -1,0 +1,24 @@
+# Environment variables
+.env
+
+# Project folders (ignoring data but keeping structure)
+inputs/*
+!inputs/.gitkeep
+
+outputs/*
+!outputs/.gitkeep
+
+tmp/*
+!tmp/.gitkeep
+
+# Python specific
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+*.pdf
+*.log

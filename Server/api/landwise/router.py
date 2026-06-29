@@ -1,0 +1,2570 @@
+"""
+Landwise API Router — Full CRUD for Projects, Parcels, Documents, 
+Checklist, Risk Flags, Consistency, Opinions, and Notifications
+================================================================
+Mounted at /api/v1/landwise/ in the main app.
+"""
+
+import os
+import json
+import uuid
+import hashlib
+import logging
+from datetime import datetime
+from typing import Optional, List, Literal
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc, select
+
+from common.database import get_db
+from common.landwise_models import (
+    User, Role, Project, ProjectTeamAssignment, Parcel,
+    LandwiseDocument, ExtractedField, ExtractionJob,
+    DocumentAnnotation, Owner, OwnershipTransfer,
+    Encumbrance, RiskFlag, ConsistencyCheck, ConsistencyMismatch,
+    ChecklistItem, LegalOpinion, OpinionSection,
+    AuditLog, Notification, ExternalFetchLog, AnalysisResult, gen_uuid
+)
+from services.gatekeeper import GatekeeperService
+from services.audit_service import AuditService
+from services.checklist_service import ChecklistService
+from services.analysis_bridge import AnalysisBridge
+from api.validate.handler import handle_validate
+from api.auth.router import get_current_user
+import shutil
+import zipfile
+import tempfile
+import asyncio
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/api/v1/landwise", tags=["Landwise"])
+
+
+# ══════════════════════════════════════════════════════════════
+#  REQUEST / RESPONSE MODELS
+# ══════════════════════════════════════════════════════════════
+
+# ── Projects ──
+class ProjectCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    district: str = "Unknown"
+    state: str = "Tamil Nadu"
+    project_type: Optional[str] = "Land Acquisition"
+    project_icon: Optional[str] = "building"
+    legal_advisor_id: Optional[str] = None
+    target_acquisition_date: Optional[str] = None
+
+class ProjectUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[str] = None
+
+# ── Parcels ──
+class ParcelCreate(BaseModel):
+    survey_number: str
+    subdivision: Optional[str] = None
+    district: str
+    taluk: str
+    village: str
+    area_acres: Optional[float] = None
+    land_use_type: Optional[str] = None
+
+class ParcelUpdate(BaseModel):
+    status: Optional[str] = None
+    area_acres: Optional[float] = None
+    land_use_type: Optional[str] = None
+    assigned_lawyer_id: Optional[str] = None
+
+# ── Team Assignment ──
+class AssignmentItem(BaseModel):
+    user_id: str
+    role: str
+
+class TeamAssignRequest(BaseModel):
+    assignments: List[AssignmentItem]
+
+# ── Annotations ──
+class AnnotationCreate(BaseModel):
+    document_id: str
+    annotation_type: str  # risk, query, verified, condition, note
+    selected_text: str
+    note: Optional[str] = None
+    page_number: int = 1
+    bounding_box: Optional[dict] = None
+
+# ── Checklist ──
+class ChecklistVerdictUpdate(BaseModel):
+    # UI vocabulary — see services/checklist_engine/results.py (UI_VERDICTS).
+    verdict: Literal["pending", "clear", "issue", "escalated", "na"]
+    lawyer_notes: Optional[str] = None
+
+# ── Translation ──
+class TranslateRequest(BaseModel):
+    texts: List[str]
+
+# ── Risk Flags ──
+class RiskFlagAction(BaseModel):
+    action: str  # accepted, dismissed, escalated
+    action_note: Optional[str] = None
+
+# ── Field Override ──
+class FieldOverride(BaseModel):
+    overridden_value: str
+
+# ── Opinion ──
+class OpinionSectionUpdate(BaseModel):
+    final_content: str
+    is_accepted: bool = False
+
+class OpinionVerdictSet(BaseModel):
+    verdict: str  # safe_to_proceed, proceed_with_caution, do_not_proceed
+
+# ── Consistency ──
+class MismatchAction(BaseModel):
+    lawyer_action: str  # acceptable, queried
+    lawyer_note: Optional[str] = None
+
+
+# ══════════════════════════════════════════════════════════════
+#  EP #01-02: PROJECTS
+# ══════════════════════════════════════════════════════════════
+
+# ── Role-based project visibility ─────────────────────────────────
+# Org-wide roles (super_admin, portfolio_manager) see every project.
+# Everyone else (legal_advisor today; auditor / external roles tomorrow)
+# only sees projects they OWN (Project.legal_advisor_id == user.id) or
+# they are a TEAM MEMBER of (ProjectTeamAssignment).
+PROJECT_VIEWER_ROLES = {"super_admin", "portfolio_manager"}
+
+
+def _role_name(user: User) -> str:
+    return (user.role_obj.name if user.role_obj else "").lower()
+
+
+def _project_query_for_user(db: Session, user: User):
+    """Project query scoped to what `user` is allowed to see."""
+    q = db.query(Project)
+    if _role_name(user) in PROJECT_VIEWER_ROLES:
+        return q
+    assigned_ids = select(ProjectTeamAssignment.project_id).where(
+        ProjectTeamAssignment.user_id == user.id
+    )
+    return q.filter(
+        (Project.legal_advisor_id == user.id) | (Project.id.in_(assigned_ids))
+    )
+
+
+def _ensure_project_visible(db: Session, project: Project, user: User) -> None:
+    """Raise 403 if `user` is not allowed to view `project`."""
+    if _role_name(user) in PROJECT_VIEWER_ROLES:
+        return
+    if project.legal_advisor_id == user.id:
+        return
+    is_member = db.query(ProjectTeamAssignment).filter(
+        ProjectTeamAssignment.project_id == project.id,
+        ProjectTeamAssignment.user_id == user.id,
+    ).first()
+    if is_member:
+        return
+    raise HTTPException(403, "You don't have access to this project")
+
+
+@router.post("/projects", status_code=201)
+def create_project(body: ProjectCreate, db: Session = Depends(get_db)):
+    """EP #01: Create a new real-estate project."""
+    project = Project(
+        id=gen_uuid(),
+        name=body.name,
+        description=body.description,
+        district=body.district,
+        state=body.state,
+        project_type=body.project_type,
+        project_icon=body.project_icon,
+        legal_advisor_id=body.legal_advisor_id
+    )
+    if body.target_acquisition_date:
+        try:
+            project.target_acquisition_date = datetime.strptime(
+                body.target_acquisition_date, "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            pass
+
+    db.add(project)
+    
+    # Auto-assign legal advisor to the project team if provided
+    if body.legal_advisor_id:
+        assignment = ProjectTeamAssignment(
+            id=gen_uuid(),
+            project_id=project.id,
+            user_id=body.legal_advisor_id,
+            role='legal_advisor'
+        )
+        db.add(assignment)
+
+    db.commit()
+    db.refresh(project)
+    return project
+
+@router.get("/legal-advisors")
+def list_legal_advisors(db: Session = Depends(get_db)):
+    """List all users with the legal_advisor role."""
+    # Find the role ID for legal_advisor
+    role = db.query(Role).filter(Role.name == 'legal_advisor').first()
+    if not role:
+        return []
+    
+    advisors = db.query(User).filter(User.role_id == role.id).all()
+    return [{"id": u.id, "full_name": u.full_name, "email": u.email} for u in advisors]
+
+@router.get("/projects")
+def list_projects(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """EP #02: List projects visible to the current user (role-scoped)."""
+    projects = _project_query_for_user(db, current_user).order_by(desc(Project.created_at)).all()
+    return {"data": projects}
+
+@router.get("/projects/{project_id}")
+def get_project(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    _ensure_project_visible(db, project, current_user)
+    return project
+
+@router.get("/dashboard/{project_id}")
+def get_project_dashboard(
+    project_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Summary stats for a project dashboard (role-scoped)."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(404, "Project not found")
+    _ensure_project_visible(db, project, current_user)
+        
+    parcels = db.query(Parcel).filter(Parcel.project_id == project_id, Parcel.is_active == True).all()
+    parcel_ids = [p.id for p in parcels]
+    
+    total_parcels = len(parcels)
+    pending = len([p for p in parcels if p.status == 'pending'])
+    in_review = len([p for p in parcels if p.status == 'in_review'])
+    completed = len([p for p in parcels if p.status == 'completed'])
+    
+    risk_flags = db.query(RiskFlag).filter(RiskFlag.parcel_id.in_(parcel_ids)).count()
+    docs_total = db.query(LandwiseDocument).filter(
+        LandwiseDocument.parcel_id.in_(parcel_ids),
+        LandwiseDocument.deleted_at.is_(None)
+    ).count()
+    
+    return {
+        "project_name": project.name,
+        "stats": {
+            "total_parcels": total_parcels,
+            "pending": pending,
+            "in_review": in_review,
+            "completed": completed,
+            "risk_flags": risk_flags,
+            "total_documents": docs_total
+        },
+        "parcels": [{
+            "id": p.id,
+            "survey_number": p.survey_number,
+            "status": p.status,
+            "risk_score": p.risk_score,
+            "village": p.village
+        } for p in parcels]
+    }
+
+@router.get("/team")
+def list_available_team(db: Session = Depends(get_db)):
+    """List all legal team members for assignment."""
+    users = db.query(User).all()
+    return {"data": [{
+        "id": u.id,
+        "full_name": u.full_name,
+        "role": u.role,
+        "email": u.email
+    } for u in users]}
+
+# ══════════════════════════════════════════════════════════════
+#  EP #03-06: PARCELS
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/projects/{project_id}/parcels")
+def list_parcels(project_id: str, db: Session = Depends(get_db)):
+    parcels = db.query(Parcel).filter(Parcel.project_id == project_id, Parcel.is_active == True).all()
+    # Bulk-refresh completion_score in 4 queries instead of ~5 per parcel.
+    # Previous loop did one compute_completion_score(p.id) per parcel which
+    # was the single biggest contributor to slow sidebar loads.
+    if parcels:
+        try:
+            GatekeeperService.compute_completion_scores_batch(parcels, db)
+        except Exception as e:
+            print(f"[!] completion_score bulk refresh failed: {e}")
+    return {"data": parcels}
+
+@router.post("/projects/{project_id}/parcels", status_code=201)
+def create_parcel(project_id: str, body: ParcelCreate, db: Session = Depends(get_db)):
+    # Check if an ACTIVE parcel with same survey number already exists
+    existing_active = db.query(Parcel).filter(
+        Parcel.project_id == project_id,
+        Parcel.survey_number == body.survey_number,
+        Parcel.subdivision == body.subdivision,
+        Parcel.is_active == True
+    ).first()
+    
+    if existing_active:
+        raise HTTPException(400, f"Survey number '{body.survey_number}' already exists in this project")
+    
+    # Check if a SOFT-DELETED parcel with same survey number exists - restore it instead
+    existing_deleted = db.query(Parcel).filter(
+        Parcel.project_id == project_id,
+        Parcel.survey_number == body.survey_number,
+        Parcel.subdivision == body.subdivision,
+        Parcel.is_active == False
+    ).first()
+    
+    if existing_deleted:
+        # Restore the deleted parcel with new data
+        existing_deleted.is_active = True
+        existing_deleted.deleted_at = None
+        existing_deleted.status = "pending"
+        # Update fields with new values
+        existing_deleted.district = body.district
+        existing_deleted.taluk = body.taluk
+        existing_deleted.village = body.village
+        existing_deleted.area_acres = body.area_acres
+        existing_deleted.land_use_type = body.land_use_type
+        
+        db.commit()
+        db.refresh(existing_deleted)
+        
+        return {
+            "status": "restored",
+            "message": f"Survey '{body.survey_number}' was previously deleted and has been restored with new data.",
+            "parcel": existing_deleted
+        }
+    
+    # Create new parcel if no existing one found
+    parcel = Parcel(
+        id=gen_uuid(),
+        project_id=project_id,
+        survey_number=body.survey_number,
+        subdivision=body.subdivision,
+        district=body.district,
+        taluk=body.taluk,
+        village=body.village,
+        area_acres=body.area_acres,
+        land_use_type=body.land_use_type,
+        status="pending"
+    )
+    db.add(parcel)
+    db.commit()
+    
+    # Initialize checklist
+    ChecklistService.create_default_checklist(parcel.id, db)
+    
+    db.refresh(parcel)
+    return parcel
+
+@router.get("/parcels/{parcel_id}")
+def get_parcel(parcel_id: str, db: Session = Depends(get_db)):
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found or has been deleted")
+    try:
+        GatekeeperService.compute_completion_score(parcel.id, db)
+    except Exception as e:
+        print(f"[!] completion_score refresh failed for {parcel.id}: {e}")
+    return parcel
+
+@router.patch("/parcels/{parcel_id}")
+def update_parcel(parcel_id: str, body: ParcelUpdate, db: Session = Depends(get_db)):
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found or has been deleted")
+    
+    if body.status:
+        AuditService.log_status_change(db, "parcel", parcel.id, parcel.status, body.status, parcel.id, parcel.project_id)
+        parcel.status = body.status
+    if body.area_acres is not None:
+        parcel.area_acres = body.area_acres
+    if body.land_use_type:
+        parcel.land_use_type = body.land_use_type
+    if body.assigned_lawyer_id:
+        parcel.assigned_lawyer_id = body.assigned_lawyer_id
+        
+    db.commit()
+    db.refresh(parcel)
+    return parcel
+
+
+def _storage_backend_active() -> str:
+    """'s3' or 'local'. Mirrors common.storage_sync._enabled()."""
+    return "s3" if (os.environ.get("STORAGE_BACKEND") or "local").strip().lower() == "s3" else "local"
+
+
+class _UploadCleanup:
+    """
+    Atomicity guard for the document-upload handler.
+
+    Wraps two non-DB side effects (S3 syncs + scratch writes) so a mid-flight
+    failure — exception, client disconnect (CancelledError), server shutdown —
+    leaves no orphan rows or orphan objects:
+
+      - DB:      one transaction with batched db.flush()es; rolled back on failure.
+      - S3:      tracked keys/prefixes are deleted via storage.delete_prefix().
+      - Scratch: tracked tmp dirs are rmtree'd on both success and failure.
+
+    Usage:
+        cleanup = _UploadCleanup(db)
+        try:
+            cleanup.track_scratch(scratch_dir)
+            cleanup.track_s3_prefix(s3_prefix)
+            # ... db.add(); db.flush() in batches ...
+            db.commit()
+            cleanup.success()
+            return result
+        except BaseException as e:
+            cleanup.rollback(reason=str(e))
+            raise
+    """
+    def __init__(self, db: Session):
+        self.db = db
+        self._s3_keys: List[str] = []
+        self._s3_prefixes: List[str] = []
+        self._scratch_dirs: List[str] = []
+        self._closed = False
+
+    def track_s3_key(self, key: str) -> None:
+        if key:
+            self._s3_keys.append(key)
+
+    def track_s3_prefix(self, prefix: str) -> None:
+        if prefix:
+            self._s3_prefixes.append(prefix)
+
+    def track_scratch(self, path: str) -> None:
+        if path:
+            self._scratch_dirs.append(path)
+
+    def _wipe_scratch(self) -> None:
+        for sd in self._scratch_dirs:
+            try:
+                shutil.rmtree(sd, ignore_errors=True)
+            except Exception as e:
+                logger.warning(f"Scratch cleanup failed for {sd}: {e}")
+
+    def success(self) -> None:
+        """Call after a successful commit. Cleans local scratch only."""
+        if self._closed:
+            return
+        self._closed = True
+        self._wipe_scratch()
+
+    def rollback(self, reason: str) -> None:
+        """Revert all tracked side effects. Safe to call multiple times."""
+        if self._closed:
+            return
+        self._closed = True
+        logger.error(f"Upload rolling back: {reason}")
+
+        try:
+            self.db.rollback()
+        except Exception as e:
+            logger.error(f"DB rollback failed: {e}")
+
+        try:
+            from common.storage import delete_prefix as _delete_prefix
+            for key in self._s3_keys:
+                try:
+                    _delete_prefix(key)
+                except Exception as e:
+                    logger.error(f"S3 cleanup of key {key} failed: {e}")
+            for pref in self._s3_prefixes:
+                try:
+                    _delete_prefix(pref)
+                except Exception as e:
+                    logger.error(f"S3 cleanup of prefix {pref} failed: {e}")
+        except Exception as e:
+            logger.error(f"S3 cleanup setup failed: {e}")
+
+        self._wipe_scratch()
+
+
+# ══════════════════════════════════════════════════════════════
+#  EP #07-09: DOCUMENTS
+# ══════════════════════════════════════════════════════════════
+
+@router.post("/parcels/{parcel_id}/documents", status_code=201)
+async def upload_document(
+    parcel_id: str,
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    language: str = Form("tamil"),
+    year_from: Optional[int] = Form(None),
+    year_to: Optional[int] = Form(None),
+    source: str = Form("uploaded"),
+    db: Session = Depends(get_db)
+):
+    """EP #07: Upload a document to a parcel."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found or has been deleted")
+
+    # Scratch lives under tmp/; canonical store is S3 under outputs/documents/<parcel_id>/.
+    from common.storage_sync import sync_file as _sync_file, sync_dir as _sync_dir
+    scratch_dir = os.path.join("tmp", "work", "_documents", parcel_id)
+    os.makedirs(scratch_dir, exist_ok=True)
+    s3_doc_prefix = f"outputs/documents/{parcel_id}"
+
+    file_content = await file.read()
+    file_hash = hashlib.sha256(file_content).hexdigest()
+
+    # Check duplicate
+    existing = db.query(LandwiseDocument).filter(
+        LandwiseDocument.parcel_id == parcel_id,
+        LandwiseDocument.checksum_sha256 == file_hash,
+        LandwiseDocument.deleted_at.is_(None)
+    ).first()
+    if existing:
+        if existing.document_type != document_type:
+            existing.document_type = document_type
+            db.commit()
+            return {
+                "id": existing.id,
+                "document_type": existing.document_type,
+                "status": "updated",
+                "message": f"Document type updated to {document_type}."
+            }
+        return {
+            "id": existing.id,
+            "document_type": existing.document_type,
+            "status": "duplicate_ignored",
+            "message": "File already exists with the same type. Ignored."
+        }
+
+    file_path = os.path.join(scratch_dir, file.filename)
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+    file_key = f"{s3_doc_prefix}/{file.filename}"
+
+    storage_label = _storage_backend_active()        # 's3' or 'local'
+    s3_enabled = storage_label == "s3"
+    FLUSH_BATCH = 25
+
+    cleanup = _UploadCleanup(db)
+    cleanup.track_scratch(scratch_dir)
+
+    try:
+        # Sync the parent file to S3 (no-op when STORAGE_BACKEND=local).
+        try:
+            _sync_file(file_path, key=file_key)
+            if s3_enabled:
+                cleanup.track_s3_key(file_key)
+        except Exception as _e:
+            logger.warning(f"Document upload sync failed: {_e}")
+
+        docs_to_create: List[LandwiseDocument] = []
+        pending_in_batch = 0
+
+        # ZIP path: extract → bulk-sync to S3 → register each child as a DB row.
+        if file.filename.lower().endswith(".zip") and document_type.lower() == 'sale_deed':
+            with zipfile.ZipFile(file_path, "r") as zip_ref:
+                ext_name = f"ext_{gen_uuid()[:8]}"
+                extracted_dir = os.path.join(scratch_dir, ext_name)
+                extracted_prefix = f"{s3_doc_prefix}/{ext_name}"
+                os.makedirs(extracted_dir, exist_ok=True)
+                zip_ref.extractall(extracted_dir)
+                try:
+                    _sync_dir(extracted_dir, key_prefix=extracted_prefix)
+                    if s3_enabled:
+                        cleanup.track_s3_prefix(extracted_prefix)
+                except Exception as _e:
+                    logger.warning(f"Extracted dir sync failed: {_e}")
+
+                for root, _, files in os.walk(extracted_dir):
+                    for f_name in files:
+                        if not f_name.lower().endswith(".pdf"):
+                            continue
+                        full_p = os.path.join(root, f_name)
+                        size = os.path.getsize(full_p)
+                        rel = os.path.relpath(full_p, extracted_dir).replace("\\", "/")
+                        child_key = f"{extracted_prefix}/{rel}"
+
+                        detected_type = 'SALE_DEED'
+                        if 'ec' in f_name.lower() or 'encumbrance' in f_name.lower():
+                            detected_type = 'ENCUMBRANCE_CERTIFICATE'
+                        elif 'patta' in f_name.lower():
+                            detected_type = 'PATTA'
+
+                        # On S3 the canonical store is S3; the DB only holds
+                        # metadata + storage_key. Skipping file_content avoids
+                        # ~1MB-per-row bulk-INSERT payloads that crash the RDS
+                        # connection on a ZIP with hundreds of PDFs.
+                        pdf_bytes = None
+                        if not s3_enabled:
+                            with open(full_p, 'rb') as pf:
+                                pdf_bytes = pf.read()
+
+                        new_doc = LandwiseDocument(
+                            id=gen_uuid(),
+                            parcel_id=parcel_id,
+                            document_type=detected_type,
+                            source=source,
+                            original_filename=f_name,
+                            storage_key=child_key,
+                            storage_backend=storage_label,
+                            file_content=pdf_bytes,
+                            mime_type='application/pdf',
+                            file_size_bytes=size,
+                            language=language,
+                            extraction_status='pending',
+                        )
+                        db.add(new_doc)
+                        docs_to_create.append(new_doc)
+                        pending_in_batch += 1
+
+                        # Batched flush inside ONE transaction. Each flush is
+                        # a small INSERT; the whole upload still commits (or
+                        # rolls back) atomically at the end.
+                        if pending_in_batch >= FLUSH_BATCH:
+                            db.flush()
+                            pending_in_batch = 0
+
+        # Single-doc path (non-ZIP or non-SALE_DEED).
+        if not docs_to_create:
+            single_bytes = None if s3_enabled else file_content
+            doc = LandwiseDocument(
+                id=gen_uuid(),
+                parcel_id=parcel_id,
+                document_type=document_type,
+                source=source,
+                original_filename=file.filename,
+                storage_key=file_key,
+                storage_backend=storage_label,
+                file_content=single_bytes,
+                mime_type=file.content_type if file.content_type and file.content_type != 'application/octet-stream' else ("application/zip" if file.filename.endswith(".zip") else "application/pdf"),
+                file_size_bytes=len(file_content),
+                language=language,
+                year_from=year_from,
+                year_to=year_to,
+                extraction_status='pending',
+                checksum_sha256=file_hash,
+            )
+            db.add(doc)
+            docs_to_create.append(doc)
+
+        # Queue extraction jobs + parcel status transition in the SAME
+        # transaction. Ids are assigned client-side (gen_uuid) so we don't
+        # need a refresh round-trip.
+        for d in docs_to_create:
+            job = ExtractionJob(
+                id=gen_uuid(),
+                document_id=d.id,
+                status='queued',
+            )
+            db.add(job)
+
+        if parcel.status == 'pending':
+            parcel.status = 'in_review'
+            AuditService.log_status_change(
+                db, entity_type="parcel", entity_id=parcel.id,
+                old_status="pending", new_status="in_review",
+                parcel_id=parcel.id, project_id=parcel.project_id,
+            )
+
+        # One atomic commit covering: docs + jobs + parcel status + audit.
+        db.commit()
+        cleanup.success()
+
+        return {
+            "id": docs_to_create[0].id,
+            "document_type": docs_to_create[0].document_type,
+            "extraction_status": docs_to_create[0].extraction_status,
+            "child_docs_created": len(docs_to_create),
+            "checksum_sha256": file_hash,
+        }
+
+    except HTTPException:
+        # Caller-shaped failure — rollback DB + S3, re-raise the original status.
+        cleanup.rollback(reason="HTTPException raised mid-upload")
+        raise
+    except asyncio.CancelledError:
+        # Client disconnect or server shutdown — wipe partial work, re-raise.
+        cleanup.rollback(reason="Request cancelled (client disconnect or shutdown)")
+        raise
+    except BaseException as e:
+        # DB error, ZIP corruption, OSError, anything else — rollback and return 500.
+        cleanup.rollback(reason=f"{type(e).__name__}: {e}")
+        raise HTTPException(500, f"Upload failed and was rolled back: {e}") from e
+
+@router.get("/parcels/{parcel_id}/documents")
+def list_documents(
+    parcel_id: str,
+    document_type: Optional[str] = None,
+    extraction_status: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """EP #08: List all documents for a parcel."""
+    q = db.query(LandwiseDocument).filter(
+        LandwiseDocument.parcel_id == parcel_id,
+        LandwiseDocument.deleted_at.is_(None)
+    )
+    if document_type:
+        q = q.filter(LandwiseDocument.document_type == document_type)
+    if extraction_status:
+        q = q.filter(LandwiseDocument.extraction_status == extraction_status)
+
+    docs = q.order_by(desc(LandwiseDocument.uploaded_at)).all()
+
+    # Single aggregate query for annotation counts instead of one COUNT per
+    # document. With 277 sale deeds in a parcel this was producing 278
+    # round-trips to Postgres and dominating the documents-tab load time.
+    ann_counts: dict[str, int] = {}
+    if docs:
+        rows = (
+            db.query(DocumentAnnotation.document_id, func.count(DocumentAnnotation.id))
+              .filter(DocumentAnnotation.document_id.in_([d.id for d in docs]))
+              .filter(DocumentAnnotation.deleted_at.is_(None))
+              .group_by(DocumentAnnotation.document_id)
+              .all()
+        )
+        ann_counts = {doc_id: count for doc_id, count in rows}
+
+    # AI-detected document types from the checklist classifier cache (if it ran).
+    cls_cache = {}
+    try:
+        from services.artifact_store import read_json_artifact
+        cls_cache = read_json_artifact(f"aux-parcel-{parcel_id}", "doc_classifications.json") or {}
+    except Exception:
+        cls_cache = {}
+    from services.checklist_engine.extractors import DocTypeClassifier
+
+    def _ai(doc_id):
+        c = cls_cache.get(doc_id) or {}
+        det = c.get("detected")
+        return {
+            "ai_detected_type": det,
+            "ai_detected_label": (DocTypeClassifier.LABELS.get(det, det) if det else None),
+            "ai_confidence": c.get("confidence"),
+        }
+
+    return {
+        "data": [{
+            "id": d.id, "document_type": d.document_type,
+            "original_filename": d.original_filename,
+            "source": d.source, "language": d.language,
+            "extraction_status": d.extraction_status,
+            "extraction_confidence": float(d.extraction_confidence) if d.extraction_confidence else None,
+            "year_from": d.year_from, "year_to": d.year_to,
+            "file_size_bytes": d.file_size_bytes,
+            "annotation_count": ann_counts.get(d.id, 0),
+            "uploaded_at": str(d.uploaded_at),
+            **_ai(d.id),
+        } for d in docs],
+    }
+
+@router.get("/documents/download/{document_id}")
+def download_document(document_id: str, db: Session = Depends(get_db)):
+    """EP #09.5: Get document file content.
+
+    Streams from S3 through the backend (avoids cross-origin redirect that
+    pdfjs can't follow due to Origin: null on the redirected request).
+    Falls back to DB `file_content` then local disk for legacy rows.
+    """
+    doc = db.query(LandwiseDocument).filter(LandwiseDocument.id == document_id).first()
+    if not doc:
+        raise HTTPException(404, "Document not found in database")
+
+    from fastapi.responses import FileResponse, Response, StreamingResponse
+    from common.storage import get_storage
+
+    storage = get_storage()
+
+    # 1. Stream from storage backend (S3) — same-origin response, CORS-safe.
+    # Open the stream directly without a pre-flight HEAD: open_stream errors
+    # propagate to the except block below, which falls through to the
+    # legacy fallbacks. The pre-flight was costing one extra round-trip per
+    # PDF open — measurable on the document-analysis page where 20+ PDFs
+    # are prefetched.
+    if doc.storage_key:
+        try:
+            body = storage.open_stream(doc.storage_key)
+            if body is not None:
+
+                def _iter():
+                    try:
+                        # 256 KB chunks: ~4x fewer Python iterations than
+                        # 64 KB without bloating memory. Saves ~80-150 ms
+                        # on a 1-2 MB EC PDF.
+                        while True:
+                            chunk = body.read(256 * 1024)
+                            if not chunk:
+                                break
+                            yield chunk
+                    finally:
+                        try:
+                            body.close()
+                        except Exception:
+                            pass
+
+                # Aggressive cache: PDFs are immutable per LandwiseDocument
+                # UUID (you never overwrite an existing doc; uploads create
+                # a new row with a new UUID), so we can let the browser
+                # cache for a year and skip revalidation entirely. The
+                # `immutable` directive prevents conditional GETs on reload.
+                # Intentionally NOT setting Content-Length — the recorded
+                # file_size_bytes can diverge from the actual streamed byte
+                # count for re-uploaded rows, and a Content-Length mismatch
+                # makes browsers abort the PDF load. Transfer-Encoding:
+                # chunked is safer for streaming.
+                return StreamingResponse(
+                    _iter(),
+                    media_type=doc.mime_type or "application/pdf",
+                    headers={
+                        "Content-Disposition": f'inline; filename="{doc.original_filename or "document.pdf"}"',
+                        "Cache-Control": "private, max-age=31536000, immutable",
+                    },
+                )
+        except Exception as e:
+            print(f"[!] storage stream failed for {doc.storage_key}: {e}")
+
+    # 2. DB file_content fallback (legacy rows).
+    if doc.file_content:
+        return Response(
+            content=doc.file_content,
+            media_type=doc.mime_type or "application/pdf",
+            headers={"Content-Disposition": f'inline; filename="{doc.original_filename}"'},
+        )
+
+    # 3. Last-resort local disk (legacy absolute paths).
+    if doc.storage_key and os.path.isabs(doc.storage_key) and os.path.exists(doc.storage_key):
+        return FileResponse(
+            path=doc.storage_key,
+            media_type=doc.mime_type or "application/pdf",
+            filename=doc.original_filename,
+            content_disposition_type="inline",
+        )
+
+    raise HTTPException(404, "Document file not found in storage, database, or disk")
+
+
+@router.get("/documents/download-by-path")
+def download_document_by_path(file_path: str, db: Session = Depends(get_db)):
+    """EP #09.6: Stream a PDF identified by storage path.
+
+    Streams from S3 through the backend (same-origin, CORS-safe).
+    Accepts any of:
+      - "outputs/validate/<id>/matched_docs/<file>.pdf"
+      - "validate/<id>/matched_docs/<file>.pdf"
+      - "inputs/validate/<id>/sale_deeds/<file>.pdf"
+      - "<file>.pdf"  (vault-style)
+    """
+    import re
+    from fastapi.responses import Response, StreamingResponse
+    from common.storage import get_storage
+
+    if ".." in file_path or file_path.startswith("/"):
+        raise HTTPException(400, "Invalid file path")
+
+    storage = get_storage()
+    norm = file_path.replace("\\", "/").lstrip("./").lstrip("/")
+    base = os.path.basename(norm)
+
+    candidates: list[str] = [norm]
+    if not (norm.startswith("outputs/") or norm.startswith("inputs/")):
+        candidates += [
+            f"outputs/{norm}",
+            f"inputs/{norm}",
+            f"outputs/storage/vault/{base}",
+        ]
+
+    def _stream(key: str, filename: str):
+        body = storage.open_stream(key)
+
+        def _iter():
+            try:
+                while True:
+                    chunk = body.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                try:
+                    body.close()
+                except Exception:
+                    pass
+
+        return StreamingResponse(
+            _iter(),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "private, max-age=300",
+            },
+        )
+
+    for key in candidates:
+        try:
+            if storage.exists(key):
+                return _stream(key, os.path.basename(key))
+        except Exception as e:
+            print(f"[!] storage probe failed for {key}: {e}")
+
+    # Local-disk recovery: if the storage backend is S3 but the file is
+    # only on the local scratch (legacy reports generated before the
+    # /report endpoint started syncing legal/ to S3 — see
+    # api/validate/handler.py handle_generate_report), serve directly off
+    # disk via FileResponse and lazily push it to S3 so subsequent
+    # requests hit the fast S3 path. Without this, users with stale
+    # opinion reports get a 404 even though the bytes exist on the
+    # backend instance that generated them.
+    server_root = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    for key in candidates:
+        local_candidate = os.path.normpath(os.path.join(server_root, key))
+        if not os.path.isfile(local_candidate):
+            # Also try the cwd-relative form for runs that started in
+            # Server/.
+            local_candidate = os.path.normpath(key)
+            if not os.path.isfile(local_candidate):
+                continue
+        # Best-effort lazy sync — never blocks the download.
+        try:
+            from common.storage_sync import sync_file as _sync_file
+            _sync_file(local_candidate, content_type="application/pdf", key=key)
+            print(f"[+] Lazily synced legacy local-only file to S3: {key}")
+        except Exception as _se:
+            print(f"[!] Lazy S3 sync failed (non-fatal) for {key}: {_se}")
+        from fastapi.responses import FileResponse
+        return FileResponse(
+            path=local_candidate,
+            media_type="application/pdf",
+            filename=os.path.basename(local_candidate),
+            content_disposition_type="inline",
+            headers={"Cache-Control": "private, max-age=300"},
+        )
+
+    # Fallback: scan lw_documents by fuzzy filename match (vault-only docs).
+    try:
+        target = re.sub(r'[\s\-_/\\]', '', base).lower()
+        target = re.sub(r'\.pdf$', '', target)
+        if target:
+            docs = db.query(LandwiseDocument).all()
+            for d in docs:
+                fn_norm = re.sub(r'[\s\-_/\\]', '', d.original_filename or '').lower()
+                fn_norm = re.sub(r'\.pdf$', '', fn_norm)
+                if target in fn_norm:
+                    if d.storage_key:
+                        try:
+                            if storage.exists(d.storage_key):
+                                return _stream(d.storage_key, d.original_filename or base)
+                        except Exception:
+                            pass
+                    if d.file_content:
+                        return Response(
+                            content=d.file_content,
+                            media_type="application/pdf",
+                            headers={"Content-Disposition": f"inline; filename={d.original_filename}"}
+                        )
+    except Exception as e:
+        print(f"[!] Vault DB filename scan failed: {e}")
+
+    print(f"[!] File not found: {file_path}  (tried keys: {candidates})")
+    raise HTTPException(404, f"File not found: {file_path}")
+
+
+@router.get("/documents/{document_id}")
+def get_document(
+    document_id: str,
+    include_fields: bool = False,
+    include_annotations: bool = False,
+    db: Session = Depends(get_db)
+):
+    """EP #09: Get document metadata + extracted fields + annotations."""
+    doc = db.query(LandwiseDocument).filter(LandwiseDocument.id == document_id).first()
+    if not doc:
+        # Compatibility with legacy doc_no identification
+        doc = db.query(LandwiseDocument).filter(LandwiseDocument.original_filename.contains(document_id)).first()
+        if not doc:
+            raise HTTPException(404, "Document not found")
+
+    result = {
+        "id": doc.id, "parcel_id": doc.parcel_id,
+        "document_type": doc.document_type, "source": doc.source,
+        "original_filename": doc.original_filename,
+        "storage_key": doc.storage_key,
+        "mime_type": doc.mime_type,
+        "file_size_bytes": doc.file_size_bytes,
+        "language": doc.language,
+        "year_from": doc.year_from, "year_to": doc.year_to,
+        "extraction_status": doc.extraction_status,
+        "extraction_confidence": float(doc.extraction_confidence) if doc.extraction_confidence else None,
+    }
+
+    if include_fields:
+        fields = db.query(ExtractedField).filter(ExtractedField.document_id == document_id).all()
+        result["extracted_fields"] = [{
+            "id": f.id, "field_key": f.field_key,
+            "raw_value": f.raw_value,
+            "normalised_value": f.normalised_value,
+            "confidence": float(f.confidence) if f.confidence else None,
+            "is_overridden": f.is_overridden,
+            "overridden_value": f.overridden_value,
+            "page_number": f.page_number,
+        } for f in fields]
+
+    if include_annotations:
+        anns = db.query(DocumentAnnotation).filter(
+            DocumentAnnotation.document_id == document_id,
+            DocumentAnnotation.deleted_at.is_(None)
+        ).all()
+        result["annotations"] = [{
+            "id": a.id, "type": a.annotation_type,
+            "text": a.selected_text, "note": a.note,
+            "page": a.page_number, "box": a.bounding_box,
+            "created_at": str(a.created_at),
+        } for a in anns]
+
+    return result
+
+@router.post("/parcels/{parcel_id}/annotations", status_code=201)
+def create_annotation(parcel_id: str, body: AnnotationCreate, db: Session = Depends(get_db)):
+    """Create a DocumentAnnotation.
+
+    The `document_id` from the client may be:
+      - a UUID matching LandwiseDocument.id
+      - a doc number like "5548_2013" or "5548/2013"
+      - a filename like "5548_2013.pdf"
+    We resolve all of these to a real lw_documents row, preferring
+    candidates that belong to this parcel.
+    """
+    raw = (body.document_id or "").strip()
+    candidates = {raw}
+    # doc-no normalizations
+    candidates.add(raw.replace("/", "_"))
+    candidates.add(raw.replace("_", "/"))
+    # strip .pdf extension if present
+    if raw.lower().endswith(".pdf"):
+        base = raw[:-4]
+        candidates.update({base, base.replace("/", "_"), base.replace("_", "/")})
+    candidates.discard("")
+
+    doc = db.query(LandwiseDocument).filter(LandwiseDocument.id == raw).first()
+    if not doc:
+        # 1. Try parcel-scoped filename match for each candidate.
+        for c in candidates:
+            doc = (
+                db.query(LandwiseDocument)
+                .filter(
+                    LandwiseDocument.parcel_id == parcel_id,
+                    LandwiseDocument.deleted_at.is_(None),
+                    LandwiseDocument.original_filename.contains(c),
+                )
+                .first()
+            )
+            if doc:
+                break
+        # 2. Fall back to a global filename match (legacy data).
+        if not doc:
+            for c in candidates:
+                doc = (
+                    db.query(LandwiseDocument)
+                    .filter(LandwiseDocument.original_filename.contains(c))
+                    .first()
+                )
+                if doc:
+                    break
+        if not doc:
+            raise HTTPException(
+                404,
+                f"Document reference not found for '{raw}' on parcel {parcel_id}",
+            )
+
+    anno = DocumentAnnotation(
+        id=gen_uuid(),
+        document_id=doc.id,
+        parcel_id=parcel_id,
+        annotation_type=body.annotation_type,
+        selected_text=body.selected_text,
+        note=body.note,
+        page_number=body.page_number,
+        bounding_box=body.bounding_box
+    )
+    db.add(anno)
+    db.commit()
+    db.refresh(anno)
+    return anno
+
+
+@router.get("/parcels/by-request/{request_id}")
+def get_parcel_by_request(request_id: str, db: Session = Depends(get_db)):
+    """
+    Resolve a parcel from an analysis request_id. The HierarchyPage uses this
+    when it lands without a parcelId in the URL (e.g. arriving from /verify)
+    so the Notes Cockpit can still query annotations for the parcel.
+    """
+    parcel = (
+        db.query(Parcel)
+        .filter(Parcel.last_analysis_request_id == request_id, Parcel.is_active == True)  # noqa: E712
+        .first()
+    )
+    if not parcel:
+        raise HTTPException(404, "No parcel registered for this request_id")
+    return {
+        "parcel_id": parcel.id,
+        "survey_number": parcel.survey_number,
+        "subdivision": parcel.subdivision,
+        "project_id": parcel.project_id,
+    }
+
+
+@router.get("/parcels/{parcel_id}/annotations")
+def list_parcel_annotations(parcel_id: str, db: Session = Depends(get_db)):
+    """
+    Flat list of every annotation for a parcel. Each row carries enough context
+    (document filename + survey number + page) for the frontend to render a
+    Notes Cockpit and to deep-link back to the source PDF + page + bbox.
+    """
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+
+    rows = (
+        db.query(DocumentAnnotation, LandwiseDocument)
+        .join(LandwiseDocument, DocumentAnnotation.document_id == LandwiseDocument.id)
+        .filter(
+            DocumentAnnotation.parcel_id == parcel_id,
+            DocumentAnnotation.deleted_at.is_(None),
+        )
+        .order_by(desc(DocumentAnnotation.created_at))
+        .all()
+    )
+
+    survey_number = f"{parcel.survey_number}{('/' + parcel.subdivision) if parcel.subdivision else ''}"
+
+    data = [
+        {
+            "id": ann.id,
+            "document_id": ann.document_id,
+            "doc_no": doc.original_filename,
+            "survey_number": survey_number,
+            "annotation_type": ann.annotation_type,
+            "selected_text": ann.selected_text,
+            "note": ann.note,
+            "page_number": ann.page_number,
+            "bounding_box": ann.bounding_box,
+            "is_resolved": bool(ann.is_resolved),
+            "created_at": ann.created_at.isoformat() if ann.created_at else None,
+        }
+        for ann, doc in rows
+    ]
+    return {"data": data}
+
+
+@router.get("/parcels/{parcel_id}/annotations/summary")
+def parcel_annotations_summary(parcel_id: str, db: Session = Depends(get_db)):
+    """
+    Grouped summary used by the Notes Cockpit. Returns one bucket per document
+    with its notes ordered by page, plus parcel-level totals so the UI can show
+    a header like "Survey No 46 — 7 notes across 3 deeds".
+    """
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+
+    rows = (
+        db.query(DocumentAnnotation, LandwiseDocument)
+        .join(LandwiseDocument, DocumentAnnotation.document_id == LandwiseDocument.id)
+        .filter(
+            DocumentAnnotation.parcel_id == parcel_id,
+            DocumentAnnotation.deleted_at.is_(None),
+        )
+        .order_by(LandwiseDocument.original_filename, DocumentAnnotation.page_number)
+        .all()
+    )
+
+    survey_number = f"{parcel.survey_number}{('/' + parcel.subdivision) if parcel.subdivision else ''}"
+
+    by_doc: dict = {}
+    for ann, doc in rows:
+        bucket = by_doc.setdefault(doc.id, {
+            "document_id": doc.id,
+            "doc_no": doc.original_filename,
+            "document_type": doc.document_type,
+            "notes": [],
+        })
+        bucket["notes"].append({
+            "id": ann.id,
+            "annotation_type": ann.annotation_type,
+            "selected_text": ann.selected_text,
+            "note": ann.note,
+            "page_number": ann.page_number,
+            "bounding_box": ann.bounding_box,
+            "is_resolved": bool(ann.is_resolved),
+            "created_at": ann.created_at.isoformat() if ann.created_at else None,
+        })
+
+    documents = list(by_doc.values())
+    total = sum(len(d["notes"]) for d in documents)
+
+    return {
+        "survey_number": survey_number,
+        "parcel_id": parcel_id,
+        "total_notes": total,
+        "documents_with_notes": len(documents),
+        "documents": documents,
+    }
+
+
+@router.delete("/annotations/{annotation_id}", status_code=204)
+def delete_annotation(annotation_id: str, db: Session = Depends(get_db)):
+    """Soft-delete a single annotation so it stops appearing in the cockpit/PDF."""
+    ann = db.query(DocumentAnnotation).filter(DocumentAnnotation.id == annotation_id).first()
+    if not ann:
+        raise HTTPException(404, "Annotation not found")
+    ann.deleted_at = func.now()
+    db.commit()
+    return
+
+
+# ══════════════════════════════════════════════════════════════
+#  EP #10-14: CHECKLIST, RISKS, CONSISTENCY
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/parcels/{parcel_id}/checklist")
+def get_checklist(parcel_id: str, db: Session = Depends(get_db)):
+    # Seed/backfill the default checklist: creates it for new parcels AND adds
+    # any items introduced after the parcel was first seeded (e.g. succession
+    # checks) — otherwise existing parcels never see new items.
+    if db.query(Parcel).filter(Parcel.id == parcel_id).first():
+        ChecklistService.sync_checklist(parcel_id, db)
+    # Lazily auto-suggest verdicts from the completed AI analysis. Idempotent
+    # (only touches still-pending items, never overrides a human verdict) and
+    # must never break the fetch if the analysis artifact is missing.
+    try:
+        ChecklistService.auto_populate_from_extraction(parcel_id, db)
+    except Exception as e:
+        db.rollback()
+        print(f"[checklist] auto-populate skipped for {parcel_id}: {e}")
+    items = db.query(ChecklistItem).filter(ChecklistItem.parcel_id == parcel_id).order_by(ChecklistItem.item_code).all()
+    # Group by phase + compute progress for the dashboard checklist view (the UI
+    # reads `phases` and `progress`; `data` kept for any flat-list consumers).
+    phases: dict = {}
+    for it in items:
+        phases.setdefault(it.phase, []).append({
+            "id": it.id,
+            "item_code": it.item_code,
+            "item_label": it.item_label,
+            "phase": it.phase,
+            "is_mandatory": it.is_mandatory,
+            "verdict": it.verdict,
+            "lawyer_notes": it.lawyer_notes,
+            "verified_by": it.verified_by,
+            "verified_at": str(it.verified_at) if it.verified_at else None,
+        })
+    total = len(items)
+    done = sum(1 for it in items if it.verdict in ("clear", "na"))
+    progress = round(100 * done / total) if total else 0
+    return {"data": items, "phases": phases, "progress": progress}
+
+@router.post("/parcels/{parcel_id}/aux-extract")
+def trigger_aux_extraction(parcel_id: str, db: Session = Depends(get_db)):
+    """
+    Run the Tier-C document extractors (Patta, FMB/survey-sketch, original-vs-
+    certified) for whatever documents are uploaded, caching their results so the
+    checklist providers can consume them. Safe no-op for any document not present.
+    Then refreshes the checklist suggestions. This is an explicit trigger — it is
+    NOT on the checklist hot path (it may call Gemini).
+    """
+    from services.checklist_engine import run_extractions, run as run_engine
+    docs = db.query(LandwiseDocument).filter(
+        LandwiseDocument.parcel_id == parcel_id,
+        LandwiseDocument.deleted_at.is_(None),
+    ).all()
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    print(f"[aux-extract] {parcel_id}: {len(docs)} doc(s) [{', '.join(d.document_type or '?' for d in docs)}] "
+          f"| analysis_run={bool(getattr(parcel, 'last_analysis_request_id', None))}")
+    summary = run_extractions(parcel_id, db)
+    print(f"[aux-extract] result: {summary}")
+    changed = 0
+    try:
+        changed = run_engine(parcel_id, db)
+    except Exception as e:
+        print(f"[aux-extract] checklist re-populate skipped for {parcel_id}: {e}")
+    print(f"[aux-extract] checklist items changed = {changed}")
+    return {"data": summary}
+
+@router.post("/translate")
+def translate_texts(body: TranslateRequest):
+    """Tamil → English for bilingual display. Returns {original_tamil: english} for
+    every Tamil-containing string; English/numeric strings are omitted (no change)."""
+    from services.translation_service import translate_batch
+    return {"translations": translate_batch(body.texts or [])}
+
+@router.patch("/checklist/{item_id}")
+def update_checklist_verdict(item_id: str, body: ChecklistVerdictUpdate, db: Session = Depends(get_db)):
+    item = db.query(ChecklistItem).filter(ChecklistItem.id == item_id).first()
+    if not item:
+        raise HTTPException(404, "Checklist item not found")
+
+    item.verdict = body.verdict
+    item.lawyer_notes = body.lawyer_notes
+    item.updated_at = func.now()
+    db.commit()
+    
+    # Log audit
+    AuditService.log(db, action="checklist.update", entity_type="checklist_item",
+                     entity_id=item.id, parcel_id=item.parcel_id,
+                     metadata={"verdict": body.verdict})
+    
+    return item
+
+@router.get("/parcels/{parcel_id}/risks")
+def get_risks(parcel_id: str, db: Session = Depends(get_db)):
+    risks = db.query(RiskFlag).filter(RiskFlag.parcel_id == parcel_id).all()
+    return {"data": risks}
+
+@router.patch("/risks/{risk_id}/action")
+def action_risk(risk_id: str, body: RiskFlagAction, db: Session = Depends(get_db)):
+    risk = db.query(RiskFlag).filter(RiskFlag.id == risk_id).first()
+    if not risk:
+        raise HTTPException(404, "Risk flag not found")
+
+    risk.action = body.action  # RiskFlag column is 'action' (was wrongly 'status' → never persisted)
+    risk.action_note = body.action_note
+    db.commit()
+    return risk
+
+
+# ══════════════════════════════════════════════════════════════
+#  EP #15-18: HIERARCHY, ANALYZE, OPINION
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/parcels/{parcel_id}/hierarchy")
+async def get_hierarchy(parcel_id: str, db: Session = Depends(get_db)):
+    """EP #15: Get the full property hierarchy tree."""
+    from api.validate.handler import handle_get_global_hierarchy
+    
+    # Fallback to persistent request_id from parcel table
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    request_id = parcel.last_analysis_request_id if parcel else None
+    
+    # This calls the validate handler which returns the JSON
+    if not request_id:
+        raise HTTPException(404, "No analysis data found for this parcel")
+        
+    return await handle_get_global_hierarchy(request_id)
+
+@router.post("/parcels/{parcel_id}/analyze")
+async def analyze_parcel(request: Request, parcel_id: str, limit: Optional[int] = None, stream: bool = False, db: Session = Depends(get_db)):
+    """EP: Trigger the full Legal Advisor Analysis."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found or has been deleted")
+
+    # Invalidate the cached risk-score result so the next /get-risk-score
+    # call recomputes against the fresh audit data instead of returning
+    # the previous run's cached LLM summary.
+    # We also delete the on-disk risk_score.json fallback so the two caches
+    # cannot disagree — otherwise /get-risk-score's file-fallback path will
+    # serve the previous run's score after the DB row has been cleared.
+    parcel.risk_score_data = None
+    parcel.risk_score_computed_at = None
+    db.commit()
+    # The risk_score.json cache for the previous run lived on local disk —
+    # nothing local persists anymore, so this is now a no-op. The S3 copy
+    # under outputs/validate/<rid>/risk_score.json stays until the parcel
+    # is re-analyzed (the next run rewrites the same key).
+
+    # Identify Input Documents
+    docs = db.query(LandwiseDocument).filter(
+        LandwiseDocument.parcel_id == parcel_id,
+        LandwiseDocument.deleted_at.is_(None)
+    ).all()
+
+    ec_doc = next((d for d in docs if d.document_type and d.document_type.upper().replace(' ', '_') in ['ENCUMBRANCE_CERTIFICATE', 'EC']), None)
+    if not ec_doc:
+        doc_types = [f"{d.original_filename} ({d.document_type})" for d in docs]
+        raise HTTPException(
+            status_code=400, 
+            detail=f"No Encumbrance Certificate (EC) found for this parcel. Documents found: {', '.join(doc_types) if doc_types else 'None'}. Please upload an EC and set its type correctly."
+        )
+
+    deed_docs = [d for d in docs if d.document_type and d.document_type.upper().replace(' ', '_') in ['SALE_DEED', 'PARENT_DOCUMENT', 'SALE DEED']]
+    has_deeds = len(deed_docs) > 0
+
+    # Prepare a tmp directory mirror of the documents for the pipeline.
+    # storage_key is now an S3 key — resolve via storage abstraction so we
+    # work whether the bytes are on local disk, in DB.file_content, or in S3.
+    from common.storage import get_storage
+    storage = get_storage()
+    temp_dir = tempfile.mkdtemp(prefix="analyze_deeds_")
+    ec_local_path = None
+    try:
+        def _materialize(d) -> Optional[str]:
+            """Return a local path for a LandwiseDocument, materializing
+            from S3 or DB bytes as needed. None on failure."""
+            target_name = d.original_filename or os.path.basename(d.storage_key or "doc.bin")
+            target = os.path.join(temp_dir, target_name)
+            # 1) Already on local disk (legacy).
+            if d.storage_key and os.path.isabs(d.storage_key) and os.path.exists(d.storage_key):
+                shutil.copy2(d.storage_key, target)
+                return target
+            # 2) Storage backend (S3) holds it under storage_key.
+            try:
+                if d.storage_key and storage.exists(d.storage_key):
+                    storage.download_to(d.storage_key, target)
+                    return target
+            except Exception as e:
+                print(f"[!] storage.download_to failed for {d.storage_key}: {e}")
+            # 3) Last resort: DB-stored bytes.
+            if d.file_content:
+                with open(target, "wb") as f:
+                    f.write(d.file_content)
+                return target
+            print(f"[!] Could not materialize document {d.id} ({d.original_filename})")
+            return None
+
+        # Materialize EC
+        ec_local_path = _materialize(ec_doc)
+        if not ec_local_path:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to materialize EC document {ec_doc.id} for analysis",
+            )
+
+        # Materialize deeds (PDFs + extract any ZIPs into temp_dir)
+        for d in deed_docs:
+            mat = _materialize(d)
+            if not mat:
+                continue
+            if mat.lower().endswith(".zip"):
+                try:
+                    with zipfile.ZipFile(mat, "r") as z:
+                        z.extractall(temp_dir)
+                except Exception as e:
+                    print(f"[!] ZIP extract failed for {mat}: {e}")
+
+        if stream:
+            # Stream the workflow events to the client for a live progress UI.
+            # processing_id matches what handle_validate uses
+            # (request.state.request_id), so we persist it now; handle_validate's
+            # BackgroundTask cleans up temp_dir and runs the parcel bookkeeping
+            # (register documents + persist forensic results) once the stream is
+            # fully consumed — so the dashboard still finds results afterward.
+            processing_id = request.state.request_id
+            parcel.last_analysis_request_id = processing_id
+            db.commit()
+            resp = await handle_validate(
+                request=request,
+                type="local_path",
+                ec_pdf_path=ec_local_path,
+                registration_docs_dir=temp_dir,
+                visual_debug=True,
+                transaction_limit=limit,
+                parcel_id=parcel_id,
+                stream=True,
+                cleanup_dir=temp_dir,
+            )
+            temp_dir = None  # ownership transferred to the stream's finalizer
+            return resp
+
+        result = await handle_validate(
+            request=request,
+            type="local_path",
+            ec_pdf_path=ec_local_path,
+            registration_docs_dir=temp_dir,
+            visual_debug=True,
+            transaction_limit=limit,
+            parcel_id=parcel_id
+        )
+
+        # handle_validate can legitimately return None when the workflow
+        # generator caught an error mid-stream (e.g., matcher crash). Don't
+        # let that surface as a confusing AttributeError on the caller —
+        # respond with 502 so the frontend shows a real error.
+        if not isinstance(result, dict):
+            raise HTTPException(
+                502,
+                "Analysis workflow failed before producing a result. "
+                "Check the server log for the underlying matcher / EC error.",
+            )
+
+        if result.get("request_id"):
+            parcel.last_analysis_request_id = result["request_id"]
+            db.commit()
+            # Bust any cached hierarchy payload for both the old and new
+            # request_ids so the next /hierarchy fetch sees fresh data.
+            try:
+                from api.validate.handler import _HIERARCHY_CACHE
+                _HIERARCHY_CACHE.delete(result["request_id"])
+            except Exception:
+                pass
+        return result
+
+    finally:
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+@router.get("/parcels/{parcel_id}/opinion")
+def get_opinion(parcel_id: str, db: Session = Depends(get_db)):
+    opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+    if not opinion:
+        return {
+            "status": "not_started",
+            "message": "No legal opinion draft found for this parcel",
+            "id": None,
+            "sections": []
+        }
+    
+    sections = db.query(OpinionSection).filter(OpinionSection.opinion_id == opinion.id).order_by(OpinionSection.section_order).all()
+    
+    # Derive markdown path from pdf_storage_key if available
+    report_md_content = None
+    if opinion.pdf_storage_key:
+        md_path = opinion.pdf_storage_key.replace(".pdf", ".md")
+        # The stored path is relative to Server dir (e.g. outputs/validate/.../legal/...)
+        full_md_path = os.path.join(os.path.dirname(__file__), "..", md_path)
+        full_md_path = os.path.normpath(full_md_path)
+        if os.path.exists(full_md_path):
+            try:
+                with open(full_md_path, 'r', encoding='utf-8') as f:
+                    report_md_content = f.read()
+            except Exception:
+                pass
+    
+    return {
+        "id": opinion.id,
+        "status": opinion.status,
+        "verdict": opinion.verdict,
+        "report_storage_key": opinion.pdf_storage_key,
+        "report_md_content": report_md_content,
+        "is_locked": opinion.is_locked,
+        "sections": [{
+            "id": s.id, "type": s.section_type,
+            "ai_draft": s.ai_draft_content, "final_content": s.final_content,
+            "is_accepted": s.is_accepted, "order": s.section_order
+        } for s in sections],
+        "signed_at": str(opinion.signed_at) if opinion.signed_at else None
+    }
+
+@router.post("/parcels/{parcel_id}/opinion")
+def initialize_opinion_draft(parcel_id: str, db: Session = Depends(get_db)):
+    """EP #16: Bootstrap the Legal Opinion structure using AI analysis."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found or has been deleted")
+
+    # Workflow Gate check
+    unlocked, message = GatekeeperService.is_opinion_unlocked(db, parcel_id)
+    if not unlocked:
+        raise HTTPException(403, detail=message)
+        
+    existing = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+    if existing:
+        return {"id": existing.id, "status": "already_exists"}
+
+    opinion = LegalOpinion(id=gen_uuid(), parcel_id=parcel_id, status="draft")
+    db.add(opinion)
+    db.commit()
+    
+    # Add the 7 legal opinion sections
+    sections = [
+        ("possession_revenue", "POSSESSION & REVENUE RECORDS: Analysis of current possession status, Patta, Chitta, and revenue records.", 1),
+        ("land_nature", "NATURE OF LAND AND DESCRIPTION: Classification (Wet/Dry), land use, and physical description.", 2),
+        ("tn_land_reforms", "CLARIFICATIONS UNDER TN LAND REFORMS LAWS: Ceiling limits, tenancy, assigned lands, and Schedule VI/VII status.", 3),
+        ("title_flow_ec", "TITLE FLOW & ENCUMBRANCES (EC ANALYSIS): Chain of title from EC records and encumbrance status.", 4),
+        ("legal_protections", "SPECIFIC LEGAL PROTECTIONS: Alienation restrictions, UDR Act applicability, and special statutes.", 5),
+        ("acquisitions_notices", "ACQUISITIONS & NOTICES: Land acquisition status, government notices, and court attachments.", 6),
+        ("lis_pendens", "LIS PENDENS & CIVIL SUITS: Pending litigation, civil suits, and court case status.", 7),
+        ("documents_checklist", "DOCUMENTS CHECKLIST & DISCREPANCIES: Verification of documents and noted discrepancies.", 8),
+        ("final_verdict", "FINAL VERDICT & LEGAL OPINION: Overall legal opinion, risk assessment, and recommendations.", 9)
+    ]
+    for section_type, content, order in sections:
+        db.add(OpinionSection(
+            id=gen_uuid(),
+            opinion_id=opinion.id,
+            section_type=section_type,
+            ai_draft_content=content,
+            section_order=order,
+            final_content=''
+        ))
+
+    db.commit()
+
+    # If the LLM report already exists on disk for the parcel's analysis, seed
+    # rich content into the freshly-created sections so the user sees the full
+    # write-up immediately on first load instead of generic stubs.
+    try:
+        seeded = _try_seed_sections_from_disk(db, parcel)
+        if seeded:
+            print(f"[*] Seeded {seeded} OpinionSection rows from existing report for parcel {parcel_id}")
+            # Also expose the report URL on the opinion record
+            md_dir = os.path.join("outputs", "validate", parcel.last_analysis_request_id, "legal")
+            pdf_path = os.path.join(md_dir, "legal_opinion_report.pdf")
+            if os.path.exists(pdf_path):
+                opinion.pdf_storage_key = f"outputs/validate/{parcel.last_analysis_request_id}/legal/legal_opinion_report.pdf"
+                db.commit()
+    except Exception as e:
+        print(f"[!] Initialize: seed-from-disk failed: {e}")
+
+    db.refresh(opinion)
+    return opinion
+
+@router.patch("/opinion-sections/{section_id}")
+def update_section(section_id: str, body: OpinionSectionUpdate, db: Session = Depends(get_db)):
+    section = db.query(OpinionSection).filter(OpinionSection.id == section_id).first()
+    if not section:
+        raise HTTPException(404, "Section not found")
+        
+    # Check if opinion is locked
+    opinion = db.query(LegalOpinion).filter(LegalOpinion.id == section.opinion_id).first()
+    if GatekeeperService.is_opinion_locked(opinion):
+        raise HTTPException(403, "Legal opinion is signed and locked.")
+
+    section.final_content = body.final_content
+    section.is_accepted = body.is_accepted
+    db.commit()
+    return section
+
+
+# ══════════════════════════════════════════════════════════════
+#  EXTRA FORENSIC ENDPOINTS
+# ══════════════════════════════════════════════════════════════
+
+# ── Helpers: persist parsed report sections into OpinionSection rows ────────
+
+# Map markdown section number → DB section_type
+_REPORT_NUMBER_TO_TYPE = {
+    "1": "possession_revenue",
+    "2": "land_nature",
+    "3": "tn_land_reforms",
+    "4": "title_flow_ec",
+    "5": "legal_protections",
+    "6": "acquisitions_notices",
+    "7": "lis_pendens",
+    "8": "documents_checklist",
+    "F": "final_verdict",
+    "9": "final_verdict",
+}
+
+
+def _format_section_as_markdown(section: dict) -> str:
+    """Render a parsed report section dict as a single markdown string suitable
+    for storage in OpinionSection.ai_draft_content and rendering via ReactMarkdown
+    in the frontend."""
+    parts: list = []
+    subs = section.get("subtitles") or []
+    if subs:
+        for sub in subs:
+            letter = (sub.get("letter") or "").strip()
+            title = (sub.get("title") or "").strip()
+            body = (sub.get("content") or "").strip()
+            heading = f"**{letter}. {title}**" if letter else f"**{title}**"
+            parts.append(heading)
+            if body:
+                parts.append(body)
+            parts.append("")  # blank line separator
+    body = (section.get("content") or "").strip()
+    if body:
+        parts.append(body)
+    return "\n".join(parts).strip()
+
+
+def _persist_report_sections_to_db(db: Session, parcel_id: str, parsed_sections: list) -> int:
+    """Write each parsed section's rich markdown into the matching OpinionSection
+    row's ai_draft_content. Returns count of sections updated."""
+    opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+    if not opinion:
+        return 0
+
+    # Build lookup by section_type → rich markdown body
+    by_type: dict = {}
+    for sec in parsed_sections or []:
+        t = _REPORT_NUMBER_TO_TYPE.get(str(sec.get("number")))
+        if not t:
+            continue
+        md = _format_section_as_markdown(sec)
+        if md:
+            by_type[t] = md
+
+    if not by_type:
+        return 0
+
+    rows = db.query(OpinionSection).filter(OpinionSection.opinion_id == opinion.id).all()
+    updated = 0
+    for row in rows:
+        rich = by_type.get(row.section_type)
+        if rich:
+            row.ai_draft_content = rich
+            updated += 1
+    db.commit()
+    return updated
+
+
+def _try_seed_sections_from_disk(db: Session, parcel: "Parcel") -> int:
+    """If the markdown report exists on disk for the parcel's last analysis,
+    parse it and persist the rich content into OpinionSection rows. Used at
+    Initialize time so the user sees rich content without an extra Generate."""
+    if not parcel.last_analysis_request_id:
+        return 0
+    md_path = os.path.join(
+        "outputs", "validate", parcel.last_analysis_request_id,
+        "legal", "legal_opinion_report.md"
+    )
+    if not os.path.exists(md_path):
+        return 0
+    try:
+        with open(md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        from api.validate.handler import parse_report_sections
+        parsed = parse_report_sections(content)
+        return _persist_report_sections_to_db(db, parcel.id, parsed)
+    except Exception as e:
+        print(f"[!] Seed sections from disk failed: {e}")
+        return 0
+
+
+@router.post("/parcels/{parcel_id}/report")
+async def generate_legal_report(parcel_id: str, db: Session = Depends(get_db)):
+    """Generate and return the AI Legal Opinion Report.
+
+    Side-effects:
+      - Writes legal_opinion_report.md / .pdf to disk
+      - Updates LegalOpinion.pdf_storage_key
+      - Persists the parsed rich content into each OpinionSection.ai_draft_content
+        so subsequent GETs of /opinion return the full content without re-parsing.
+    """
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel or not parcel.last_analysis_request_id:
+        raise HTTPException(404, "Audit data not found or parcel has been deleted. Run analysis first.")
+
+    from api.validate.handler import handle_generate_report
+    report_data = await handle_generate_report(parcel.last_analysis_request_id)
+
+    if report_data.get("status") == "success":
+        opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+        if opinion:
+            opinion.pdf_storage_key = report_data.get("report_url")
+            db.commit()
+        # Persist the rich parsed content into OpinionSection rows
+        try:
+            updated = _persist_report_sections_to_db(db, parcel_id, report_data.get("sections") or [])
+            print(f"[*] Persisted rich content into {updated} OpinionSection rows for parcel {parcel_id}")
+        except Exception as e:
+            print(f"[!] Failed to persist parsed sections: {e}")
+
+    return report_data
+
+
+def _load_opinion_summary(request_id: str):
+    """Three-tier read of opinion_summary.json: local scratch -> S3 -> DB row."""
+    from services.artifact_store import read_json_artifact
+
+    def _from_db():
+        from common.database import SessionLocal
+        from common.landwise_models import AnalysisResult
+        db = SessionLocal()
+        try:
+            row = db.query(AnalysisResult).filter(
+                AnalysisResult.request_id == request_id,
+                AnalysisResult.result_type == 'opinion_summary',
+            ).first()
+            return row.data if row else None
+        finally:
+            db.close()
+
+    return read_json_artifact(
+        request_id, "legal/opinion_summary.json", db_fallback=_from_db,
+    )
+
+
+@router.get("/parcels/{parcel_id}/opinion-summary")
+def get_opinion_summary(parcel_id: str, db: Session = Depends(get_db)):
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel or not parcel.last_analysis_request_id:
+        raise HTTPException(404, "No analysis found for this parcel.")
+    summary = _load_opinion_summary(parcel.last_analysis_request_id)
+    if not summary:
+        raise HTTPException(404, "Opinion summary not available. Run analysis or regenerate.")
+    return {"status": "success", "summary": summary}
+
+
+@router.post("/parcels/{parcel_id}/opinion-summary/regenerate")
+async def regenerate_opinion_summary(parcel_id: str, db: Session = Depends(get_db)):
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel or not parcel.last_analysis_request_id:
+        raise HTTPException(404, "No analysis found for this parcel.")
+    request_id = parcel.last_analysis_request_id
+
+    from api.validate.handler import handle_generate_report
+    from api.validate.opinion_summary import OpinionSummaryGenerator
+    report_data = await handle_generate_report(request_id)
+    if not (isinstance(report_data, dict) and report_data.get("status") == "success"):
+        raise HTTPException(500, "Could not generate the legal opinion report.")
+
+    summary = OpinionSummaryGenerator(request_id=request_id).build()
+    # Upsert the DB row so GET's DB fallback stays fresh. parcel_id is NOT NULL.
+    from common.landwise_models import AnalysisResult
+    row = db.query(AnalysisResult).filter(
+        AnalysisResult.request_id == request_id,
+        AnalysisResult.result_type == 'opinion_summary',
+    ).first()
+    if row:
+        row.data = summary
+        row.parcel_id = parcel.id
+    else:
+        db.add(AnalysisResult(
+            parcel_id=parcel.id,
+            request_id=request_id,
+            result_type='opinion_summary',
+            data=summary,
+        ))
+    db.commit()
+    return {"status": "success", "summary": summary}
+
+
+@router.get("/parcels/{parcel_id}/ownership")
+async def get_survey_ownership(parcel_id: str, db: Session = Depends(get_db)):
+    """Get consolidated survey ownership summary."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel or not parcel.last_analysis_request_id:
+        raise HTTPException(404, "Audit data not found or parcel has been deleted. Run analysis first.")
+    
+    from api.validate.handler import handle_get_survey_ownership
+    return await handle_get_survey_ownership(parcel.last_analysis_request_id)
+
+
+@router.get("/parcels/{parcel_id}/report-sections")
+def get_report_sections(parcel_id: str, db: Session = Depends(get_db)):
+    """Get parsed report sections with subtitles for a parcel.
+    
+    This endpoint reads directly from the file system using the parcel's
+    last_analysis_request_id, so it works even if opinion data was wiped.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        logger.warning(f"[Report Sections] Parcel not found: {parcel_id}")
+        raise HTTPException(404, "Parcel not found")
+    
+    # Get request_id from parcel - this is how we locate the report files
+    request_id = parcel.last_analysis_request_id
+    if not request_id:
+        logger.warning(f"[Report Sections] No analysis request_id for parcel: {parcel_id}")
+        raise HTTPException(404, "No analysis data found for this parcel")
+    
+    # Try to find the markdown file directly from the file system.
+    # __file__ is Server/api/landwise/router.py — so we need TWO `..` to reach
+    # the Server/ root where the outputs/ folder lives.
+    server_root = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    md_path = os.path.join("outputs", "validate", request_id, "legal", "legal_opinion_report.md")
+    full_md_path = os.path.normpath(os.path.join(server_root, md_path))
+
+    # Also probe the cwd-relative path (matches how the rest of the server
+    # writes files via relative `outputs/...` paths).
+    cwd_path = os.path.normpath(md_path)
+
+    logger.info(f"[Report Sections] Looking for file at: {full_md_path}  OR  {cwd_path}")
+
+    chosen_path = None
+    for candidate in (full_md_path, cwd_path):
+        if os.path.exists(candidate):
+            chosen_path = candidate
+            break
+
+    if not chosen_path:
+        # Also try to find via opinion record if it exists
+        opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+        if opinion and opinion.pdf_storage_key:
+            md_rel = opinion.pdf_storage_key.replace(".pdf", ".md")
+            for candidate in (
+                os.path.normpath(os.path.join(server_root, md_rel)),
+                os.path.normpath(md_rel),
+            ):
+                if os.path.exists(candidate):
+                    chosen_path = candidate
+                    logger.info(f"[Report Sections] Found via opinion record: {chosen_path}")
+                    break
+
+        # S3 fallback: when the local probes all miss but the storage backend
+        # is S3, the report markdown may have been synced up by a previous
+        # process and the local scratch is empty after a backend restart or
+        # a fresh container. Try to pull every candidate key down into local
+        # scratch via storage.get_bytes, then re-use the existing local-read
+        # path below. This keeps every existing branch above intact — we only
+        # add NEW recovery paths, no removals.
+        if not chosen_path:
+            try:
+                from common.storage import get_storage
+                from common.storage_sync import _enabled as _storage_enabled
+            except Exception:
+                _storage_enabled = lambda: False  # noqa: E731
+                get_storage = None  # type: ignore
+
+            if _storage_enabled():
+                storage = get_storage()
+                s3_candidates = [
+                    md_path.replace("\\", "/"),
+                    f"outputs/validate/{request_id}/legal/legal_opinion_report.md",
+                ]
+                if opinion and opinion.pdf_storage_key:
+                    s3_candidates.append(
+                        opinion.pdf_storage_key.replace("\\", "/").replace(".pdf", ".md")
+                    )
+                # De-dup while preserving order
+                seen = set()
+                s3_candidates = [k for k in s3_candidates if k and not (k in seen or seen.add(k))]
+
+                for key in s3_candidates:
+                    try:
+                        payload = storage.get_bytes(key)
+                    except Exception as e:
+                        msg = str(e)
+                        if "NoSuchKey" not in msg and "404" not in msg and "Not Found" not in msg:
+                            logger.warning(f"[Report Sections] S3 probe failed for {key}: {e}")
+                        continue
+                    # Materialize to a local scratch path so the rest of this
+                    # function (which opens chosen_path off disk) keeps working
+                    # unchanged.
+                    local_target = os.path.normpath(os.path.join(server_root, key))
+                    try:
+                        os.makedirs(os.path.dirname(local_target), exist_ok=True)
+                        with open(local_target, "wb") as f:
+                            f.write(payload)
+                        chosen_path = local_target
+                        logger.info(f"[Report Sections] Recovered from S3 key {key} -> {local_target}")
+                        break
+                    except Exception as e:
+                        logger.warning(f"[Report Sections] Could not write local copy of {key}: {e}")
+                        continue
+
+        if not chosen_path:
+            # Graceful "not generated yet" response: when the file truly
+            # doesn't exist anywhere AND no LegalOpinion row points to a
+            # specific .md key, this is the normal pre-generation state.
+            # Returning 200 with an empty sections list lets the frontend
+            # render the "Generate AI Report" CTA without a noisy 404 in
+            # the network tab and server log. The original 404 path is
+            # preserved below for the case where an opinion row exists
+            # AND claims a key but the file is missing (a real error).
+            opinion_with_key = bool(
+                opinion is not None and getattr(opinion, "pdf_storage_key", None)
+            )
+            if not opinion_with_key:
+                logger.info(
+                    f"[Report Sections] Report not yet generated for parcel "
+                    f"{parcel_id} (request_id={request_id}). Returning empty."
+                )
+                return {
+                    "status": "pending",
+                    "parcel_id": parcel_id,
+                    "request_id": request_id,
+                    "sections": [],
+                    "message": "Report has not been generated yet.",
+                }
+            logger.error(f"[Report Sections] Report file not found at: {full_md_path}")
+            raise HTTPException(404, f"Report file not found. Generate the report first.")
+
+    full_md_path = chosen_path
+    
+    try:
+        with open(full_md_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except Exception as e:
+        logger.error(f"[Report Sections] Error reading file: {e}")
+        raise HTTPException(500, f"Error reading report file: {str(e)}")
+    
+    from api.validate.handler import parse_report_sections
+    sections = parse_report_sections(content)
+    
+    logger.info(f"[Report Sections] Successfully parsed {len(sections)} sections for parcel {parcel_id}")
+    
+    return {
+        "status": "success",
+        "parcel_id": parcel_id,
+        "survey_number": parcel.survey_number,
+        "request_id": request_id,
+        "file_path": full_md_path,
+        "sections": sections
+    }
+
+
+# ══════════════════════════════════════════════════════════════
+#  ADDITIONAL SYSTEM ENDPOINTS
+# ══════════════════════════════════════════════════════════════
+
+@router.get("/extraction-jobs/{job_id}")
+def get_extraction_job(job_id: str, db: Session = Depends(get_db)):
+    job = db.query(ExtractionJob).filter(ExtractionJob.id == job_id).first()
+    if not job:
+        raise HTTPException(404, "Extraction job not found")
+    return job
+
+@router.get("/documents/{document_id}/fields")
+def list_document_fields(document_id: str, db: Session = Depends(get_db)):
+    fields = db.query(ExtractedField).filter(ExtractedField.document_id == document_id).all()
+    return {"data": fields}
+
+@router.patch("/fields/{field_id}")
+def override_field(field_id: str, body: FieldOverride, db: Session = Depends(get_db)):
+    field = db.query(ExtractedField).filter(ExtractedField.id == field_id).first()
+    if not field:
+        raise HTTPException(404, "Field on found")
+    field.overridden_value = body.overridden_value
+    field.is_overridden = True
+    db.commit()
+    return field
+
+@router.get("/parcels/{parcel_id}/audit")
+def list_audit_logs(parcel_id: str, db: Session = Depends(get_db)):
+    logs = db.query(AuditLog).filter(AuditLog.parcel_id == parcel_id).order_by(desc(AuditLog.created_at)).all()
+    return {"data": logs}
+
+@router.get("/parcels/{parcel_id}/timeline")
+def get_parcel_timeline(parcel_id: str, db: Session = Depends(get_db)):
+    """EP: Get historical timeline data for property ownership and encumbrances."""
+    # This combines ownership transfers and encumbrances into a single stream
+    owners = db.query(OwnershipTransfer).filter(OwnershipTransfer.parcel_id == parcel_id).all()
+    encs = db.query(Encumbrance).filter(Encumbrance.parcel_id == parcel_id).all()
+    
+    events = []
+    for o in owners:
+        events.append({
+            "id": o.id,
+            "date": str(o.registration_date or o.transfer_date or ""),
+            "type": "ownership_transfer",
+            "title": f"Transfer ({o.transfer_type or 'sale'})",
+            "desc": f"Consideration: ₹{o.consideration_amount}" if o.consideration_amount else "",
+            "doc_no": o.registration_number,
+        })
+    for e in encs:
+        events.append({
+            "id": e.id,
+            "date": str(e.created_date or ""),
+            "type": "encumbrance",
+            "title": f"Encumbrance: {e.encumbrance_type}",
+            "desc": f"Value: ₹{e.amount} (Holder: {e.holder_name})" if e.amount else f"Holder: {e.holder_name}",
+            "doc_no": None,
+        })
+        
+    events.sort(key=lambda x: x["date"], reverse=True)
+    return {"data": events}
+
+@router.get("/parcels/{parcel_id}/stats")
+def get_parcel_stats(parcel_id: str, db: Session = Depends(get_db)):
+    """EP: Get real-time parcel statistics, risk score, and workflow status."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id, Parcel.is_active == True).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found or has been deleted")
+    
+    # Get documents for this parcel
+    documents = db.query(LandwiseDocument).filter(
+        LandwiseDocument.parcel_id == parcel_id,
+        LandwiseDocument.deleted_at.is_(None)
+    ).all()
+    
+    # Get encumbrances for chain length calculation
+    encumbrances = db.query(Encumbrance).filter(Encumbrance.parcel_id == parcel_id).all()
+    ownership_transfers = db.query(OwnershipTransfer).filter(OwnershipTransfer.parcel_id == parcel_id).all()
+    
+    # Get risk flags
+    risk_flags = db.query(RiskFlag).filter(RiskFlag.parcel_id == parcel_id).all()
+    
+    # Get checklist items
+    checklist_items = db.query(ChecklistItem).filter(ChecklistItem.parcel_id == parcel_id).all()
+    
+    # Get analysis results for workflow status
+    from common.landwise_models import AnalysisResult
+    analysis_results = db.query(AnalysisResult).filter(
+        AnalysisResult.parcel_id == parcel_id
+    ).all()
+    
+    # Check for specific result types
+    hierarchy_result = next((r for r in analysis_results if r.result_type == 'hierarchy_tree'), None)
+    validation_result = next((r for r in analysis_results if r.result_type == 'validation_results'), None)
+    risk_analysis_result = next((r for r in analysis_results if r.result_type == 'risk_analysis'), None)
+    
+    # Calculate document stats
+    doc_count = len(documents)
+    # Case-insensitive matching for document types
+    ec_docs = [d for d in documents if d.document_type and d.document_type.upper().replace(' ', '_') in ['ENCUMBRANCE_CERTIFICATE', 'EC']]
+    sale_deed_docs = [d for d in documents if d.document_type and d.document_type.upper().replace(' ', '_') in ['SALE_DEED', 'SALE_DEED']]
+    has_ec = len(ec_docs) > 0
+    has_deeds = len(sale_deed_docs) > 0
+    extracted_docs = [d for d in documents if d.extraction_status == 'completed']
+
+    # Helper: locate the analysis output dir for this parcel's last_analysis_request_id
+    request_id = parcel.last_analysis_request_id
+    output_dir = os.path.join('outputs', 'validate', request_id) if request_id else None
+
+    # Resolve the four canonical artifacts via storage_sync so STORAGE_BACKEND=s3
+    # works correctly: local disk first (fast path during an active analyze run),
+    # then falls back to checking S3. Without this, every dashboard load after a
+    # backend restart silently reported "0 chain length" / "no hierarchy" /
+    # "no risk score" even though the files were sitting on S3.
+    from common.storage_sync import _enabled as _storage_enabled
+    from common.storage import get_storage as _get_storage
+
+    def _artifact_exists(rel_path: str) -> bool:
+        """True if the artifact is on local disk OR in the active storage backend."""
+        if output_dir and os.path.exists(os.path.join(output_dir, rel_path)):
+            return True
+        if not request_id or not _storage_enabled():
+            return False
+        try:
+            key = f"outputs/validate/{request_id}/{rel_path}".replace("\\", "/")
+            return _get_storage().exists(key)
+        except Exception:
+            return False
+
+    hierarchy_json_exists = _artifact_exists('hierarchy_tree.json')
+    risk_json_exists = _artifact_exists('risk_score.json')
+    ec_json_exists = _artifact_exists('ec_final.json')
+    legal_md_exists = _artifact_exists(os.path.join('legal', 'legal_opinion_report.md'))
+
+    # Calculate chain length — prefer ownership_transfers, fall back to EC date range
+    chain_years = 0
+    if ownership_transfers:
+        dates = [o.transfer_date for o in ownership_transfers if o.transfer_date]
+        if dates:
+            earliest = min(dates)
+            latest = max(dates)
+            chain_years = (latest - earliest).days // 365 if earliest and latest else 0
+
+    if chain_years == 0 and ec_json_exists:
+        # Load EC data (local first, then S3) and parse dates via the same
+        # multi-format helper the matcher uses. The previous loop hand-rolled
+        # 4 strptime formats and missed the v6/v7 pipe-separated multi-date
+        # shape ("23-Aug-2013 | 23-Aug-2013 | 23-Aug-2013"), so every entry
+        # silently failed to parse → empty list → 0 years displayed even on
+        # parcels with decades of registered history. Reusing _parse_ec_date
+        # gives us the same coverage as the matcher: 15+ format variants
+        # plus pipe-split-then-first-token.
+        from datetime import datetime
+        try:
+            from common.storage_sync import read_json as _storage_read_json
+            from api.validate.matcher import _parse_ec_date as _ec_parse
+            ec_local = os.path.join(output_dir, 'ec_final.json') if output_dir else None
+            ec_data = None
+            if ec_local and os.path.exists(ec_local):
+                with open(ec_local, encoding='utf-8') as f:
+                    ec_data = json.load(f)
+            if ec_data is None and request_id:
+                ec_data = _storage_read_json(
+                    f"outputs/validate/{request_id}/ec_final.json", default=None,
+                )
+            if isinstance(ec_data, dict) and isinstance(ec_data.get('data'), list):
+                ec_data = ec_data['data']  # legacy envelope guard
+
+            parsed_dates = []
+            for entry in (ec_data or []):
+                raw = entry.get('date') or entry.get('registration_date')
+                if not raw:
+                    continue
+                dt = _ec_parse(str(raw))
+                if dt and dt != datetime.min:
+                    parsed_dates.append(dt)
+            if parsed_dates:
+                earliest = min(parsed_dates)
+                latest = max(parsed_dates)
+                chain_years = max(0, (latest - earliest).days // 365)
+        except Exception as e:
+            print(f"[!] EC date parse for chain length failed: {e}")
+
+    # Active encumbrances = encumbrances that are STILL UNRELEASED on the EC.
+    #
+    # The previous logic counted raw DB `Encumbrance` rows whose `status` was
+    # 'active'. That count was wrong because the analyze writer inserts every
+    # mortgage/charge/attachment as `status='active'` and NEVER updates them
+    # to 'released' when the EC contains the corresponding discharge receipts.
+    # A parcel with 30 years of history could have 10 long-discharged mortgages
+    # and still show "10 ACTIVE" on the Overview card.
+    #
+    # Read-path fix: compute the count from the EC entries via the same
+    # release-matching logic the Survey Ownership Audit uses. No re-analyze
+    # needed — works retroactively on every parcel.
+    active_encumbrances = 0
+    try:
+        if ec_json_exists and request_id:
+            # Use the artifact_store helper to pull ec_final from local OR S3.
+            from services.artifact_store import read_json_artifact
+            from api.validate.handler import count_open_encumbrances_from_ec
+            ec_data = read_json_artifact(request_id, "ec_final.json")
+            if isinstance(ec_data, dict) and isinstance(ec_data.get("data"), list):
+                ec_data = ec_data["data"]  # legacy envelope guard
+            if isinstance(ec_data, list):
+                active_encumbrances = count_open_encumbrances_from_ec(ec_data)
+    except Exception as e:
+        print(f"[!] Open-encumbrance computation failed (falling back): {e}")
+
+    # Fallback chain when the EC-based count is unavailable (e.g., legacy
+    # parcels where ec_final.json wasn't produced) — preserves the old
+    # behavior so we never regress to showing 0 for a parcel that genuinely
+    # has DB-tracked Encumbrance rows.
+    if active_encumbrances == 0 and encumbrances:
+        active_encumbrances = len([e for e in encumbrances if (e.status or 'active') == 'active'])
+    if active_encumbrances == 0:
+        active_encumbrances = len(ec_docs)
+    
+    # Calculate risk score (0-100, higher is better/safer)
+    risk_score = 0
+    risk_status = "PENDING"
+    risk_color = "slate"
+    risk_factors = []
+    
+    # Try to get the latest risk score from the database (RiskScore model)
+    from common.models import RiskScore
+    latest_risk = db.query(RiskScore).filter(RiskScore.request_id == parcel.last_analysis_request_id).first()
+    
+    # If not in DB but hierarchy exists, trigger the computation (and storage)
+    if not latest_risk and hierarchy_result and parcel.last_analysis_request_id:
+        try:
+            from api.validate.risk_score_engine import handle_get_risk_score
+            import asyncio
+            # Since this is a sync endpoint, we run the async handler
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            result_wrapper = loop.run_until_complete(handle_get_risk_score(parcel.last_analysis_request_id))
+            loop.close()
+            
+            if result_wrapper.get("status") == "success":
+                # Re-fetch the risk score object after it has been persisted to DB by handle_get_risk_score
+                latest_risk = db.query(RiskScore).filter(RiskScore.request_id == parcel.last_analysis_request_id).first()
+        except Exception as e:
+            print(f"[!] Auto-calculating risk score failed: {e}")
+
+    if latest_risk:
+        risk_score = latest_risk.score
+        grade = latest_risk.grade
+        risk_factors = latest_risk.factors
+        
+        # Determine status/color based on grade
+        if grade == "A":
+            risk_status = "EXCELLENT"
+            risk_color = "emerald"
+        elif grade == "B":
+            risk_status = "GOOD"
+            risk_color = "blue"
+        elif grade == "C":
+            risk_status = "MODERATE"
+            risk_color = "amber"
+        elif grade == "D":
+            risk_status = "HIGH RISK"
+            risk_color = "orange"
+        else:
+            risk_status = "CRITICAL"
+            risk_color = "red"
+    elif hierarchy_result:
+        # Hierarchy generated but risk score not yet computed/persisted
+        risk_status = "COMPUTING"
+        risk_color = "indigo"
+    
+    # Workflow Phases
+    # A phase is "Complete" if the analysis pipeline produced its artifact —
+    # either persisted in the DB OR present on disk under the request's output dir.
+    workflow_phases = []
+
+    # Has the analysis pipeline run for this parcel? (Audit produced an analysis dir)
+    audit_ran = bool(request_id and output_dir and os.path.isdir(output_dir))
+
+    # Phase 1: Document Ingestion — vault has any docs (EC + deeds, or any uploads + audit ran)
+    if (has_ec and has_deeds) or (audit_ran and doc_count > 0):
+        workflow_phases.append({
+            "num": 1, "label": "Document Ingestion",
+            "status": "Complete", "state": "completed"
+        })
+    elif has_ec or has_deeds or doc_count > 0:
+        workflow_phases.append({
+            "num": 1, "label": "Document Ingestion",
+            "status": "In Progress", "state": "in_progress"
+        })
+    else:
+        workflow_phases.append({
+            "num": 1, "label": "Document Ingestion",
+            "status": "Pending", "state": "pending"
+        })
+
+    # Phase 2: Data Extraction & NER — extraction flagged on docs, OR validation results exist
+    has_validation_outputs = bool(output_dir and os.path.exists(os.path.join(output_dir, 'final_result.json')))
+    if extracted_docs or has_validation_outputs or ec_json_exists:
+        workflow_phases.append({
+            "num": 2, "label": "Data Extraction & NER",
+            "status": "Complete", "state": "completed"
+        })
+    elif documents or audit_ran:
+        workflow_phases.append({
+            "num": 2, "label": "Data Extraction & NER",
+            "status": "In Progress", "state": "in_progress"
+        })
+    else:
+        workflow_phases.append({
+            "num": 2, "label": "Data Extraction & NER",
+            "status": "Pending", "state": "pending"
+        })
+
+    # Phase 3: Chain Verification — hierarchy persisted to DB OR hierarchy_tree.json on disk
+    if hierarchy_result or hierarchy_json_exists:
+        workflow_phases.append({
+            "num": 3, "label": "Chain Verification",
+            "status": "Complete", "state": "completed"
+        })
+    elif ownership_transfers or audit_ran:
+        workflow_phases.append({
+            "num": 3, "label": "Chain Verification",
+            "status": "In Progress", "state": "in_progress"
+        })
+    else:
+        workflow_phases.append({
+            "num": 3, "label": "Chain Verification",
+            "status": "Not Started", "state": "not_started"
+        })
+
+    # Phase 4: Risk Analysis — RiskScore in DB, AnalysisResult, or risk_score.json on disk
+    if risk_analysis_result or latest_risk or risk_json_exists:
+        workflow_phases.append({
+            "num": 4, "label": "Risk Analysis",
+            "status": "Complete", "state": "completed"
+        })
+    elif hierarchy_result or hierarchy_json_exists:
+        workflow_phases.append({
+            "num": 4, "label": "Risk Analysis",
+            "status": "In Progress", "state": "in_progress"
+        })
+    else:
+        workflow_phases.append({
+            "num": 4, "label": "Risk Analysis",
+            "status": "Not Started", "state": "not_started"
+        })
+
+    # Phase 5: Opinion Draft — signed > drafted > md exists on disk > locked
+    opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+    if opinion and opinion.signed_at:
+        workflow_phases.append({
+            "num": 5, "label": "Opinion Draft",
+            "status": "Complete", "state": "completed"
+        })
+    elif opinion or legal_md_exists:
+        workflow_phases.append({
+            "num": 5, "label": "Opinion Draft",
+            "status": "In Progress", "state": "in_progress"
+        })
+    else:
+        workflow_phases.append({
+            "num": 5, "label": "Opinion Draft",
+            "status": "Locked", "state": "locked"
+        })
+    
+    return {
+        "stats": {
+            "risk_score": risk_score,
+            "risk_status": risk_status,
+            "risk_color": f"text-{risk_color}-600",
+            "risk_factors": risk_factors,
+            # Full vault count — surfaces pending docs (e.g. 277) rather than the
+            # smaller "validated this audit" count (e.g. 20). The frontend computes
+            # pending = document_count - audited_docs_count.
+            "document_count": doc_count or (parcel.total_docs_count or 0),
+            "audited_docs_count": parcel.total_docs_count or 0,
+            "passed_docs": parcel.passed_docs_count or 0,
+            "avg_trust": float(parcel.avg_trustability_score or 0),
+            "scrutiny_doc_count": parcel.scrutiny_docs_count or 0,
+            "last_analysis_request_id": parcel.last_analysis_request_id,
+            "chain_length_years": chain_years,
+            "active_encumbrances": active_encumbrances,
+            "ec_uploaded": has_ec,
+            "deeds_uploaded": has_deeds,
+            "extraction_complete": len(extracted_docs) > 0 or has_validation_outputs or ec_json_exists,
+            "risk_flags_count": len(risk_flags),
+            # Workflow flags for frontend (mirror the workflow_phases logic)
+            "document_ingestion_status": "completed" if ((has_ec and has_deeds) or (audit_ran and doc_count > 0)) else ("in_progress" if (has_ec or has_deeds or doc_count > 0) else "not_started"),
+            "data_extraction_status": "completed" if (extracted_docs or has_validation_outputs or ec_json_exists) else ("in_progress" if (documents or audit_ran) else "not_started"),
+            "chain_verification_status": "completed" if (hierarchy_result or hierarchy_json_exists) else ("in_progress" if (ownership_transfers or audit_ran) else "not_started"),
+            "risk_analysis_status": "completed" if (risk_analysis_result or latest_risk or risk_json_exists) else ("in_progress" if (hierarchy_result or hierarchy_json_exists) else "not_started"),
+            "opinion_draft_status": "completed" if (opinion and opinion.signed_at) else ("in_progress" if (opinion or legal_md_exists) else "not_started")
+        },
+        "workflow": workflow_phases
+    }
+
+@router.delete("/parcels/{parcel_id}")
+def delete_parcel(parcel_id: str, db: Session = Depends(get_db)):
+    """EP: Soft delete a parcel - marks as inactive but keeps all data and files intact.
+    
+    This allows the survey to be hidden from users while preserving:
+    - All database records (ownership, encumbrances, documents, etc.)
+    - PDF files in storage
+    - Analysis results and validation data
+    
+    The data remains in DB but won't be visible in listings or interfere with new processing.
+    """
+    from datetime import datetime
+    
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+    
+    # Check if already deleted
+    if not parcel.is_active or parcel.deleted_at:
+        raise HTTPException(400, "Parcel is already deleted")
+    
+    try:
+        # Soft delete: mark as inactive and set deleted timestamp
+        parcel.is_active = False
+        parcel.deleted_at = datetime.now()
+        parcel.status = "deleted"  # Also update status for clarity
+        
+        db.commit()
+        
+        return {
+            "status": "success", 
+            "message": f"Survey '{parcel.survey_number}' has been archived (soft deleted). All data and PDFs are preserved but hidden from view.",
+            "parcel_id": parcel_id,
+            "survey_number": parcel.survey_number,
+            "deleted_at": parcel.deleted_at.isoformat() if parcel.deleted_at else None
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/parcels/{parcel_id}/restore")
+def restore_parcel(parcel_id: str, db: Session = Depends(get_db)):
+    """EP: Restore a soft-deleted parcel - makes it visible again to users."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel:
+        raise HTTPException(404, "Parcel not found")
+    
+    # Check if already active
+    if parcel.is_active and not parcel.deleted_at:
+        raise HTTPException(400, "Parcel is already active")
+    
+    try:
+        # Restore: mark as active and clear deleted timestamp
+        parcel.is_active = True
+        parcel.deleted_at = None
+        parcel.status = "pending"  # Reset to pending or keep previous status?
+        
+        db.commit()
+        
+        return {
+            "status": "success", 
+            "message": f"Survey '{parcel.survey_number}' has been restored and is now visible.",
+            "parcel_id": parcel_id,
+            "survey_number": parcel.survey_number
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/notifications")
+def list_notifications(user_id: str = Query(...), db: Session = Depends(get_db)):
+    notes = db.query(Notification).filter(Notification.user_id == user_id).order_by(desc(Notification.created_at)).all()
+    return {"data": notes}
+
+@router.post("/notifications/{notification_id}/read")
+def mark_notification_read(notification_id: str, db: Session = Depends(get_db)):
+    note = db.query(Notification).filter(Notification.id == notification_id).first()
+    if not note:
+        raise HTTPException(404, "Notification not found")
+    note.is_read = True
+    db.commit()
+    return {"status": "success"}
+
+
+class ManualSectionEntry(BaseModel):
+    section_type: str
+    content: str
+    order: Optional[int] = None
+
+
+class LegalAdvisorNote(BaseModel):
+    section_id: str
+    manual_content: str
+
+
+@router.post("/parcels/{parcel_id}/opinion/manual-section")
+def add_manual_section(
+    parcel_id: str,
+    entry: ManualSectionEntry,
+    db: Session = Depends(get_db)
+):
+    """Add a new section manually by the legal advisor."""
+    opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+    if not opinion:
+        raise HTTPException(404, "Opinion not found for this parcel")
+    
+    # Determine order if not provided
+    if entry.order is None:
+        max_order = db.query(func.max(OpinionSection.section_order)).filter(
+            OpinionSection.opinion_id == opinion.id
+        ).scalar() or 0
+        entry.order = max_order + 1
+    
+    new_section = OpinionSection(
+        id=gen_uuid(),
+        opinion_id=opinion.id,
+        section_type=entry.section_type,
+        ai_draft_content=None,
+        final_content=entry.content,
+        section_order=entry.order,
+        is_accepted=True
+    )
+    db.add(new_section)
+    db.commit()
+    
+    return {
+        "status": "success",
+        "section_id": new_section.id,
+        "message": f"Manual section '{entry.section_type}' added successfully"
+    }
+
+
+@router.post("/parcels/{parcel_id}/opinion/legal-advisor-note")
+def add_legal_advisor_note(
+    parcel_id: str,
+    note: LegalAdvisorNote,
+    db: Session = Depends(get_db)
+):
+    """Add a legal advisor note to an existing section."""
+    opinion = db.query(LegalOpinion).filter(LegalOpinion.parcel_id == parcel_id).first()
+    if not opinion:
+        raise HTTPException(404, "Opinion not found for this parcel")
+    
+    section = db.query(OpinionSection).filter(
+        OpinionSection.id == note.section_id,
+        OpinionSection.opinion_id == opinion.id
+    ).first()
+    if not section:
+        raise HTTPException(404, "Section not found")
+    
+    # Append the legal advisor note to final content
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    advisor_note = f"\n\n---\n**Legal Advisor Note ({timestamp}):**\n{note.manual_content}"
+    
+    if section.final_content:
+        section.final_content += advisor_note
+    else:
+        section.final_content = section.ai_draft_content or "" + advisor_note
+    
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": "Legal advisor note added successfully"
+    }

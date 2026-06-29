@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LandwiseAI — System Architecture</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#11182e; --ink:#e8edf7; --muted:#9aa6c4;
+    --line:#2a3656; --chip:#1a2440;
+    --client:#7c5cff; --client-2:#a78bfa;
+    --edge:#22d3ee; --edge-2:#67e8f9;
+    --api:#38bdf8; --svc:#34d399; --pipe:#fbbf24; --data:#f472b6;
+    --ext:#fb7185; --store:#f59e0b;
+    --ok:#22c55e; --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:radial-gradient(1200px 700px at 70% -10%,#16203c 0%,var(--bg) 55%);color:var(--ink);
+    font-family:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1280px;margin:0 auto;padding:32px 28px 60px}
+  header.top{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:8px}
+  h1{font-size:26px;letter-spacing:-.02em;margin:0;font-weight:800}
+  h1 .dot{color:var(--svc)}
+  .sub{color:var(--muted);font-size:13.5px;margin-top:6px;max-width:720px;line-height:1.5}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+  .legend .k{display:inline-flex;align-items:center;gap:6px}
+  .swatch{width:11px;height:11px;border-radius:3px;display:inline-block}
+
+  .tier{margin:22px 0;border:1px solid var(--line);border-radius:16px;background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,0));
+    box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .tier-h{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid var(--line);
+    background:rgba(255,255,255,.02);font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .tier-h .bar{width:4px;height:16px;border-radius:3px}
+  .tier-b{padding:16px;display:flex;gap:14px;flex-wrap:wrap;align-items:stretch}
+  .col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px}
+
+  .node{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 13px;position:relative;
+    transition:transform .15s ease,border-color .15s ease}
+  .node:hover{transform:translateY(-2px)}
+  .node .t{font-weight:700;font-size:14px;display:flex;align-items:center;gap:8px}
+  .node .tag{font-size:10.5px;color:var(--muted);font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+    border:1px solid var(--line);padding:1px 7px;border-radius:999px;margin-left:auto}
+  .node .d{color:var(--muted);font-size:12px;line-height:1.45;margin-top:6px}
+  .node ul{margin:8px 0 0;padding-left:16px;color:var(--muted);font-size:11.5px;line-height:1.5}
+  .node.lead::before{content:"";position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--accent)}
+  .node.lead{padding-left:16px}
+
+  .grp{border:1px dashed var(--line);border-radius:12px;padding:12px;flex:1 1 0;min-width:240px;background:rgba(255,255,255,.012)}
+  .grp h4{margin:0 0 10px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:7px}
+  .grp .row{display:flex;gap:10px;flex-wrap:wrap}
+  .chip{background:var(--chip);border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12px;font-weight:600;flex:1 1 140px}
+  .chip small{display:block;color:var(--muted);font-weight:500;font-size:10.5px;margin-top:3px;letter-spacing:.02em}
+
+  .flowline{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--edge);font-size:11px;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;margin:-6px 0 -6px}
+  .flowline::before,.flowline::after{content:"";height:1px;flex:1;background:linear-gradient(90deg,transparent,var(--line),transparent)}
+  .flowline .arr{color:var(--edge-2)}
+
+  .pipe{display:flex;gap:0;flex-wrap:wrap;align-items:stretch;width:100%}
+  .stage{flex:1 1 150px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px;position:relative;margin:6px}
+  .stage .n{font-size:10px;color:var(--pipe);font-weight:800;letter-spacing:.1em}
+  .stage .t{font-weight:700;font-size:13px;margin-top:3px}
+  .stage .d{color:var(--muted);font-size:11px;margin-top:5px;line-height:1.4}
+  .stage .chev{position:absolute;right:-13px;top:50%;transform:translateY(-50%);color:var(--pipe);font-size:18px;z-index:2}
+  .stage:last-child .chev{display:none}
+
+  .meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:8px}
+  .mcard{flex:1 1 220px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 13px}
+  .mcard .t{font-weight:700;font-size:12.5px;display:flex;align-items:center;gap:8px}
+  .mcard .d{color:var(--muted);font-size:11.5px;line-height:1.5;margin-top:7px}
+  .mcard b{color:var(--ink);font-weight:600}
+
+  .pill{font-size:10px;padding:2px 7px;border-radius:999px;font-weight:700;letter-spacing:.03em}
+  footer{color:var(--muted);font-size:11.5px;margin-top:26px;line-height:1.6;border-top:1px solid var(--line);padding-top:16px}
+  code{background:var(--chip);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11px;color:var(--edge-2)}
+  @media print{html,body{background:#fff;color:#000}.tier,.node,.stage,.mcard,.chip,.grp{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <h1>Landwise<span class="dot">AI</span> — System Architecture</h1>
+      <div class="sub">AI-powered Tamil Nadu land-title verification. Legal advisors organise land into Projects → Parcels, upload Encumbrance Certificates &amp; Sale Deeds; the platform extracts, matches, cross-validates, scores and reports on the title chain with Google Gemini — over a bilingual Tamil/English reviewer cockpit.</div>
+    </div>
+    <div class="legend">
+      <span class="k"><i class="swatch" style="background:var(--client)"></i>Client</span>
+      <span class="k"><i class="swatch" style="background:var(--api)"></i>API / Routers</span>
+      <span class="k"><i class="swatch" style="background:var(--svc)"></i>Services</span>
+      <span class="k"><i class="swatch" style="background:var(--pipe)"></i>AI Pipeline</span>
+      <span class="k"><i class="swatch" style="background:var(--data)"></i>Data</span>
+      <span class="k"><i class="swatch" style="background:var(--store)"></i>Storage</span>
+      <span class="k"><i class="swatch" style="background:var(--ext)"></i>External</span>
+    </div>
+  </header>
+
+  <!-- CLIENT TIER -->
+  <section class="tier">
+    <div class="tier-h"><span class="bar" style="background:var(--client)"></span>Client Tier · AWS Amplify (static SPA)</div>
+    <div class="tier-b">
+      <div class="node lead" style="--accent:var(--client);flex:2 1 320px">
+        <div class="t">React 18 SPA <span class="tag">Vite · TS · Tailwind · shadcn/Radix</span></div>
+        <div class="d">Routing (React Router v6) · server-state (TanStack Query v5) · <code>AuthContext</code> + <code>ProtectedRoute</code> gate.</div>
+        <ul>
+          <li><b>features/</b> analysis · hierarchy · validation · timeline · notes</li>
+          <li><b>ReactFlow</b> ownership tree · <b>OpenLayers</b> map · <b>Chart.js</b></li>
+          <li><b>PdfAnnotator</b> (react-pdf-highlighter, pinned pdfjs)</li>
+        </ul>
+      </div>
+      <div class="node lead" style="--accent:var(--client-2)">
+        <div class="t">Bilingual layer</div>
+        <div class="d"><code>&lt;Bi&gt;</code> component + TA / EN / Both toggle drives batched <code>/translate</code>.</div>
+      </div>
+      <div class="node lead" style="--accent:var(--client-2)">
+        <div class="t">Live progress</div>
+        <div class="d"><code>fetch()</code> reads NDJSON stream → <code>StreamingMessages</code> renders stage-by-stage.</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="flowline">HTTPS · session cookie (<code>SameSite=None; Secure</code>) · <span class="arr">▼</span> withCredentials</div>
+
+  <!-- API TIER -->
+  <section class="tier">
+    <div class="tier-h"><span class="bar" style="background:var(--api)"></span>API Tier · FastAPI on Uvicorn (EC2)</div>
+    <div class="tier-b">
+      <div class="col" style="flex:1 1 100%">
+        <div class="node lead" style="--accent:var(--api)">
+          <div class="t">Middleware chain <span class="tag">app.py</span></div>
+          <div class="d">Request-ID logging (<code>X-Request-ID</code>, per-endpoint log dirs) · DB-blip retry (idempotent GETs) · credentialed CORS allow-list · startup <code>create_all</code> + idempotent column migrations.</div>
+        </div>
+      </div>
+      <div class="node lead" style="--accent:var(--api)">
+        <div class="t">auth_router <span class="tag">/api/v1/auth</span></div>
+        <div class="d">signup · login · logout · <code>get_current_user</code> (cookie → JWT → User)</div>
+      </div>
+      <div class="node lead" style="--accent:var(--api)">
+        <div class="t">landwise_router <span class="tag">/api/v1/landwise</span></div>
+        <div class="d">CRUD: Projects · Parcels · Documents · Annotations · Checklist · Risks · Consistency · Opinions · analyze · translate · RBAC scoping</div>
+      </div>
+      <div class="node lead" style="--accent:var(--api)">
+        <div class="t">core router <span class="tag">/api/v1</span></div>
+        <div class="d">validate · download-ec · getlandinfo · chat-with-doc · chat-overall · visual-debug · survey-timeline · report · risk-score</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SERVICES TIER -->
+  <section class="tier">
+    <div class="tier-h"><span class="bar" style="background:var(--svc)"></span>Domain Services · services/</div>
+    <div class="tier-b">
+      <div class="grp">
+        <h4><i class="swatch" style="background:var(--svc)"></i>Workflow &amp; review</h4>
+        <div class="row">
+          <div class="chip">GatekeeperService<small>parcel completion score (batched)</small></div>
+          <div class="chip">ChecklistService<small>seed · sync · auto-populate verdicts</small></div>
+          <div class="chip">checklist_engine<small>providers · extractors · external_sources</small></div>
+          <div class="chip">AuditService<small>append-only AuditLog</small></div>
+        </div>
+      </div>
+      <div class="grp">
+        <h4><i class="swatch" style="background:var(--svc)"></i>Bridge &amp; platform</h4>
+        <div class="row">
+          <div class="chip">AnalysisBridge<small>pipeline → relational model</small></div>
+          <div class="chip">translation_service<small>Tamil → English (Gemini)</small></div>
+          <div class="chip">artifact_store<small>per-parcel JSON artifacts</small></div>
+          <div class="chip">AuthService<small>hash · JWT · sessions</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PIPELINE TIER -->
+  <section class="tier">
+    <div class="tier-h"><span class="bar" style="background:var(--pipe)"></span>AI Analysis Pipeline · api/validate/ — generator, streams NDJSON</div>
+    <div class="tier-b" style="flex-direction:column">
+      <div class="pipe">
+        <div class="stage"><div class="n">STAGE 1</div><div class="t">EC Processor</div><div class="d">pypdf chunk → Gemini → <code>ec_final.json</code></div><span class="chev">›</span></div>
+        <div class="stage"><div class="n">STAGE 2</div><div class="t">Document Matcher</div><div class="d">normalise doc# · match EC ↔ PDFs · vault copy</div><span class="chev">›</span></div>
+        <div class="stage"><div class="n">STAGE 3</div><div class="t">Sale Deed Processor</div><div class="d">per-deed metadata · ThreadPool×3 if ≥10</div><span class="chev">›</span></div>
+        <div class="stage"><div class="n">STAGE 3.5</div><div class="t">Hierarchy Generator</div><div class="d">EC → nested tree → repair → ReactFlow + Mermaid</div><span class="chev">›</span></div>
+        <div class="stage"><div class="n">STAGE 4</div><div class="t">Validator</div><div class="d">forensic audit · match · trustability · comparisons</div><span class="chev">›</span></div>
+        <div class="stage"><div class="n">STAGE 5</div><div class="t">Risk Score Engine</div><div class="d">Title Health Score 0–100 + grade + summary</div></div>
+      </div>
+      <div class="meta">
+        <div class="mcard"><div class="t">↪ Secondary AI workflows</div><div class="d"><b>VisualDebugger</b> boxes mismatched EC fields · <b>SupportingVerifier</b> (Aadhaar/PAN/Death) · <b>chat-with-doc</b> / <b>chat-overall</b> · <b>generate-report</b> (legal opinion) · <b>analyze-ec</b> historical values.</div></div>
+        <div class="mcard"><div class="t">⚙ Pipeline properties</div><div class="d"><b>Idempotent caching</b> (EC / metadata / risk; validation keyed by <code>VALIDATION_PROMPT_VERSION</code>) · <b>resumable checkpoints</b> · survey-number prefix lineage <code>46 → 46/1 → 46/1A</code>.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PERSISTENCE TIER -->
+  <section class="tier">
+    <div class="tier-h"><span class="bar" style="background:var(--data)"></span>Persistence Tier</div>
+    <div class="tier-b">
+      <div class="node lead" style="--accent:var(--data);flex:2 1 360px">
+        <div class="t">PostgreSQL — AWS RDS <span class="tag">SQLAlchemy · RDS-only</span></div>
+        <div class="d">~20 Landwise tables + legacy. <code>pool_pre_ping</code> + recycle 280s; localhost refused unless <code>ALLOW_LOCAL_DB</code>.</div>
+        <ul>
+          <li><b>User · Role · Project · ProjectTeamAssignment</b> (RBAC)</li>
+          <li><b>Parcel · LandwiseDocument · ExtractedField · ExtractionJob</b></li>
+          <li><b>Owner · OwnershipTransfer · Encumbrance · RiskFlag</b></li>
+          <li><b>ChecklistItem · ConsistencyCheck · LegalOpinion · OpinionSection</b></li>
+          <li><b>AnalysisResult · DocumentAnnotation · ChatMessage · AuditLog</b></li>
+        </ul>
+      </div>
+      <div class="node lead" style="--accent:var(--store)">
+        <div class="t">Object Storage <span class="tag">S3 / local</span></div>
+        <div class="d"><code>STORAGE_BACKEND</code> toggles S3 ↔ disk. Backend <b>streams</b> S3 bytes (same-origin, CORS-safe) instead of presigned redirects.</div>
+        <ul>
+          <li><b>outputs/</b> documents · reports · artifacts · vault</li>
+          <li><b>inputs/</b> uploaded EC + sale deeds</li>
+          <li>Atomic upload cleanup (DB + S3 + scratch)</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- EXTERNAL TIER -->
+  <section class="tier">
+    <div class="tier-h"><span class="bar" style="background:var(--ext)"></span>External Services</div>
+    <div class="tier-b">
+      <div class="node lead" style="--accent:var(--ext)">
+        <div class="t">Google Gemini API <span class="tag">flash · flash-lite</span></div>
+        <div class="d"><code>common/gemini_helper.py</code> — text + file-upload modes · <code>temp=0.0, top_p=0.1</code> · 3× backoff retry on 503.</div>
+      </div>
+      <div class="node lead" style="--accent:var(--ext)">
+        <div class="t">TNGIS EC API</div>
+        <div class="d">XSRF-token session · base64 EC PDF download.</div>
+      </div>
+      <div class="node lead" style="--accent:var(--ext)">
+        <div class="t">TNGIS Land Info API</div>
+        <div class="d">Parcel info by lat / lng for the map page.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <b>Request path:</b> Browser → Amplify SPA → (cookie) → FastAPI middleware → router → service → pipeline/Gemini → RDS + S3 → NDJSON stream back to UI.
+    &nbsp;·&nbsp; <b>Hosting:</b> Amplify (FE) · EC2/Uvicorn (BE) · RDS Postgres (DB) · S3 (files).
+    &nbsp;·&nbsp; Generated from source inspection — open in a browser and use <code>Ctrl/Cmd+P → Save as PDF</code> to export.
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,39 @@
+# Shared
+# Ignore ALL env files (incl. .env.production, *.local) except committed examples.
+.env
+.env.*
+!.env.example
+.vscode/
+.DS_Store
+*.log
+tmp/
+
+# Generated experiment output, scratch, and caches — not source.
+Server/experiments/out/
+Server/scratch/
+Server/.pytest_cache/
+__pycache__/
+
+# Frontend
+Client/node_modules/
+Client/dist/
+Client/dist-ssr/
+Client/landwise-dist.zip
+Client/package-lock.json
+
+# Backend
+Server/__pycache__/
+Server/*.py[cod]
+Server/inputs/*
+!Server/inputs/.gitkeep
+Server/outputs/*
+!Server/outputs/.gitkeep
+Server/.logs/
+Server/venv/
+Server/env/
+Server/.env
+Server/*.pdf
+Server/test_output/
+
+Server/*.dump
+Server/landwiseai.dump

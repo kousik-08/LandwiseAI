@@ -1,0 +1,258 @@
+/* Main Wrapper */
+.pdf-annotator-wrapper {
+    height: 100%;
+    width: 100%;
+    background: #f8fafc;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Precision Cursor for Draw Mode */
+.draw-mode .pdf-highlighter__pdf-container {
+    cursor: crosshair !important;
+}
+
+/* ── Highlight visibility ──────────────────────────────────────────────
+ * The react-pdf-highlighter library ships its own CSS for highlights, but
+ * the library's selectors can lose the cascade in production builds. We
+ * pin explicit visibility here so notes always render clearly in BOTH the
+ * Document Analysis pane (persistent PdfAnnotator) and the Notes Cockpit
+ * preview (freshly mounted PdfAnnotator).
+ */
+
+/* Text highlights — yellow translucent wash over the selected text rects */
+.pdf-highlighter__highlight-part,
+.Highlight__part {
+    background-color: rgba(255, 230, 0, 0.45) !important;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.pdf-highlighter__highlight-part:hover,
+.Highlight__part:hover {
+    background-color: rgba(255, 230, 0, 0.65) !important;
+}
+
+/* Area highlights — yellow translucent fill PLUS a clear orange border so
+ * the drawn region is unmistakable even when the underlying area is busy
+ * with ink.
+ *
+ * react-pdf-highlighter v8 renders <AreaHighlight> with CSS-MODULE (hashed)
+ * class names — an outer `_areaHighlight_<hash>` wrapper and the actual
+ * positioned/sized box as an inner `_part_<hash>` div — NOT the plain
+ * `.AreaHighlight` / `.AreaHighlight__part` this rule originally targeted. On
+ * v8 that left area notes with only the library's faint yellow multiply-blend
+ * fill, which disappears on a busy scanned deed (the note looked unmarked). We
+ * target BOTH the legacy plain classes (older versions) and the v8 hashed
+ * classes (by substring, resilient to the hash) from THIS stylesheet, which is
+ * always loaded — so a note's region is always clearly outlined. */
+
+/* Neutralize the v8 outer wrapper's faint border + multiply blend; the inner
+ * `_part_` box below carries the visible styling. */
+[class*="_areaHighlight_"] {
+    background: transparent !important;
+    border: none !important;
+    mix-blend-mode: normal !important;
+}
+
+.AreaHighlight,
+.AreaHighlight__part,
+[class*="_areaHighlight_"] [class*="_part_"] {
+    background-color: rgba(255, 200, 0, 0.30) !important;
+    border: 2px solid rgba(217, 95, 10, 0.95) !important;
+    mix-blend-mode: normal !important;
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55) !important;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.AreaHighlight:hover,
+.AreaHighlight__part:hover,
+[class*="_areaHighlight_"] [class*="_part_"]:hover {
+    background-color: rgba(255, 200, 0, 0.5) !important;
+}
+
+/* The focused / scrolled-to note (set when a Notes Hub list row is clicked)
+ * stays visually distinct from the other notes on the same page until the user
+ * scrolls, so it's clear which note was just opened. */
+[class*="_scrolledTo_"] [class*="_part_"] {
+    background-color: rgba(255, 70, 70, 0.42) !important;
+    border-color: rgba(210, 20, 20, 0.95) !important;
+}
+
+/* Custom Tip (Annotation Input) */
+.anno-tip-container {
+    background: white;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    width: 240px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.anno-tip-input {
+    border: none;
+    padding: 12px;
+    font-size: 11px;
+    font-family: inherit;
+    resize: none;
+    min-height: 80px;
+    outline: none;
+    background: transparent;
+    color: #1e293b;
+}
+
+.anno-tip-input::placeholder {
+    color: #94a3b8;
+    font-style: italic;
+}
+
+/* Popup Bubble */
+.anno-popup-card {
+    background: white;
+    color: #1e293b;
+    padding: 12px;
+    border-radius: 12px;
+    width: 220px;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.15);
+    border: 1px solid #e2e8f0;
+}
+
+.anno-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #64748b;
+    margin-bottom: 6px;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 6px;
+}
+
+.anno-popup-content {
+    font-size: 11px;
+    line-height: 1.5;
+    color: #334155;
+    font-weight: 500;
+}
+
+/* Scroll Adjustment */
+.PdfHighlighter {
+    background: #f1f5f9 !important;
+    /* Light grey PDF background */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+}
+
+.PdfHighlighter::-webkit-scrollbar {
+    width: 8px;
+}
+
+.PdfHighlighter::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+}
+
+/* Adjust Tip Positioning */
+.Tip {
+    z-index: 1000;
+}
+
+/* ── Flash highlight when navigated from Notes Cockpit ─────────────────
+ * Pulses an amber halo + tint for 1.5s so the user's eye lands on the
+ * referenced highlight after a deep-link click. The flash uses outline +
+ * box-shadow + background-color — NOT only outline — because some PDFs
+ * have very light text where a thin outline is invisible against the
+ * page. The animation ends with the outline / shadow / tint all back to
+ * their starting transparent state so the highlight's base fill keeps
+ * showing after the animation finishes.
+ */
+@keyframes pdf-focus-flash {
+    0%   {
+        outline: 0 solid rgba(245, 158, 11, 0);
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+        background-color: transparent;
+    }
+    20%  {
+        outline: 4px solid rgba(245, 158, 11, 0.98);
+        box-shadow: 0 0 0 10px rgba(245, 158, 11, 0.45), 0 0 0 18px rgba(245, 158, 11, 0.18);
+        background-color: rgba(245, 158, 11, 0.35);
+    }
+    100% {
+        outline: 0 solid rgba(245, 158, 11, 0);
+        box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+        background-color: transparent;
+    }
+}
+
+/* The class lands on a wrapper with `display:contents`, so we have to
+ * target every descendant that react-pdf-highlighter actually paints to
+ * the page — text highlight parts AND area highlight boxes. Two `2s` to
+ * make the pulse repeat once: the user's eye reliably catches the second
+ * pulse even if the first happened mid-scroll. */
+.__pdf_focused__ .pdf-highlighter__highlight-part,
+.__pdf_focused__ .Highlight__part,
+.__pdf_focused__ .AreaHighlight,
+.__pdf_focused__ .AreaHighlight__part,
+.__pdf_focused__ .Highlight,
+.__pdf_focused__ .Highlight--scrolledTo {
+    animation: pdf-focus-flash 1.5s ease-out 0s 2;
+    border-radius: 2px;
+}
+
+/* ── Validation spotlight ──────────────────────────────────────────────
+ * Drawn on top of the PDF's baked-in red mismatch boxes when the user
+ * clicks a field card / checklist item. A glowing indigo ring + soft tint
+ * makes the SELECTED box pop out from the plain red outlines around it.
+ * The ring keeps a gentle perpetual pulse so the eye stays anchored on it
+ * while the user reads the field; the amber focus-flash still fires once on
+ * (re)click via the .__pdf_focused__ rules above (this class sits on the
+ * same wrapper). The wrapper is `display:contents`, so we style the parts
+ * react-pdf-highlighter actually paints. */
+.vd-spotlight .Highlight__part,
+.vd-spotlight .pdf-highlighter__highlight-part {
+    background-color: rgba(79, 70, 229, 0.22) !important;
+    outline: 2.5px solid rgba(79, 70, 229, 0.95);
+    box-shadow: 0 0 0 5px rgba(79, 70, 229, 0.22);
+    border-radius: 3px;
+    cursor: pointer;
+    pointer-events: auto;
+    animation: vd-spotlight-pulse 1.7s ease-in-out infinite;
+}
+
+/* Inactive error box — a transparent, clickable hit target sitting exactly
+ * over a baked-in red box. Invisible at rest so the red box reads cleanly;
+ * on hover it hints a faint indigo ring so the user discovers it's clickable.
+ * Clicking it cross-navigates to the matching box in the other viewer. */
+.vd-box .Highlight__part,
+.vd-box .pdf-highlighter__highlight-part {
+    background-color: transparent !important;
+    outline: 1.5px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background-color 0.15s ease, outline-color 0.15s ease;
+}
+
+.vd-box .Highlight__part:hover,
+.vd-box .pdf-highlighter__highlight-part:hover {
+    background-color: rgba(79, 70, 229, 0.14) !important;
+    outline: 1.5px solid rgba(79, 70, 229, 0.6);
+}
+
+@keyframes vd-spotlight-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.16);
+        background-color: rgba(79, 70, 229, 0.16) !important;
+    }
+    50% {
+        box-shadow: 0 0 0 9px rgba(79, 70, 229, 0.30);
+        background-color: rgba(79, 70, 229, 0.28) !important;
+    }
+}
